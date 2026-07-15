@@ -1,0 +1,25 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.sqlite3
+backend/.env
+backend/media/
+backend/staticfiles/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/.env.local
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build do contrato (texto extraído)
+contrato.txt

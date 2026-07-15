@@ -1,0 +1,17 @@
+# PostgreSQL para desenvolvimento/produção local.
+# Stack open-source, portável a qualquer VPS Linux (Cláusula 12.4 — sem lock-in).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: thermoproactive_db
+    environment:
+      POSTGRES_DB: thermoproactive
+      POSTGRES_USER: thermo
+      POSTGRES_PASSWORD: thermo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

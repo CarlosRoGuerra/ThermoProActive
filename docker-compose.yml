@@ -1,0 +1,51 @@
+# ThermoProActive — stack completo (PostgreSQL + API Django + Frontend Next.js).
+# Subir tudo:   docker compose up --build
+# Acessos:      Frontend http://localhost:3000  |  API http://localhost:8000/api
+#               Swagger  http://localhost:8000/api/docs/  |  Admin /admin
+# Tudo open-source e portável a qualquer VPS Linux (Cláusula 12.4 — sem lock-in).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: thermoproactive_db
+    environment:
+      POSTGRES_DB: thermoproactive
+      POSTGRES_USER: thermo
+      POSTGRES_PASSWORD: thermo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thermo -d thermoproactive"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build: ./backend
+    container_name: thermoproactive_backend
+    environment:
+      SECRET_KEY: docker-dev-secret-troque-em-producao
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      DATABASE_URL: postgres://thermo:thermo@db:5432/thermoproactive
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Embutido no bundle do navegador em build-time.
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    container_name: thermoproactive_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

@@ -1,0 +1,7 @@
+from django.apps import AppConfig
+
+
+class LaudosConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.laudos"
+    verbose_name = "Laudos Técnicos"

@@ -1,0 +1,96 @@
+# =============================================================================
+# ThermoProActive — stack de PRODUÇÃO (VPS Linux)
+# db (PostgreSQL) + backend (Django/gunicorn) + frontend (Next.js) + nginx (TLS)
+#
+# Subir:   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# Logs:    docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f
+# Parar:   docker compose --env-file .env.prod -f docker-compose.prod.yml down
+#
+# Tudo open-source e portável (Cláusula 12.4 — sem lock-in de fornecedor).
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: thermoproactive_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # Sem 'ports': o banco NÃO é exposto à internet, só à rede interna do compose.
+
+  backend:
+    build: ./backend
+    container_name: thermoproactive_backend
+    restart: unless-stopped
+    env_file: .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - media:/app/media          # evidências/uploads persistem fora do container
+    # Produção: migra, coleta estáticos e sobe o gunicorn. NÃO roda seed_demo
+    # (evita recriar o admin de demonstração 'thermo123' a cada boot).
+    command: >
+      sh -c "until python manage.py migrate --noinput; do echo 'aguardando o banco...'; sleep 2; done;
+             python manage.py collectstatic --noinput;
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    expose:
+      - "8000"                    # visível só para o nginx, não para a internet
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: thermoproactive_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"                    # visível só para o nginx
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: thermoproactive_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      DOMAIN: ${DOMAIN}
+      NGINX_ENVSUBST_FILTER: DOMAIN   # substitui só ${DOMAIN}, preserva $host etc.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx:/etc/nginx/templates:ro   # app.conf.template -> conf.d/app.conf
+      - certbot-conf:/etc/letsencrypt:ro         # certificados
+      - certbot-www:/var/www/certbot:ro          # desafio ACME (http-01)
+      - media:/var/www/media:ro                  # serve /media/ direto pelo nginx
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: thermoproactive_certbot
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Renova o certificado a cada 12h se estiver perto de expirar.
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+             sleep 12h & wait $${!}; done"
+
+volumes:
+  pgdata:
+  media:
+  certbot-conf:
+  certbot-www:

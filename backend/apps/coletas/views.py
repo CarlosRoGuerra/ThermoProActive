@@ -1,0 +1,374 @@
+from collections import defaultdict
+
+from django.db.models import Count, Sum
+from django.utils import timezone
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.permissions import InternoEditaClienteVisualiza
+
+from .models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
+from .serializers import (
+    InspecaoListSerializer,
+    InspecaoSerializer,
+    MedicaoTecnicaSerializer,
+    MedicaoTermografiaSerializer,
+    MedicaoVibracaoSerializer,
+)
+
+
+def escopo_cliente(qs, user, campo_cliente="cliente"):
+    """Perfis cliente só enxergam dados do próprio cliente (Portal — item 2.7)."""
+    if user.is_cliente and user.cliente_id:
+        return qs.filter(**{campo_cliente: user.cliente_id})
+    return qs
+
+
+class InspecaoViewSet(viewsets.ModelViewSet):
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["cliente", "tipo_analise", "status", "tecnico"]
+    search_fields = ["observacoes"]
+    ordering_fields = ["data", "criado_em"]
+
+    def get_queryset(self):
+        qs = (
+            Inspecao.objects.ativos()
+            .select_related("cliente", "tecnico")
+            .prefetch_related(
+                "medicoes_vibracao__equipamento", "medicoes_vibracao__componente",
+                "medicoes_termografia__equipamento", "medicoes_termografia__componente",
+                "medicoes_tecnicas__equipamento", "medicoes_tecnicas__componente",
+            )
+        )
+        return escopo_cliente(qs, self.request.user)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return InspecaoListSerializer
+        return InspecaoSerializer
+
+
+class MedicaoVibracaoViewSet(viewsets.ModelViewSet):
+    serializer_class = MedicaoVibracaoSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "zona_iso", "direcao"]
+    ordering_fields = ["data_hora", "velocidade_rms"]
+
+    def get_queryset(self):
+        qs = MedicaoVibracao.objects.select_related(
+            "equipamento", "componente", "instrumento", "inspecao"
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+
+
+class MedicaoTermografiaViewSet(viewsets.ModelViewSet):
+    serializer_class = MedicaoTermografiaSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "sistema"]
+    ordering_fields = ["data_hora", "delta_t"]
+
+    def get_queryset(self):
+        qs = MedicaoTermografia.objects.select_related(
+            "equipamento", "componente", "instrumento", "inspecao"
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+
+
+class MedicaoTecnicaViewSet(viewsets.ModelViewSet):
+    serializer_class = MedicaoTecnicaSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "tipo"]
+    ordering_fields = ["data_hora"]
+
+    def get_queryset(self):
+        qs = MedicaoTecnica.objects.select_related(
+            "equipamento", "componente", "instrumento", "inspecao"
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+
+
+def _conta_criticidade(queryset) -> dict:
+    return {
+        item["criticidade"]: item["total"]
+        for item in queryset.values("criticidade").annotate(total=Count("id"))
+    }
+
+
+class DashboardView(APIView):
+    """Indicadores operacionais — Anexo I 2.8.1.1 (vibração + termografia)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        inspecoes = escopo_cliente(Inspecao.objects.ativos(), request.user)
+        vib = escopo_cliente(
+            MedicaoVibracao.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        )
+        termo = escopo_cliente(
+            MedicaoTermografia.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        )
+        tec = escopo_cliente(
+            MedicaoTecnica.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        )
+
+        c_vib, c_termo, c_tec = _conta_criticidade(vib), _conta_criticidade(termo), _conta_criticidade(tec)
+        por_criticidade = {
+            nivel: c_vib.get(nivel, 0) + c_termo.get(nivel, 0) + c_tec.get(nivel, 0)
+            for nivel in ("NORMAL", "ALERTA", "CRITICO")
+        }
+
+        # Equipamentos críticos consolidando todos os tipos de medição.
+        criticos: dict = {}
+        for qs in (vib, termo, tec):
+            for row in (
+                qs.filter(criticidade="CRITICO")
+                .values("equipamento__tag", "equipamento__nome")
+                .annotate(ocorrencias=Count("id"))
+            ):
+                chave = row["equipamento__tag"]
+                if chave not in criticos:
+                    criticos[chave] = {**row}
+                else:
+                    criticos[chave]["ocorrencias"] += row["ocorrencias"]
+        equipamentos_criticos = sorted(
+            criticos.values(), key=lambda r: r["ocorrencias"], reverse=True
+        )[:10]
+
+        # Import tardio evita dependência circular coletas <-> osp.
+        from apps.osp.models import STATUS_ABERTOS, OrdemServico
+
+        osps = escopo_cliente(OrdemServico.objects.all(), request.user)
+
+        return Response({
+            "total_inspecoes": inspecoes.count(),
+            "inspecoes_abertas": inspecoes.filter(status="ABERTA").count(),
+            "total_medicoes": vib.count() + termo.count() + tec.count(),
+            "medicoes_por_criticidade": por_criticidade,
+            "equipamentos_criticos": equipamentos_criticos,
+            "osps_abertas": osps.filter(status__in=STATUS_ABERTOS).count(),
+            "osps_total": osps.count(),
+        })
+
+
+def _ultimos_meses(n=6):
+    hoje = timezone.now()
+    ano, mes = hoje.year, hoje.month
+    saida = []
+    for _ in range(n):
+        saida.append((ano, mes))
+        mes -= 1
+        if mes == 0:
+            mes, ano = 12, ano - 1
+    return list(reversed(saida))
+
+
+class DashboardExecutivoView(APIView):
+    """Dashboard executivo — Anexo I 2.8.1.2 (KPIs, custos, MTBF, MTTR, evolução)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.cadastros.models import Cliente
+        from apps.osp.models import OrdemServico
+
+        user = request.user
+        osps = escopo_cliente(OrdemServico.objects.all(), user)
+        vib = escopo_cliente(MedicaoVibracao.objects.all(), user, "inspecao__cliente")
+        termo = escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente")
+        tec = escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente")
+
+        total_osp = osps.count()
+        finalizadas = osps.filter(status="FINALIZADA", finalizada_em__isnull=False)
+
+        # MTTR — tempo médio de reparo (horas) — item 2.8.1.2.4
+        duracoes = [
+            (o.finalizada_em - o.criado_em).total_seconds() / 3600
+            for o in finalizadas.only("finalizada_em", "criado_em")
+        ]
+        mttr = round(sum(duracoes) / len(duracoes), 1) if duracoes else None
+
+        # MTBF — tempo médio entre falhas (dias) — item 2.8.1.2.3
+        por_equip = defaultdict(list)
+        for o in osps.order_by("criado_em").values("equipamento_id", "criado_em"):
+            por_equip[o["equipamento_id"]].append(o["criado_em"])
+        gaps = [
+            (ts[i] - ts[i - 1]).total_seconds() / 86400
+            for ts in por_equip.values()
+            for i in range(1, len(ts))
+        ]
+        mtbf = round(sum(gaps) / len(gaps), 1) if gaps else None
+
+        # Custos de manutenção — item 2.8.1.2.2
+        custos = osps.aggregate(real=Sum("custo_real"), estimado=Sum("custo_estimado"))
+
+        # Evolução histórica (6 meses) — item 2.8.1.2.6
+        evolucao = []
+        for ano, mes in _ultimos_meses(6):
+            criticas = sum(
+                q.filter(data_hora__year=ano, data_hora__month=mes, criticidade="CRITICO").count()
+                for q in (vib, termo, tec)
+            )
+            evolucao.append({
+                "mes": f"{mes:02d}/{ano}",
+                "criticas": criticas,
+                "osps": osps.filter(criado_em__year=ano, criado_em__month=mes).count(),
+            })
+
+        # Performance por unidade — item 2.8.1.2.5
+        performance = []
+        for c in escopo_cliente(Cliente.objects.ativos(), user, "id"):
+            cosps = osps.filter(cliente=c)
+            criticas = sum(
+                q.filter(inspecao__cliente=c, criticidade="CRITICO").count()
+                for q in (vib, termo, tec)
+            )
+            performance.append({
+                "cliente": c.nome,
+                "osps": cosps.count(),
+                "finalizadas": cosps.filter(status="FINALIZADA").count(),
+                "criticas": criticas,
+                "custo_real": float(cosps.aggregate(s=Sum("custo_real"))["s"] or 0),
+            })
+
+        return Response({
+            "kpis": {
+                "osps_total": total_osp,
+                "osps_finalizadas": finalizadas.count(),
+                "taxa_conclusao": round(finalizadas.count() / total_osp * 100) if total_osp else 0,
+                "mttr_horas": mttr,
+                "mtbf_dias": mtbf,
+            },
+            "custos": {
+                "real": float(custos["real"] or 0),
+                "estimado": float(custos["estimado"] or 0),
+            },
+            "evolucao": evolucao,
+            "performance": performance,
+        })
+
+
+class PortalVisaoGeralView(APIView):
+    """
+    Visão geral do Portal do Cliente — Anexo I 2.7.
+
+    Entrega, em linguagem voltada ao cliente, o dashboard personalizado (2.7.1.1.6),
+    os indicadores de desempenho do parque (2.7.1.1.7 — incluindo índice de
+    disponibilidade, item 2.8.1.1.6) e o histórico de serviços (2.7.1.1.5),
+    sempre restrito ao próprio cliente via `escopo_cliente` (somente leitura).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.cadastros.models import Cliente, Equipamento
+        from apps.laudos.models import Laudo, StatusLaudo
+        from apps.osp.models import STATUS_ABERTOS, OrdemServico
+
+        user = request.user
+
+        # --- Identificação do cliente (cabeçalho do portal) ---
+        cliente = (
+            Cliente.objects.filter(pk=user.cliente_id).first()
+            if user.is_cliente and user.cliente_id
+            else None
+        )
+
+        # --- Escopos (cliente vê apenas o próprio parque) ---
+        equipamentos = escopo_cliente(Equipamento.objects.ativos(), user, "setor__area__cliente")
+        inspecoes = escopo_cliente(Inspecao.objects.ativos(), user)
+        vib = escopo_cliente(MedicaoVibracao.objects.all(), user, "inspecao__cliente")
+        termo = escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente")
+        tec = escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente")
+        osps = escopo_cliente(OrdemServico.objects.all(), user)
+        laudos = escopo_cliente(
+            Laudo.objects.filter(status=StatusLaudo.EMITIDO).select_related("inspecao__cliente"),
+            user, "inspecao__cliente",
+        )
+
+        # --- Equipamentos que requerem atenção (com medição crítica) ---
+        atencao: dict = {}
+        for qs in (vib, termo, tec):
+            for row in (
+                qs.filter(criticidade="CRITICO")
+                .values("equipamento__tag", "equipamento__nome")
+                .annotate(ocorrencias=Count("id"))
+            ):
+                chave = row["equipamento__tag"]
+                if chave not in atencao:
+                    atencao[chave] = {**row}
+                else:
+                    atencao[chave]["ocorrencias"] += row["ocorrencias"]
+        equipamentos_atencao = sorted(
+            atencao.values(), key=lambda r: r["ocorrencias"], reverse=True
+        )
+
+        total_equip = equipamentos.count()
+        em_atencao = len(equipamentos_atencao)
+        # Índice de disponibilidade (item 2.8.1.1.6): % do parque sem ocorrência crítica.
+        disponibilidade = (
+            round((total_equip - em_atencao) / total_equip * 100, 1) if total_equip else 100.0
+        )
+
+        # --- Histórico de serviços (item 2.7.1.1.5) — consolidado e ordenado ---
+        historico: list = []
+        for laudo in laudos.order_by("-data_emissao")[:10]:
+            historico.append({
+                "tipo": "laudo",
+                "titulo": f"Laudo {laudo.numero}",
+                "descricao": laudo.titulo,
+                "data": laudo.data_emissao,
+                "status": laudo.get_status_display(),
+                "criticidade": laudo.criticidade_geral or "",
+                "url": f"/laudos/{laudo.id}",
+            })
+        for insp in inspecoes.order_by("-data")[:10]:
+            historico.append({
+                "tipo": "inspecao",
+                "titulo": f"Inspeção — {insp.get_tipo_analise_display()}",
+                "descricao": insp.observacoes[:120],
+                "data": insp.data,
+                "status": insp.get_status_display(),
+                "criticidade": "",
+                "url": f"/inspecoes/{insp.id}",
+            })
+        for osp in osps.select_related("equipamento").order_by("-criado_em")[:10]:
+            historico.append({
+                "tipo": "osp",
+                "titulo": f"OSP {osp.numero}",
+                "descricao": f"{osp.equipamento.tag} — {osp.titulo}",
+                "data": osp.criado_em,
+                "status": osp.get_status_display(),
+                "criticidade": osp.criticidade_origem or "",
+                "url": "/osps",
+            })
+
+        # Datas e datetimes coexistem; normaliza para `date` apenas na ordenação.
+        def _chave_data(item):
+            d = item["data"]
+            return d.date() if hasattr(d, "date") else d
+
+        historico.sort(key=_chave_data, reverse=True)
+
+        return Response({
+            "cliente": (
+                {
+                    "nome": cliente.nome,
+                    "unidade_negocio": cliente.unidade_negocio,
+                    "cidade_uf": cliente.cidade_uf,
+                }
+                if cliente
+                else None
+            ),
+            "indicadores": {
+                "equipamentos_monitorados": total_equip,
+                "equipamentos_atencao": em_atencao,
+                "indice_disponibilidade": disponibilidade,
+                "inspecoes": inspecoes.count(),
+                "osps_abertas": osps.filter(status__in=STATUS_ABERTOS).count(),
+                "laudos_disponiveis": laudos.count(),
+            },
+            "equipamentos_atencao": equipamentos_atencao[:8],
+            "historico": historico[:12],
+        })

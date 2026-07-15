@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Tokens de design (tema claro). Único lugar para ajustar a paleta.
+   Accent: indigo. Neutros: slate. Status: success/warning/danger.
+   ========================================================================== */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f6;
+  --border: #e7e9ee;
+  --border-strong: #d6dae1;
+
+  --fg: #0f1729;
+  --fg-muted: #56607a;
+  --fg-subtle: #8b95a7;
+
+  --accent: #4f46e5; /* indigo-600 */
+  --accent-hover: #4338ca; /* indigo-700 */
+  --accent-fg: #ffffff;
+  --accent-subtle: #eef2ff; /* indigo-50 */
+  --accent-subtle-fg: #4338ca; /* indigo-700 */
+  --accent-ring: rgb(79 70 229 / 0.32);
+
+  --success: #059669;
+  --success-subtle: #ecfdf5;
+  --success-fg: #047857;
+  --warning: #d97706;
+  --warning-subtle: #fffbeb;
+  --warning-fg: #b45309;
+  --danger: #dc2626;
+  --danger-subtle: #fef2f2;
+  --danger-fg: #b91c1c;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Foco visível consistente (acessibilidade / WCAG). */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), 0 0 0 3px var(--accent-ring);
+    border-radius: 0.5rem;
+  }
+
+  ::selection {
+    background: var(--accent-subtle);
+    color: var(--accent-subtle-fg);
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg
+      shadow-xs outline-none transition placeholder:text-fg-subtle
+      focus:border-accent focus:shadow-focus
+      disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-fg-subtle;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium text-fg-muted;
+  }
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  @apply relative overflow-hidden rounded-md bg-surface-muted;
+}
+.skeleton::after {
+  content: "";
+  @apply absolute inset-0 -translate-x-full animate-shimmer;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.65),
+    transparent
+  );
+}
+
+/* Respeita quem prefere menos movimento (acessibilidade). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after {
+    display: none;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}

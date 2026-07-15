@@ -1,0 +1,74 @@
+# ThermoProActive — Nginx reverse proxy (domínio único)
+#   /api,/admin,/static -> Django (gunicorn)   |   /media -> arquivos   |   /  -> Next.js
+# Este arquivo é um TEMPLATE: o container nginx substitui ${DOMAIN} em build-time
+# (NGINX_ENVSUBST_FILTER=DOMAIN preserva as variáveis internas do nginx como $host).
+
+# --- HTTP: desafio ACME + redirect para HTTPS --------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # Validação do Let's Encrypt (http-01) — precisa responder em HTTP.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Todo o resto vai para HTTPS.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- HTTPS: aplicação --------------------------------------------------------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Uploads (evidências/fotos — futuro) e exportações grandes.
+    client_max_body_size 25m;
+
+    # Cabeçalhos repassados a todos os upstreams.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # --- API Django (DRF, Swagger em /api/docs/, auth JWT) ---
+    location /api/ {
+        proxy_pass http://backend:8000;
+    }
+
+    # --- Admin do Django ---
+    location /admin/ {
+        proxy_pass http://backend:8000;
+    }
+
+    # --- Estáticos do Django/DRF/admin (servidos pelo WhiteNoise no backend) ---
+    location /static/ {
+        proxy_pass http://backend:8000;
+    }
+
+    # --- Mídia (uploads) servida direto pelo nginx a partir do volume ---
+    location /media/ {
+        alias /var/www/media/;
+        access_log off;
+        expires 30d;
+    }
+
+    # --- Frontend Next.js (tudo o mais: /, /login, /portal, /_next/...) ---
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
