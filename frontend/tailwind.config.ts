@@ -24,6 +24,7 @@ const config: Config = {
           fg: "var(--accent-fg)",
           subtle: "var(--accent-subtle)",
           "subtle-fg": "var(--accent-subtle-fg)",
+          "2": "var(--accent-2)",
         },
         success: {
           DEFAULT: "var(--success)",
@@ -43,6 +44,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
       borderRadius: {
         lg: "0.625rem", // 10px — raio padrão sutil e consistente

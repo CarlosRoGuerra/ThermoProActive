@@ -6,9 +6,11 @@ import {
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
+  useEffect,
+  useState,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Loader2, type LucideIcon } from "lucide-react";
+import { Check, Loader2, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { Criticidade } from "@/lib/types";
 
 export function cn(...parts: (string | false | null | undefined)[]) {
@@ -173,7 +175,9 @@ export function StatCard({
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-fg-muted">{label}</p>
-          <p className={cn("mt-2 text-2xl font-semibold tracking-tight", tones[tone])}>{value}</p>
+          <p className={cn("mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums", tones[tone])}>
+            {value}
+          </p>
           {hint && <p className="mt-1 text-xs text-fg-subtle">{hint}</p>}
         </div>
         {Icon && (
@@ -371,6 +375,47 @@ export function EmptyState({
       {description && <p className="mt-1 max-w-sm text-sm text-fg-muted">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
+  );
+}
+
+/* ============================ ThemeToggle ============================ */
+export function ThemeToggle({ className = "" }: { className?: string }) {
+  const [dark, setDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("tpa-theme");
+    const isDark = stored
+      ? stored === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDark(isDark);
+    setMounted(true);
+  }, []);
+
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.dataset.theme = next ? "dark" : "light";
+    try {
+      localStorage.setItem("tpa-theme", next ? "dark" : "light");
+    } catch {
+      /* localStorage indisponível — o tema ainda funciona nesta sessão */
+    }
+  }
+
+  const showSun = mounted && dark;
+  return (
+    <button
+      onClick={toggle}
+      aria-label={showSun ? "Ativar tema claro" : "Ativar tema escuro"}
+      title={showSun ? "Tema claro" : "Tema escuro"}
+      className={cn(
+        "rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg",
+        className
+      )}
+    >
+      {showSun ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+    </button>
   );
 }
 

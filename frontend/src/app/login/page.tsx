@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, ThemeToggle } from "@/components/ui";
 import { EASE_OUT } from "@/components/motion";
 
 const DEMO = [
@@ -36,7 +36,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-bg p-4">
+      <ThemeToggle className="absolute right-4 top-4" />
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -44,7 +45,7 @@ export default function LoginPage() {
         className="w-full max-w-sm"
       >
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-sm">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-2 text-white shadow-sm">
             <ShieldCheck className="h-6 w-6" />
           </div>
           <h1 className="text-xl font-semibold tracking-tight text-fg">ThermoProActive</h1>

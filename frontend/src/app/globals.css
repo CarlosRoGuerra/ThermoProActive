@@ -3,42 +3,148 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   Tokens de design (tema claro). Único lugar para ajustar a paleta.
-   Accent: indigo. Neutros: slate. Status: success/warning/danger.
+   Tokens de design — ThermoProActive.
+   Direção: painel operacional denso, claro + escuro.
+   Neutros slate com viés frio (escolhidos, não default); accent indigo;
+   semânticas de criticidade (Normal=esmeralda / Alerta=âmbar / Crítico=vermelho)
+   mapeadas em success/warning/danger — separadas do accent.
+   Um único lugar para ajustar a paleta; os componentes usam só os tokens.
    ========================================================================== */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-muted: #f1f3f6;
-  --border: #e7e9ee;
-  --border-strong: #d6dae1;
+  color-scheme: light;
 
-  --fg: #0f1729;
-  --fg-muted: #56607a;
-  --fg-subtle: #8b95a7;
+  --bg: #eaeef4;
+  --surface: #ffffff;
+  --surface-muted: #f2f5f9;
+  --border: #dfe4ee;
+  --border-strong: #cbd3e1;
+
+  --fg: #0d1526;
+  --fg-muted: #59627a;
+  --fg-subtle: #8792a5;
 
   --accent: #4f46e5; /* indigo-600 */
+  --accent-2: #6366f1; /* indigo-500 — só para gradiente da marca */
   --accent-hover: #4338ca; /* indigo-700 */
   --accent-fg: #ffffff;
-  --accent-subtle: #eef2ff; /* indigo-50 */
-  --accent-subtle-fg: #4338ca; /* indigo-700 */
+  --accent-subtle: #eaecfe;
+  --accent-subtle-fg: #4036c9;
   --accent-ring: rgb(79 70 229 / 0.32);
 
-  --success: #059669;
-  --success-subtle: #ecfdf5;
-  --success-fg: #047857;
-  --warning: #d97706;
-  --warning-subtle: #fffbeb;
-  --warning-fg: #b45309;
-  --danger: #dc2626;
-  --danger-subtle: #fef2f2;
-  --danger-fg: #b91c1c;
+  --success: #0f9d76;
+  --success-subtle: #e4f6ef;
+  --success-fg: #0a7a5c;
+  --warning: #c8790c;
+  --warning-subtle: #fbf1e0;
+  --warning-fg: #9c5e08;
+  --danger: #dc2b3f;
+  --danger-subtle: #fce9ea;
+  --danger-fg: #b41e2f;
+
+  --shimmer: rgb(255 255 255 / 0.65);
+}
+
+/* Tema escuro — segue a preferência do SO por padrão. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #080b12;
+    --surface: #111726;
+    --surface-muted: #171f2f;
+    --border: #232c3f;
+    --border-strong: #2f3b52;
+
+    --fg: #e9edf6;
+    --fg-muted: #98a3b9;
+    --fg-subtle: #647087;
+
+    --accent: #6f6df6;
+    --accent-2: #8785fb;
+    --accent-hover: #8785fb;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgb(111 109 246 / 0.16);
+    --accent-subtle-fg: #b9b7fd;
+    --accent-ring: rgb(111 109 246 / 0.42);
+
+    --success: #2ad3a0;
+    --success-subtle: rgb(42 211 160 / 0.13);
+    --success-fg: #58e2b6;
+    --warning: #f2a521;
+    --warning-subtle: rgb(242 165 33 / 0.14);
+    --warning-fg: #f7bb52;
+    --danger: #ff5668;
+    --danger-subtle: rgb(255 86 104 / 0.14);
+    --danger-fg: #ff8089;
+
+    --shimmer: rgb(255 255 255 / 0.06);
+  }
+}
+
+/* Overrides do toggle explícito — precisam vencer a media query nos dois sentidos. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eaeef4;
+  --surface: #ffffff;
+  --surface-muted: #f2f5f9;
+  --border: #dfe4ee;
+  --border-strong: #cbd3e1;
+  --fg: #0d1526;
+  --fg-muted: #59627a;
+  --fg-subtle: #8792a5;
+  --accent: #4f46e5;
+  --accent-2: #6366f1;
+  --accent-hover: #4338ca;
+  --accent-fg: #ffffff;
+  --accent-subtle: #eaecfe;
+  --accent-subtle-fg: #4036c9;
+  --accent-ring: rgb(79 70 229 / 0.32);
+  --success: #0f9d76;
+  --success-subtle: #e4f6ef;
+  --success-fg: #0a7a5c;
+  --warning: #c8790c;
+  --warning-subtle: #fbf1e0;
+  --warning-fg: #9c5e08;
+  --danger: #dc2b3f;
+  --danger-subtle: #fce9ea;
+  --danger-fg: #b41e2f;
+  --shimmer: rgb(255 255 255 / 0.65);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #080b12;
+  --surface: #111726;
+  --surface-muted: #171f2f;
+  --border: #232c3f;
+  --border-strong: #2f3b52;
+  --fg: #e9edf6;
+  --fg-muted: #98a3b9;
+  --fg-subtle: #647087;
+  --accent: #6f6df6;
+  --accent-2: #8785fb;
+  --accent-hover: #8785fb;
+  --accent-fg: #ffffff;
+  --accent-subtle: rgb(111 109 246 / 0.16);
+  --accent-subtle-fg: #b9b7fd;
+  --accent-ring: rgb(111 109 246 / 0.42);
+  --success: #2ad3a0;
+  --success-subtle: rgb(42 211 160 / 0.13);
+  --success-fg: #58e2b6;
+  --warning: #f2a521;
+  --warning-subtle: rgb(242 165 33 / 0.14);
+  --warning-fg: #f7bb52;
+  --danger: #ff5668;
+  --danger-subtle: rgb(255 86 104 / 0.14);
+  --danger-fg: #ff8089;
+  --shimmer: rgb(255 255 255 / 0.06);
 }
 
 @layer base {
   body {
     @apply bg-bg text-fg antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    /* transição suave ao alternar tema (sem animar a carga inicial de layout) */
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* Foco visível consistente (acessibilidade / WCAG). */
@@ -64,6 +170,11 @@
   .label {
     @apply mb-1.5 block text-xs font-medium text-fg-muted;
   }
+  /* Dado numérico/técnico (métricas, TAGs, timestamps): monoespaçado e alinhado. */
+  .data {
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* Skeleton shimmer */
@@ -73,12 +184,7 @@
 .skeleton::after {
   content: "";
   @apply absolute inset-0 -translate-x-full animate-shimmer;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgb(255 255 255 / 0.65),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, var(--shimmer), transparent);
 }
 
 /* Respeita quem prefere menos movimento (acessibilidade). */

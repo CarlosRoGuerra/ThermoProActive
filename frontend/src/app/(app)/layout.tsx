@@ -21,7 +21,7 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { User } from "@/lib/types";
-import { Spinner, cn } from "@/components/ui";
+import { Spinner, ThemeToggle, cn } from "@/components/ui";
 
 type NavItem = {
   href: string;
@@ -71,7 +71,7 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent font-bold text-accent-fg">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 font-bold text-white shadow-sm">
           T
         </div>
         <div>
@@ -224,6 +224,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex-1" />
+          <ThemeToggle />
           <Link
             href="/notificacoes"
             aria-label="Notificações"
