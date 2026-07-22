@@ -82,7 +82,26 @@ class InstrumentoSerializer(serializers.ModelSerializer):
 # --- Catálogos / tabelas de referência (Anexo I 2.2.1.5–2.2.1.14, 2.2.1.18) ---
 
 
-class NormaSerializer(serializers.ModelSerializer):
+class TecnologiasVinculoMixin(serializers.ModelSerializer):
+    """
+    Reuso para catálogos vinculados a tecnologias de análise (Norma, Tipo de
+    componente/anomalia/recomendação): grava por lista de IDs e devolve uma
+    versão legível (tecnologias_display) para exibir e pré-selecionar na tela.
+    """
+
+    tecnologias = serializers.PrimaryKeyRelatedField(
+        many=True, required=False, queryset=TecnologiaAnalise.objects.ativos()
+    )
+    tecnologias_display = serializers.SerializerMethodField()
+
+    def get_tecnologias_display(self, obj):
+        return [
+            {"id": t.id, "nome": t.nome, "sigla": t.sigla}
+            for t in obj.tecnologias.all()
+        ]
+
+
+class NormaSerializer(TecnologiasVinculoMixin):
     class Meta:
         model = Norma
         exclude = ["ativo"]
@@ -120,19 +139,19 @@ class FalhaRecorrenteSerializer(serializers.ModelSerializer):
         exclude = ["ativo"]
 
 
-class TipoComponenteSerializer(serializers.ModelSerializer):
+class TipoComponenteSerializer(TecnologiasVinculoMixin):
     class Meta:
         model = TipoComponente
         exclude = ["ativo"]
 
 
-class TipoAnomaliaSerializer(serializers.ModelSerializer):
+class TipoAnomaliaSerializer(TecnologiasVinculoMixin):
     class Meta:
         model = TipoAnomalia
         exclude = ["ativo"]
 
 
-class TipoRecomendacaoSerializer(serializers.ModelSerializer):
+class TipoRecomendacaoSerializer(TecnologiasVinculoMixin):
     class Meta:
         model = TipoRecomendacao
         exclude = ["ativo"]

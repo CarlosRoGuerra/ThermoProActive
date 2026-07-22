@@ -158,7 +158,7 @@ class Instrumento(BaseModel):
 class Catalogo(BaseModel):
     """Base abstrata para tabelas de referência simples."""
 
-    nome = models.CharField("Nome", max_length=120)
+    nome = models.CharField("Nome", max_length=250)
     descricao = models.TextField("Descrição", blank=True)
 
     class Meta(BaseModel.Meta):
@@ -169,20 +169,6 @@ class Catalogo(BaseModel):
         return self.nome
 
 
-class Norma(Catalogo):
-    """Normas técnicas (NBR/ISO/IEEE) — item 2.2.1.5."""
-
-    codigo = models.CharField("Código", max_length=40, help_text="Ex.: NBR 10816, ISO 20816")
-    orgao = models.CharField("Órgão", max_length=40, blank=True, help_text="ABNT, ISO, IEEE…")
-
-    class Meta(Catalogo.Meta):
-        verbose_name = "Norma"
-        verbose_name_plural = "Normas (NBRs)"
-
-    def __str__(self):
-        return f"{self.codigo} — {self.nome}" if self.codigo else self.nome
-
-
 class TecnologiaAnalise(Catalogo):
     """Tecnologias/Tipos de análise — item 2.2.1.6."""
 
@@ -191,6 +177,26 @@ class TecnologiaAnalise(Catalogo):
     class Meta(Catalogo.Meta):
         verbose_name = "Tecnologia/Tipo de análise"
         verbose_name_plural = "Tecnologias/Tipos de análise"
+
+
+class Norma(Catalogo):
+    """Normas técnicas (NBR/ISO/IEEE) — item 2.2.1.5."""
+
+    codigo = models.CharField("Código", max_length=40, help_text="Ex.: NBR 10816, ISO 20816")
+    orgao = models.CharField("Órgão", max_length=40, blank=True, help_text="ABNT, ISO, IEEE…")
+    # Vínculo com as tecnologias de análise às quais a norma se aplica
+    # (ex.: NBR 10816 → Vibração). Muitas-para-muitas, opcional.
+    tecnologias = models.ManyToManyField(
+        TecnologiaAnalise, blank=True, related_name="normas",
+        verbose_name="Tecnologias aplicáveis",
+    )
+
+    class Meta(Catalogo.Meta):
+        verbose_name = "Norma"
+        verbose_name_plural = "Normas (NBRs)"
+
+    def __str__(self):
+        return f"{self.codigo} — {self.nome}" if self.codigo else self.nome
 
 
 class TipoEquipamento(Catalogo):
@@ -232,6 +238,11 @@ class FalhaRecorrente(Catalogo):
 class TipoComponente(Catalogo):
     """Tipo de componente — item 2.2.1.9."""
 
+    tecnologias = models.ManyToManyField(
+        TecnologiaAnalise, blank=True, related_name="tipos_componente",
+        verbose_name="Tecnologias aplicáveis",
+    )
+
     class Meta(Catalogo.Meta):
         verbose_name = "Tipo de componente"
         verbose_name_plural = "Tipos de componente"
@@ -240,6 +251,11 @@ class TipoComponente(Catalogo):
 class TipoAnomalia(Catalogo):
     """Tipo de anomalia — item 2.2.1.10."""
 
+    tecnologias = models.ManyToManyField(
+        TecnologiaAnalise, blank=True, related_name="tipos_anomalia",
+        verbose_name="Tecnologias aplicáveis",
+    )
+
     class Meta(Catalogo.Meta):
         verbose_name = "Tipo de anomalia"
         verbose_name_plural = "Tipos de anomalia"
@@ -247,6 +263,11 @@ class TipoAnomalia(Catalogo):
 
 class TipoRecomendacao(Catalogo):
     """Tipo de recomendação — item 2.2.1.11."""
+
+    tecnologias = models.ManyToManyField(
+        TecnologiaAnalise, blank=True, related_name="tipos_recomendacao",
+        verbose_name="Tecnologias aplicáveis",
+    )
 
     class Meta(Catalogo.Meta):
         verbose_name = "Tipo de recomendação"

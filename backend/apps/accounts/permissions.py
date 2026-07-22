@@ -35,3 +35,21 @@ class InternoEditaClienteVisualiza(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return user.perfil in PERFIS_INTERNOS
+
+
+class AdminEditaDemaisVisualizam(BasePermission):
+    """
+    Só o Admin cria/edita/remove; os demais autenticados apenas leem.
+    Usada nas tabelas de referência (Cadastros → catálogos): manter a
+    curadoria centralizada no Admin evita divergência de padronização.
+    """
+
+    message = "Apenas administradores podem alterar os cadastros de referência."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return user.perfil == Perfil.ADMIN

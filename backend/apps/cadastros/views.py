@@ -1,6 +1,16 @@
 from rest_framework import viewsets
+from rest_framework.pagination import PageNumberPagination
 
-from apps.accounts.permissions import InternoEditaClienteVisualiza
+from apps.accounts.permissions import AdminEditaDemaisVisualizam, InternoEditaClienteVisualiza
+
+
+class CatalogoPagination(PageNumberPagination):
+    """Catálogos são tabelas pequenas de referência: entrega a lista completa
+    (até 1000) para permitir ordenação/busca no cliente sem paginar."""
+
+    page_size = 500
+    page_size_query_param = "page_size"
+    max_page_size = 1000
 
 from .models import (
     Area,
@@ -102,22 +112,29 @@ class ComponenteViewSet(BaseCadastroViewSet):
 
 
 class InstrumentoViewSet(BaseCadastroViewSet):
+    # Cadastro de instrumentação (Cadastros → admin cura). Técnicos apenas leem
+    # para selecionar o instrumento nas medições (FK de leitura).
     queryset = Instrumento.objects.ativos()
     serializer_class = InstrumentoSerializer
-    search_fields = ["tipo", "marca", "modelo", "numero_serie"]
+    permission_classes = [AdminEditaDemaisVisualizam]
+    pagination_class = CatalogoPagination
+    search_fields = ["tipo", "marca", "modelo", "numero_serie", "entidade_calibracao"]
 
 
 # --- Catálogos / tabelas de referência (Anexo I 2.2.1.5–2.2.1.14, 2.2.1.18) ---
 
 
 class CatalogoViewSet(BaseCadastroViewSet):
-    """Base para catálogos simples: busca por nome e soft-delete herdado."""
+    """Base para catálogos simples: busca por nome, lista completa (sem paginar)
+    e escrita restrita ao Admin (curadoria centralizada das tabelas de referência)."""
 
+    permission_classes = [AdminEditaDemaisVisualizam]
+    pagination_class = CatalogoPagination
     search_fields = ["nome", "descricao"]
 
 
 class NormaViewSet(CatalogoViewSet):
-    queryset = Norma.objects.ativos()
+    queryset = Norma.objects.ativos().prefetch_related("tecnologias")
     serializer_class = NormaSerializer
     search_fields = ["nome", "codigo", "orgao"]
 
@@ -149,17 +166,17 @@ class FalhaRecorrenteViewSet(CatalogoViewSet):
 
 
 class TipoComponenteViewSet(CatalogoViewSet):
-    queryset = TipoComponente.objects.ativos()
+    queryset = TipoComponente.objects.ativos().prefetch_related("tecnologias")
     serializer_class = TipoComponenteSerializer
 
 
 class TipoAnomaliaViewSet(CatalogoViewSet):
-    queryset = TipoAnomalia.objects.ativos()
+    queryset = TipoAnomalia.objects.ativos().prefetch_related("tecnologias")
     serializer_class = TipoAnomaliaSerializer
 
 
 class TipoRecomendacaoViewSet(CatalogoViewSet):
-    queryset = TipoRecomendacao.objects.ativos()
+    queryset = TipoRecomendacao.objects.ativos().prefetch_related("tecnologias")
     serializer_class = TipoRecomendacaoSerializer
 
 
