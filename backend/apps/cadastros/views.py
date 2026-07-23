@@ -124,10 +124,13 @@ class ComponenteViewSet(BaseCadastroViewSet):
 class InstrumentoViewSet(BaseCadastroViewSet):
     # Cadastro de instrumentação (Cadastros → admin cura). Técnicos apenas leem
     # para selecionar o instrumento nas medições (FK de leitura).
-    queryset = Instrumento.objects.ativos()
+    queryset = Instrumento.objects.ativos().prefetch_related("tecnologias")
     serializer_class = InstrumentoSerializer
     permission_classes = [MasterEditaDemaisVisualizam]
     pagination_class = CatalogoPagination
+    # Filtro por tecnologia: usado para oferecer só os instrumentos daquela
+    # atividade na hora da coleta (ex.: numa análise de vibração, só o coletor).
+    filterset_fields = ["tecnologias"]
     search_fields = ["tipo", "marca", "modelo", "numero_serie", "entidade_calibracao"]
 
 

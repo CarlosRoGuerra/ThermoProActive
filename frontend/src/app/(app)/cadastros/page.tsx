@@ -112,10 +112,16 @@ const CATALOGOS: CatalogDef[] = [
       },
       { key: "entidade_calibracao", label: "Entidade de calibração" },
       { key: "software_analise", label: "Software de análise" },
+      {
+        key: "tecnologias",
+        label: "Tecnologias aplicáveis",
+        type: "multiref",
+        optionsEndpoint: "tecnologias-analise",
+      },
     ],
     columns: [
       "tipo", "marca", "modelo", "numero_serie",
-      "data_ultima_calibracao", "periodicidade_display", "proxima_calibracao",
+      "periodicidade_display", "proxima_calibracao", "tecnologias_display",
     ],
   },
   catSimples("tipos-equipamento", "Tipos de equipamento"),

@@ -23,6 +23,25 @@ from .models import (
 )
 
 
+class TecnologiasVinculoMixin(serializers.ModelSerializer):
+    """
+    Reuso para catálogos vinculados a tecnologias de análise (Norma, Instrumento,
+    Tipo de componente/anomalia/recomendação): grava por lista de IDs e devolve
+    uma versão legível (tecnologias_display) para exibir e pré-selecionar na tela.
+    """
+
+    tecnologias = serializers.PrimaryKeyRelatedField(
+        many=True, required=False, queryset=TecnologiaAnalise.objects.ativos()
+    )
+    tecnologias_display = serializers.SerializerMethodField()
+
+    def get_tecnologias_display(self, obj):
+        return [
+            {"id": t.id, "nome": t.nome, "sigla": t.sigla}
+            for t in obj.tecnologias.all()
+        ]
+
+
 class EmpresaSerializer(serializers.ModelSerializer):
     endereco_formatado = serializers.CharField(read_only=True)
 
@@ -104,7 +123,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class InstrumentoSerializer(serializers.ModelSerializer):
+class InstrumentoSerializer(TecnologiasVinculoMixin):
     periodicidade_display = serializers.CharField(
         source="get_periodicidade_calibracao_display", read_only=True
     )
@@ -117,25 +136,6 @@ class InstrumentoSerializer(serializers.ModelSerializer):
 
 
 # --- Catálogos / tabelas de referência (Anexo I 2.2.1.5–2.2.1.14, 2.2.1.18) ---
-
-
-class TecnologiasVinculoMixin(serializers.ModelSerializer):
-    """
-    Reuso para catálogos vinculados a tecnologias de análise (Norma, Tipo de
-    componente/anomalia/recomendação): grava por lista de IDs e devolve uma
-    versão legível (tecnologias_display) para exibir e pré-selecionar na tela.
-    """
-
-    tecnologias = serializers.PrimaryKeyRelatedField(
-        many=True, required=False, queryset=TecnologiaAnalise.objects.ativos()
-    )
-    tecnologias_display = serializers.SerializerMethodField()
-
-    def get_tecnologias_display(self, obj):
-        return [
-            {"id": t.id, "nome": t.nome, "sigla": t.sigla}
-            for t in obj.tecnologias.all()
-        ]
 
 
 class NormaSerializer(TecnologiasVinculoMixin):

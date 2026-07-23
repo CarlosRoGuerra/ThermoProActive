@@ -291,6 +291,13 @@ class Instrumento(BaseModel):
     software_analise = models.CharField(
         "Software de análise", max_length=120, blank=True, help_text="Ex.: OMNITREND"
     )
+    # Tecnologias em que o instrumento é usado (ex.: coletor → Vibração), para
+    # filtrar os instrumentos disponíveis conforme o tipo de atividade.
+    # String reference: TecnologiaAnalise é definida mais abaixo neste arquivo.
+    tecnologias = models.ManyToManyField(
+        "cadastros.TecnologiaAnalise", blank=True, related_name="instrumentos",
+        verbose_name="Tecnologias aplicáveis",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "Instrumento"
