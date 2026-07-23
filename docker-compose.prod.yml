@@ -39,10 +39,12 @@ services:
       - media:/app/media          # evidências/uploads persistem fora do container
     # Produção: migra, coleta estáticos e sobe o gunicorn. NÃO roda seed_demo
     # (evita recriar o admin de demonstração 'thermo123' a cada boot).
+    # Migração que falha DERRUBA o container com o erro visível no log, em vez de
+    # ficar em loop e deixar o nginx respondendo 502 sem explicação.
     command: >
-      sh -c "until python manage.py migrate --noinput; do echo 'aguardando o banco...'; sleep 2; done;
-             python manage.py collectstatic --noinput;
-             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     expose:
       - "8000"                    # visível só para o nginx, não para a internet
 
