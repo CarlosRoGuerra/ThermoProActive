@@ -119,7 +119,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='cliente',
             name='cep',
-            field=models.CharField(blank=True, help_text='Somente números ou 00000-000', max_length=9, verbose_name='CEP'),
+            field=models.CharField(blank=True, help_text='Somente números ou 00000-000', max_length=10, verbose_name='CEP'),
         ),
         migrations.AlterField(
             model_name='cliente',
@@ -134,7 +134,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='empresa',
             name='cep',
-            field=models.CharField(blank=True, help_text='Somente números ou 00000-000', max_length=9, verbose_name='CEP'),
+            field=models.CharField(blank=True, help_text='Somente números ou 00000-000', max_length=10, verbose_name='CEP'),
         ),
         migrations.AlterField(
             model_name='empresa',

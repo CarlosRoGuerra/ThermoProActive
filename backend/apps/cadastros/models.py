@@ -19,7 +19,9 @@ class EnderecoMixin(models.Model):
     filtrar por cidade/UF e imprimir o endereço formatado nos laudos.
     """
 
-    cep = models.CharField("CEP", max_length=9, blank=True, help_text="Somente números ou 00000-000")
+    # Nunca encolher este campo: o banco em produção já tem CEPs no formato
+    # "13.145-076" (10 caracteres) e o PostgreSQL recusa ALTER que trunque dados.
+    cep = models.CharField("CEP", max_length=10, blank=True, help_text="Somente números ou 00000-000")
     logradouro = models.CharField("Logradouro", max_length=200, blank=True)
     numero = models.CharField("Número", max_length=20, blank=True)
     complemento = models.CharField("Complemento", max_length=100, blank=True)
