@@ -57,8 +57,15 @@ MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun",
                "jul", "ago", "set", "out", "nov", "dez"]
 
 
-def _rotulo_mes(d: date) -> str:
-    return f"{MESES_ABREV[d.month - 1]}/{str(d.year)[2:]}"
+def _chave_mes(d: date) -> tuple[int, int]:
+    """Chave ORDENÁVEL do mês. Ordenar pelo rótulo ('abr/26') daria ordem
+    alfabética, não cronológica."""
+    return (d.year, d.month)
+
+
+def _rotulo_mes(chave: tuple[int, int]) -> str:
+    ano, mes = chave
+    return f"{MESES_ABREV[mes - 1]}/{str(ano)[2:]}"
 
 
 def _fatias(contagem: Counter, cores: list[str], maximo: int = 8) -> list[dict]:
@@ -123,13 +130,13 @@ def montar_secao_b(inspecao) -> dict:
     ]
 
     # --- 2. Graus de risco por mês (composição) ---------------------------
-    por_mes_gr: dict[str, Counter] = defaultdict(Counter)
+    por_mes_gr: dict[tuple[int, int], Counter] = defaultdict(Counter)
     for o in osps:
         if o.grau_risco:
-            por_mes_gr[_rotulo_mes(o.criado_em.date())][o.grau_risco] += 1
+            por_mes_gr[_chave_mes(o.criado_em.date())][o.grau_risco] += 1
     graus_mensal = [
         {
-            "mes": mes,
+            "mes": _rotulo_mes(mes),
             "total": sum(c.values()),
             "series": [
                 {"gr": gr.replace("GR", "GR-"), "valor": c.get(gr, 0), "cor": CORES_GR[gr]}
@@ -150,14 +157,14 @@ def montar_secao_b(inspecao) -> dict:
     )
 
     # --- 5. Equipamentos inspecionados × anomalias por mês ----------------
-    equip_por_mes: dict[str, set] = defaultdict(set)
+    equip_por_mes: dict[tuple[int, int], set] = defaultdict(set)
     for m in MedicaoVibracao.objects.filter(inspecao__cliente=cliente).select_related("inspecao"):
-        equip_por_mes[_rotulo_mes(m.inspecao.data)].add(m.equipamento_id)
-    anom_por_mes = Counter(_rotulo_mes(o.criado_em.date()) for o in osps)
+        equip_por_mes[_chave_mes(m.inspecao.data)].add(m.equipamento_id)
+    anom_por_mes = Counter(_chave_mes(o.criado_em.date()) for o in osps)
     meses = sorted(set(equip_por_mes) | set(anom_por_mes))
     equipamentos_x_anomalias = [
         {
-            "mes": m,
+            "mes": _rotulo_mes(m),
             "equipamentos": len(equip_por_mes.get(m, ())),
             "anomalias": anom_por_mes.get(m, 0),
         }
@@ -183,7 +190,7 @@ def montar_secao_b(inspecao) -> dict:
             default=Decimal("7.10"),
         )
         amplitude.append({
-            "mes": _rotulo_mes(insp.data),
+            "mes": _rotulo_mes(_chave_mes(insp.data)),
             "pico_velocidade": agg["pico_v"],
             "limite_velocidade": limite,
             "pico_aceleracao": agg["pico_a"],
