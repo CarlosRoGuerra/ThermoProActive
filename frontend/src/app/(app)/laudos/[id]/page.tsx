@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Printer, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileText, Printer, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Laudo } from "@/lib/types";
@@ -55,6 +56,12 @@ export default function LaudoDetailPage() {
           <Button variant="secondary" onClick={() => window.print()} icon={Printer}>
             Imprimir / PDF
           </Button>
+          {/* Documento completo no layout do cliente (capa + seções A, C e D). */}
+          <Link href={`/laudos/${laudo.id}/relatorio`}>
+            <Button variant="secondary" icon={FileText}>
+              Relatório técnico completo
+            </Button>
+          </Link>
           {user?.is_interno && laudo.status === "RASCUNHO" && (
             <Button onClick={emitir} loading={emitindo} icon={ShieldCheck}>
               Emitir laudo

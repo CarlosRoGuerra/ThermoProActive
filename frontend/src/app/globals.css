@@ -210,3 +210,82 @@
     background: #fff;
   }
 }
+
+/* ==========================================================================
+   Relatório Técnico — layout de documento A4 para impressão em PDF.
+   A tela mostra as folhas empilhadas; a impressão gera uma página por folha.
+   ========================================================================== */
+.doc {
+  /* O documento é sempre claro: é papel, não interface. */
+  color-scheme: light;
+  --doc-fg: #111827;
+  --doc-muted: #4b5563;
+  --doc-line: #d1d5db;
+  --doc-accent: #1d3b8b;
+  color: var(--doc-fg);
+  background: #9ca3af;
+  padding: 1.5rem 0;
+}
+.doc .folha {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto 1.5rem;
+  padding: 16mm 15mm 18mm;
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.25);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  font-size: 10.5pt;
+  line-height: 1.5;
+}
+.doc h1, .doc h2, .doc h3 { color: var(--doc-accent); }
+.doc .doc-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  border-bottom: 2px solid var(--doc-accent);
+  padding-bottom: 6px;
+  margin-bottom: 10mm;
+  font-size: 7.5pt;
+  color: var(--doc-muted);
+}
+.doc .doc-rodape {
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--doc-line);
+  display: flex;
+  justify-content: space-between;
+  font-size: 7.5pt;
+  color: var(--doc-muted);
+}
+.doc table { width: 100%; border-collapse: collapse; }
+.doc th, .doc td { padding: 4px 6px; }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  .doc {
+    background: #fff;
+    padding: 0;
+  }
+  .doc .folha {
+    margin: 0;
+    box-shadow: none;
+    /* Cada folha vira uma página física. */
+    page-break-after: always;
+    break-after: page;
+  }
+  .doc .folha:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  /* Garante que os blocos coloridos (GR, tabela ISO) saiam impressos. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

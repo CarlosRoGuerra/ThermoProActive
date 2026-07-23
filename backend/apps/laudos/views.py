@@ -8,6 +8,7 @@ from apps.coletas.models import Inspecao
 from apps.coletas.views import escopo_cliente
 
 from .models import Laudo, StatusLaudo
+from .relatorio import montar_relatorio_tecnico
 from .serializers import GerarLaudoSerializer, LaudoSerializer
 from .services import gerar_laudo_de_inspecao
 
@@ -33,6 +34,14 @@ class LaudoViewSet(viewsets.ModelViewSet):
         inspecao = get_object_or_404(Inspecao, pk=serializer.validated_data["inspecao"])
         laudo = gerar_laudo_de_inspecao(inspecao, responsavel=request.user)
         return Response(LaudoSerializer(laudo).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"], url_path="relatorio-tecnico")
+    def relatorio_tecnico(self, request, pk=None):
+        """
+        Payload completo do Relatório Técnico (capa + seções A, C e D).
+        O front renderiza em HTML paginado e o usuário imprime em PDF.
+        """
+        return Response(montar_relatorio_tecnico(self.get_object()))
 
     @action(detail=True, methods=["post"], permission_classes=[IsInterno])
     def emitir(self, request, pk=None):
