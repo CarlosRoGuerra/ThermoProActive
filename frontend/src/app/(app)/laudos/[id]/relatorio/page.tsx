@@ -6,6 +6,15 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Card, Spinner } from "@/components/ui";
+import {
+  AmplitudeGrafico,
+  BarrasEmpilhadas,
+  BarrasHorizontais,
+  Legenda,
+  LinhasComparativas,
+  TabelaDados,
+  type Fatia,
+} from "./graficos";
 
 /* ============================ Tipos do payload ============================ */
 type Endereco = { formatado?: string; cep?: string; cidade_uf?: string };
@@ -76,6 +85,22 @@ type Relatorio = {
   fluxo_trabalho: string[];
   glossario: { sigla: string; descricao: string }[];
   consideracoes: string[];
+  secao_b: {
+    resumo: {
+      equipamentos_monitorados: number;
+      anomalias_detectadas: number;
+      osps_abertas: number;
+      inspecoes_realizadas: number;
+    };
+    status_condicoes: Fatia[];
+    graus_mensal: { mes: string; total: number; series: { gr: string; valor: number; cor: string }[] }[];
+    componentes: Fatia[];
+    anomalias: Fatia[];
+    equipamentos_x_anomalias: { mes: string; equipamentos: number; anomalias: number }[];
+    amplitude: Record<string, string | number | null>[];
+    controle_osps: Fatia[];
+    legenda_gr: { gr: string; cor: string }[];
+  };
   secao_c: {
     total_equipamentos: number;
     areas: { area: string; setores: { setor: string; itens: { tag: string; equipamento: string; condicao: string }[] }[] }[];
@@ -393,6 +418,94 @@ export default function RelatorioTecnicoPage() {
           </div>
         </Folha>
 
+        {/* ============ SEÇÃO B — KPI's DASHBOARD ============ */}
+        <Folha contratada={contratada} secao="Seção B — Gráficos Gerenciais" pagina="Página 1 B">
+          <div className="mb-4 grid grid-cols-4 gap-3">
+            {[
+              ["Equipamentos monitorados", r.secao_b.resumo.equipamentos_monitorados],
+              ["Anomalias detectadas", r.secao_b.resumo.anomalias_detectadas],
+              ["OSPs em aberto", r.secao_b.resumo.osps_abertas],
+              ["Inspeções realizadas", r.secao_b.resumo.inspecoes_realizadas],
+            ].map(([rotulo, valor]) => (
+              <div key={String(rotulo)} className="border border-[color:var(--doc-line)] p-2 text-center">
+                <p className="font-mono text-[18pt] font-bold leading-none text-[color:var(--doc-accent)]">
+                  {valor as number}
+                </p>
+                <p className="mt-1 text-[7.5pt] text-[color:var(--doc-muted)]">{rotulo as string}</p>
+              </div>
+            ))}
+          </div>
+
+          <Gr titulo="Status das Condições" nota="Distribuição atual dos equipamentos por condição.">
+            <BarrasHorizontais dados={r.secao_b.status_condicoes} unidade="equipamentos" />
+            <TabelaDados
+              colunas={["Condição", "Qtde", "%"]}
+              linhas={r.secao_b.status_condicoes.map((c) => [c.rotulo, c.valor, `${c.percentual}%`])}
+            />
+          </Gr>
+
+          <Gr titulo="Status dos Graus de Risco" nota="Composição das anomalias abertas, mês a mês.">
+            <BarrasEmpilhadas meses={r.secao_b.graus_mensal} />
+            <Legenda itens={r.secao_b.legenda_gr.filter((g) => g.gr !== "GR-0").map((g) => ({ rotulo: g.gr, cor: g.cor }))} />
+          </Gr>
+        </Folha>
+
+        <Folha contratada={contratada} secao="Seção B — Gráficos Gerenciais" pagina="Página 2 B">
+          <Gr titulo="Status dos Componentes" nota="Componentes com maior incidência de anomalias.">
+            <BarrasHorizontais dados={r.secao_b.componentes} />
+          </Gr>
+          <Gr titulo="Status das Anomalias" nota="Tipos de anomalia diagnosticados.">
+            <BarrasHorizontais dados={r.secao_b.anomalias} />
+          </Gr>
+          <Gr titulo="Equipamentos Inspecionados × Anomalias Diagnosticadas" nota="Evolução mensal.">
+            <LinhasComparativas dados={r.secao_b.equipamentos_x_anomalias} />
+            <Legenda
+              itens={[
+                { rotulo: "Equipamentos inspecionados", cor: "#2a78d6" },
+                { rotulo: "Anomalias diagnosticadas", cor: "#c9401f" },
+              ]}
+            />
+          </Gr>
+        </Folha>
+
+        <Folha contratada={contratada} secao="Seção B — Gráficos Gerenciais" pagina="Página 3 B">
+          <Gr
+            titulo="Status da Amplitude Vibracional Global"
+            nota="Pico medido por período, contra o limite aceitável da norma. Unidades separadas — velocidade e aceleração não compartilham eixo."
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="mb-1 text-[8.5pt] font-semibold">Velocidade (mm/s)</p>
+                <AmplitudeGrafico
+                  dados={r.secao_b.amplitude}
+                  campoPico="pico_velocidade"
+                  campoLimite="limite_velocidade"
+                  cor="#2a78d6"
+                  unidade="mm/s"
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-[8.5pt] font-semibold">Aceleração (g)</p>
+                <AmplitudeGrafico
+                  dados={r.secao_b.amplitude}
+                  campoPico="pico_aceleracao"
+                  campoLimite="limite_aceleracao"
+                  cor="#eb6834"
+                  unidade="g"
+                />
+              </div>
+            </div>
+          </Gr>
+
+          <Gr titulo="Controle das O.S.P.'s" nota="Situação das ordens na reavaliação seguinte.">
+            <BarrasHorizontais dados={r.secao_b.controle_osps} unidade="ordens de serviço" />
+            <TabelaDados
+              colunas={["Situação", "Qtde", "%"]}
+              linhas={r.secao_b.controle_osps.map((c) => [c.rotulo, c.valor, `${c.percentual}%`])}
+            />
+          </Gr>
+        </Folha>
+
         {/* ============ SEÇÃO C — EQUIPAMENTOS CONTEMPLADOS ============ */}
         <Folha
           contratada={contratada}
@@ -582,6 +695,25 @@ export default function RelatorioTecnicoPage() {
         ))}
       </div>
     </>
+  );
+}
+
+/** Bloco de gráfico: título, nota explicativa e o gráfico em si. */
+function Gr({
+  titulo,
+  nota,
+  children,
+}: {
+  titulo: string;
+  nota: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-5">
+      <h2 className="text-[11pt] font-bold">{titulo}</h2>
+      <p className="mb-1.5 text-[8pt] text-[color:var(--doc-muted)]">{nota}</p>
+      {children}
+    </div>
   );
 }
 

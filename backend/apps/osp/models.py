@@ -131,6 +131,16 @@ class OrdemServico(TimeStampedModel):
         default=Acompanhamento.ABERTA,
         help_text="Situação da anomalia na reavaliação seguinte (gráfico Controle das OSPs).",
     )
+    # Categorias (alimentam os gráficos gerenciais da Seção B do relatório).
+    # O texto livre abaixo continua descrevendo o caso concreto.
+    tipo_anomalia = models.ForeignKey(
+        "cadastros.TipoAnomalia", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="osps", verbose_name="Tipo de anomalia",
+    )
+    tipo_componente = models.ForeignKey(
+        "cadastros.TipoComponente", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="osps", verbose_name="Tipo de componente",
+    )
     anomalia = models.TextField("Anomalia detectada", blank=True)
     recomendacao = models.TextField("Recomendação", blank=True)
     observacao = models.TextField("Observação", blank=True)

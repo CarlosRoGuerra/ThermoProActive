@@ -11,6 +11,8 @@ O PDF é produzido pela impressão do HTML no navegador (Cláusula 12.4 — sem
 dependência de biblioteca proprietária de layout).
 """
 from apps.cadastros.models import Empresa, Instrumento, Norma
+
+from .estatisticas import montar_secao_b
 from apps.osp.models import DESCRICAO_GR, OrdemServico
 
 #: Glossário técnico (§6 do relatório) — texto fixo, revisado com o cliente.
@@ -233,6 +235,7 @@ def montar_relatorio_tecnico(laudo) -> dict:
         "fluxo_trabalho": FLUXO_TRABALHO,
         "glossario": [{"sigla": s, "descricao": d} for s, d in GLOSSARIO],
         "consideracoes": CONSIDERACOES,
+        "secao_b": montar_secao_b(inspecao),
         "secao_c": {"total_equipamentos": total_equipamentos, "areas": secao_c},
         "secao_d": [
             {
