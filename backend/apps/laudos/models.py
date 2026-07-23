@@ -20,10 +20,29 @@ class StatusLaudo(models.TextChoices):
     CANCELADO = "CANCELADO", "Cancelado"
 
 
+#: Sigla da tecnologia usada na numeração do relatório (RT.**AV**.2026.02.13.02308).
+SIGLA_POR_TIPO_ANALISE = {
+    "VIBRACAO": "AV",           # Análise Vibracional
+    "TERMOGRAFIA": "TI",        # Termografia Infravermelha
+    "FLUIDOS": "AF",            # Análise de Fluidos
+    "ENSAIO_ELETRICO": "EE",
+    "ULTRASSOM": "US",
+    "ESPESSURA": "ME",          # Medição de Espessura
+    "QUALIDADE_ENERGIA": "QE",
+    "SENSITIVA": "IS",          # Inspeção Sensitiva
+    "CORRETIVA": "MC",
+}
+
+
 class Laudo(TimeStampedModel):
-    numero = models.CharField("Número do laudo", max_length=20, unique=True, editable=False)
+    numero = models.CharField("Número do laudo", max_length=30, unique=True, editable=False)
     inspecao = models.ForeignKey(Inspecao, on_delete=models.PROTECT, related_name="laudos")
     versao = models.PositiveSmallIntegerField("Versão", default=1)
+
+    # Datas do bloco "Data(s) da(s) Execução(ões)" do relatório técnico.
+    data_medicao_campo = models.DateField("Medições em campo", null=True, blank=True)
+    data_upload_osps = models.DateField("Upload das OSPs", null=True, blank=True)
+    data_upload_relatorio = models.DateField("Upload do relatório completo", null=True, blank=True)
 
     titulo = models.CharField("Título", max_length=200)
     criticidade_geral = models.CharField("Criticidade geral", max_length=8, blank=True)
@@ -47,21 +66,38 @@ class Laudo(TimeStampedModel):
         return f"Laudo {self.numero} (v{self.versao})"
 
     @staticmethod
-    def proximo_numero() -> str:
-        ano = timezone.now().year
-        prefixo = f"LT-{ano}-"
+    def proximo_numero(tipo_analise: str = "", data=None) -> str:
+        """
+        Numeração no padrão do relatório técnico do cliente:
+            RT.AV.2026.02.13.02308
+            └┬┘ └┬┘ └───┬────┘ └─┬─┘
+             │   │      │        └── sequencial global (5 dígitos)
+             │   │      └── data da medição em campo
+             │   └── sigla da tecnologia (AV = Análise Vibracional)
+             └── Relatório Técnico
+        """
+        sigla = SIGLA_POR_TIPO_ANALISE.get(tipo_analise, "RT")
+        dia = data or timezone.now().date()
+        # Sequencial global e contínuo (não reinicia por ano), como no relatório.
         ultimo = (
-            Laudo.objects.filter(numero__startswith=prefixo)
-            .order_by("-numero")
+            Laudo.objects.filter(numero__startswith="RT.")
+            .order_by("-criado_em")
             .values_list("numero", flat=True)
             .first()
         )
-        seq = int(ultimo.split("-")[-1]) + 1 if ultimo else 1
-        return f"{prefixo}{seq:04d}"
+        try:
+            seq = int(ultimo.rsplit(".", 1)[-1]) + 1
+        except (AttributeError, ValueError):
+            seq = 1
+        return f"RT.{sigla}.{dia:%Y.%m.%d}.{seq:05d}"
 
     def save(self, *args, **kwargs):
+        # A data da medição em campo é a da inspeção, salvo informação em contrário.
+        if self.data_medicao_campo is None and self.inspecao_id:
+            self.data_medicao_campo = self.inspecao.data
         if not self.numero:
-            self.numero = self.proximo_numero()
+            tipo = self.inspecao.tipo_analise if self.inspecao_id else ""
+            self.numero = self.proximo_numero(tipo, self.data_medicao_campo)
         super().save(*args, **kwargs)
 
     def emitir(self):

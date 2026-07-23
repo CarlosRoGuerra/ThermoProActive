@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .permissions import IsAdmin
+from .permissions import IsMaster
 from .serializers import LoginSerializer, UserSerializer, UserWriteSerializer
 
 User = get_user_model()
@@ -27,11 +27,15 @@ class MeView(APIView):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    """CRUD de usuários — somente Administrador (item 2.1.1.4 / 2.1.2.1)."""
+    """
+    CRUD de usuários — somente nível Master (item 2.1.1.4 / 2.1.2.1).
+    O cliente definiu que apenas o Master concede acessos, para não perder
+    o controle sobre quem entra e o que cada um pode fazer.
+    """
 
     queryset = User.objects.all().order_by("nome")
-    permission_classes = [IsAdmin]
-    filterset_fields = ["perfil", "is_active", "empresa", "cliente"]
+    permission_classes = [IsMaster]
+    filterset_fields = ["perfil", "nivel", "is_active", "empresa", "cliente"]
     search_fields = ["nome", "email", "cpf"]
 
     def get_serializer_class(self):

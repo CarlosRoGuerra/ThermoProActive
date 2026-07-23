@@ -35,6 +35,25 @@ PERFIS_CLIENTE = {
 }
 
 
+class Nivel(models.TextChoices):
+    """
+    Nível hierárquico de acesso (reunião 22/07/2026).
+
+    Aplica-se aos DOIS ambientes: BackEnd (equipe interna que alimenta o sistema)
+    e FrontEnd (cliente que consome/complementa). Combinado com o ambiente,
+    reproduz os grupos definidos pelo cliente: BackEnd-Master, FrontEnd-Pleno etc.
+    """
+
+    MASTER = "MASTER", "Master"
+    SENIOR = "SENIOR", "Sênior"
+    PLENO = "PLENO", "Pleno"
+    JUNIOR = "JUNIOR", "Júnior"
+
+
+#: Níveis autorizados a excluir registros. Júnior/Pleno alimentam mas não apagam.
+NIVEIS_PODEM_EXCLUIR = {Nivel.MASTER, Nivel.SENIOR}
+
+
 class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     """Usuário do sistema. Login por e-mail (multiusuário — item 2.1.1.5)."""
 
@@ -42,6 +61,10 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     nome = models.CharField("Nome completo", max_length=160)
     perfil = models.CharField(
         "Perfil de acesso", max_length=20, choices=Perfil.choices, default=Perfil.TECNICO
+    )
+    nivel = models.CharField(
+        "Nível de acesso", max_length=10, choices=Nivel.choices, default=Nivel.PLENO,
+        help_text="Master cura os dados de sistema e concede acessos; Júnior/Pleno não excluem.",
     )
 
     # Vínculo organizacional (multi-tenant) — escopo de dados por empresa/cliente
@@ -98,3 +121,27 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     @property
     def is_cliente(self) -> bool:
         return self.perfil in PERFIS_CLIENTE
+
+    # --- Hierarquia de acesso (reunião 22/07/2026) -------------------------
+    @property
+    def ambiente(self) -> str:
+        """BackEnd = equipe interna que alimenta; FrontEnd = cliente."""
+        return "BackEnd" if self.is_interno else "FrontEnd"
+
+    @property
+    def grupo_acesso(self) -> str:
+        """Rótulo no formato usado pelo cliente: 'BackEnd-Master'."""
+        return f"{self.ambiente}-{self.get_nivel_display()}"
+
+    @property
+    def is_master(self) -> bool:
+        return self.nivel == Nivel.MASTER
+
+    @property
+    def pode_excluir(self) -> bool:
+        return self.nivel in NIVEIS_PODEM_EXCLUIR
+
+    @property
+    def pode_curar_dados_sistema(self) -> bool:
+        """Só o Master interno cria/edita as tabelas de referência do sistema."""
+        return self.is_interno and self.is_master

@@ -14,6 +14,7 @@ from django.db import transaction
 
 from apps.cadastros.models import (
     Area,
+    ClassificacaoInspecao,
     Cliente,
     Componente,
     Empresa,
@@ -23,6 +24,7 @@ from apps.cadastros.models import (
     Rota,
     Setor,
     TecnologiaAnalise,
+    TipoAnomalia,
     TipoComponente,
     TipoCriticidade,
     TipoEquipamento,
@@ -62,11 +64,19 @@ class Command(BaseCommand):
             },
         )
 
-        # --- Usuários (1 por perfil-chave) ---
+        # --- Usuários (1 por perfil-chave, com o nível de acesso correspondente) ---
         users = {
-            "admin@thermoproactive.com": ("Administrador Demo", "ADMIN", {"is_staff": True, "is_superuser": True}),
-            "tecnico@thermoproactive.com": ("Técnico Analista", "TECNICO", {"conselho_classe": "CREA-SP 123456"}),
-            "cliente@exemplo.com": ("Gestor PCM Cliente", "CLIENTE_PCM", {"cliente": cliente}),
+            "admin@thermoproactive.com": (
+                "Administrador Demo", "ADMIN",
+                {"is_staff": True, "is_superuser": True, "nivel": "MASTER"},
+            ),
+            "tecnico@thermoproactive.com": (
+                "Técnico Analista", "TECNICO",
+                {"conselho_classe": "CREA-SP 123456", "nivel": "PLENO"},
+            ),
+            "cliente@exemplo.com": (
+                "Gestor PCM Cliente", "CLIENTE_PCM", {"cliente": cliente, "nivel": "PLENO"},
+            ),
         }
         criados = {}
         for email, (nome, perfil, extra) in users.items():
@@ -77,6 +87,9 @@ class Command(BaseCommand):
             if created:
                 user.set_password("thermo123")
                 user.save()
+            elif not user.nivel:  # base antiga: garante o nível do Master
+                user.nivel = extra.get("nivel", "PLENO")
+                user.save(update_fields=["nivel"])
             criados[perfil] = user
         tecnico = criados["TECNICO"]
 
@@ -95,8 +108,46 @@ class Command(BaseCommand):
             TecnologiaAnalise.objects.get_or_create(nome=nome, defaults={"sigla": sigla})
         for nome in ["Bomba centrífuga", "Motor elétrico", "Ventilador", "Redutor"]:
             TipoEquipamento.objects.get_or_create(nome=nome)
-        for nome in ["Mancal", "Rolamento", "Acoplamento", "Motor"]:
-            TipoComponente.objects.get_or_create(nome=nome)
+
+        vibracao = TecnologiaAnalise.objects.filter(sigla="VIB").first()
+
+        # Tipos de componente — lista real do gráfico "Status dos Componentes"
+        # da Seção B do relatório técnico do cliente.
+        for nome in [
+            "Acoplamento", "Base", "Bomba", "Correia", "Eixo", "Embreagem",
+            "Fundação / Alvenaria", "Mancal", "Motor Elétrico", "Polia", "Redutor",
+            "Rolamento", "Rotor", "Unidade Compressora", "Outros",
+        ]:
+            comp, _ = TipoComponente.objects.get_or_create(nome=nome)
+            if vibracao:
+                comp.tecnologias.add(vibracao)
+
+        # Tipos de anomalia — lista real do gráfico "Status das Anomalias" (Seção B).
+        for nome in [
+            "Baixa Rigidez", "Batimento", "Cavitação", "Defeito Elétrico", "Desalinhamento",
+            "Desbalanceamento", "Excentricidade", "Freq. Engrenamento", "Freq. Elementos Rol.",
+            "Freq. Pista Ext. Rol.", "Freq. Pista Int. Rol.", "Folga Mecânica", "Lubrificação",
+            "Ressonância", "Roçamento", "Outros",
+        ]:
+            anomalia, _ = TipoAnomalia.objects.get_or_create(nome=nome)
+            if vibracao:
+                anomalia.tecnologias.add(vibracao)
+
+        # Classificações de inspeção — siglas e descrições do Glossário Técnico (§6).
+        for sigla, descricao in [
+            ("GR-0", "Grau de Risco 0: sem anomalia detectada."),
+            ("GR-1", "Grau de Risco 1: risco eminente — intervenção imediata, prazo máximo de 3 dias."),
+            ("GR-2", "Grau de Risco 2: risco elevado — intervenção em prazo máximo de 10 dias."),
+            ("GR-3", "Grau de Risco 3: risco moderado — intervenção em prazo máximo de 20 dias."),
+            ("GR-4", "Grau de Risco 4: risco baixo — intervenção em parada programada, prazo máximo de 30 dias."),
+            ("OK", "Normalidade operacional: carga ≥ 70%. Os circuitos carregados não apresentam anomalias térmicas."),
+            ("IC", "Insuficiência de carga."),
+            ("MP", "Monitoramento prejudicado: obstrução parcial ao equipamento monitorado."),
+            ("NM", "Não monitorado: obstrução total e/ou risco à integridade física dos trabalhadores."),
+            ("PDM", "Parado devido à manutenção: equipamento parado por intervenção da equipe de manutenção."),
+            ("PDP", "Parado devido ao processo: equipamento parado por anormalidade do processo produtivo."),
+        ]:
+            ClassificacaoInspecao.objects.get_or_create(nome=sigla, defaults={"descricao": descricao})
 
         # --- Hierarquia de localização ---
         area, _ = Area.objects.get_or_create(cliente=cliente, nome="Utilidades")

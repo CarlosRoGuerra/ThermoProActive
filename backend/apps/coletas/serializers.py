@@ -7,13 +7,17 @@ class MedicaoVibracaoSerializer(serializers.ModelSerializer):
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     componente_nome = serializers.CharField(source="componente.nome", read_only=True, default=None)
     direcao_display = serializers.CharField(source="get_direcao_display", read_only=True)
+    parametro_display = serializers.CharField(source="get_parametro_display", read_only=True)
+    # Nomenclatura do relatório: mancal + direção + parâmetro (ex.: "1HA").
+    codigo_ponto = serializers.CharField(read_only=True)
     criticidade_display = serializers.CharField(source="get_criticidade_display", read_only=True)
 
     class Meta:
         model = MedicaoVibracao
         fields = [
             "id", "inspecao", "equipamento", "equipamento_tag", "componente",
-            "componente_nome", "instrumento", "ponto_medicao", "direcao",
+            "componente_nome", "instrumento", "ponto_medicao", "numero_mancal",
+            "parametro", "parametro_display", "codigo_ponto", "direcao",
             "direcao_display", "rotacao_rpm", "velocidade_rms", "aceleracao_rms",
             "deslocamento_pp", "fator_crista", "temperatura",
             # calculados (somente leitura):

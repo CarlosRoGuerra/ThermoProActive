@@ -24,12 +24,17 @@ from .models import (
 
 
 class EmpresaSerializer(serializers.ModelSerializer):
+    endereco_formatado = serializers.CharField(read_only=True)
+
     class Meta:
         model = Empresa
         exclude = ["ativo"]
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    endereco_formatado = serializers.CharField(read_only=True)
+    cidade_uf = serializers.CharField(read_only=True)
+
     class Meta:
         model = Cliente
         exclude = ["ativo"]
@@ -37,18 +42,26 @@ class ClienteSerializer(serializers.ModelSerializer):
 
 class AreaSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    identificacao = serializers.CharField(read_only=True)
 
     class Meta:
         model = Area
-        fields = ["id", "cliente", "cliente_nome", "nome", "criado_em"]
+        fields = [
+            "id", "cliente", "cliente_nome", "codigo", "nome", "complemento",
+            "identificacao", "criado_em",
+        ]
 
 
 class SetorSerializer(serializers.ModelSerializer):
     area_nome = serializers.CharField(source="area.nome", read_only=True)
+    identificacao = serializers.CharField(read_only=True)
 
     class Meta:
         model = Setor
-        fields = ["id", "area", "area_nome", "nome", "criado_em"]
+        fields = [
+            "id", "area", "area_nome", "codigo", "nome", "complemento",
+            "identificacao", "criado_em",
+        ]
 
 
 class ComponenteSerializer(serializers.ModelSerializer):
@@ -60,20 +73,44 @@ class ComponenteSerializer(serializers.ModelSerializer):
 class EquipamentoSerializer(serializers.ModelSerializer):
     componentes = ComponenteSerializer(many=True, read_only=True)
     setor_nome = serializers.CharField(source="setor.nome", read_only=True)
+    area_id = serializers.IntegerField(source="setor.area_id", read_only=True)
+    area_nome = serializers.CharField(source="setor.area.nome", read_only=True)
     classe_iso_display = serializers.CharField(source="get_classe_iso_display", read_only=True)
     cliente_id = serializers.IntegerField(source="setor.area.cliente_id", read_only=True)
+    # Hierarquia Equipamento → Sub-item (o sub-item é um equipamento filho).
+    equipamento_pai_tag = serializers.CharField(source="equipamento_pai.tag", read_only=True, default=None)
+    is_subitem = serializers.BooleanField(read_only=True)
+    nivel = serializers.IntegerField(read_only=True)
+    caminho = serializers.CharField(read_only=True)
+    qtd_subitens = serializers.IntegerField(source="subitens.count", read_only=True)
 
     class Meta:
         model = Equipamento
         fields = [
-            "id", "setor", "setor_nome", "cliente_id", "tag", "nome", "tipo",
+            "id", "setor", "setor_nome", "area_id", "area_nome", "cliente_id",
+            "equipamento_pai", "equipamento_pai_tag", "is_subitem", "nivel",
+            "caminho", "qtd_subitens",
+            "tag", "nome", "tipo",
             "fabricante", "modelo", "numero_serie", "potencia_kw",
             "rotacao_nominal_rpm", "classe_iso", "classe_iso_display",
             "componentes", "criado_em",
         ]
 
+    def validate(self, attrs):
+        """Roda a checagem de ciclo do modelo também na API."""
+        instancia = Equipamento(**{**{f: getattr(self.instance, f, None) for f in ()}, **attrs})
+        instancia.pk = self.instance.pk if self.instance else None
+        instancia.clean()
+        return attrs
+
 
 class InstrumentoSerializer(serializers.ModelSerializer):
+    periodicidade_display = serializers.CharField(
+        source="get_periodicidade_calibracao_display", read_only=True
+    )
+    proxima_calibracao = serializers.DateField(read_only=True)
+    calibracao_vencida = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Instrumento
         exclude = ["ativo"]

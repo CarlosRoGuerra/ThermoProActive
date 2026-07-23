@@ -1,16 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 
-from apps.accounts.permissions import AdminEditaDemaisVisualizam, InternoEditaClienteVisualiza
-
-
-class CatalogoPagination(PageNumberPagination):
-    """Catálogos são tabelas pequenas de referência: entrega a lista completa
-    (até 1000) para permitir ordenação/busca no cliente sem paginar."""
-
-    page_size = 500
-    page_size_query_param = "page_size"
-    max_page_size = 1000
+from apps.accounts.permissions import InternoEditaClienteVisualiza, MasterEditaDemaisVisualizam
 
 from .models import (
     Area,
@@ -56,6 +47,15 @@ from .serializers import (
 )
 
 
+class CatalogoPagination(PageNumberPagination):
+    """Catálogos são tabelas pequenas de referência: entrega a lista completa
+    (até 1000) para permitir ordenação/busca no cliente sem paginar."""
+
+    page_size = 500
+    page_size_query_param = "page_size"
+    max_page_size = 1000
+
+
 class BaseCadastroViewSet(viewsets.ModelViewSet):
     """Interno edita; cliente apenas lê (item 2.7). Retorna só registros ativos."""
 
@@ -74,23 +74,31 @@ class EmpresaViewSet(BaseCadastroViewSet):
 
 
 class ClienteViewSet(BaseCadastroViewSet):
+    """Cadastro do tomador de serviço (topo da hierarquia Cliente → Área → Setor)."""
+
     queryset = Cliente.objects.ativos()
     serializer_class = ClienteSerializer
-    search_fields = ["nome", "cnpj", "unidade_negocio"]
+    pagination_class = CatalogoPagination
+    filterset_fields = ["uf", "cidade"]
+    search_fields = [
+        "nome", "nome_fantasia", "cnpj", "unidade_negocio", "cidade", "uf", "contato_gestor",
+    ]
 
 
 class AreaViewSet(BaseCadastroViewSet):
     queryset = Area.objects.ativos().select_related("cliente")
     serializer_class = AreaSerializer
+    pagination_class = CatalogoPagination
     filterset_fields = ["cliente"]
-    search_fields = ["nome"]
+    search_fields = ["nome", "codigo"]
 
 
 class SetorViewSet(BaseCadastroViewSet):
     queryset = Setor.objects.ativos().select_related("area", "area__cliente")
     serializer_class = SetorSerializer
+    pagination_class = CatalogoPagination
     filterset_fields = ["area", "area__cliente"]
-    search_fields = ["nome"]
+    search_fields = ["nome", "codigo"]
 
 
 class EquipamentoViewSet(BaseCadastroViewSet):
@@ -100,8 +108,10 @@ class EquipamentoViewSet(BaseCadastroViewSet):
         .prefetch_related("componentes")
     )
     serializer_class = EquipamentoSerializer
+    pagination_class = CatalogoPagination
     filterset_fields = ["setor", "setor__area", "setor__area__cliente", "classe_iso"]
-    search_fields = ["tag", "nome", "fabricante", "modelo"]
+    # Busca por TAG e número de série — como o cliente pediu na reunião.
+    search_fields = ["tag", "nome", "fabricante", "modelo", "numero_serie"]
 
 
 class ComponenteViewSet(BaseCadastroViewSet):
@@ -116,7 +126,7 @@ class InstrumentoViewSet(BaseCadastroViewSet):
     # para selecionar o instrumento nas medições (FK de leitura).
     queryset = Instrumento.objects.ativos()
     serializer_class = InstrumentoSerializer
-    permission_classes = [AdminEditaDemaisVisualizam]
+    permission_classes = [MasterEditaDemaisVisualizam]
     pagination_class = CatalogoPagination
     search_fields = ["tipo", "marca", "modelo", "numero_serie", "entidade_calibracao"]
 
@@ -128,7 +138,7 @@ class CatalogoViewSet(BaseCadastroViewSet):
     """Base para catálogos simples: busca por nome, lista completa (sem paginar)
     e escrita restrita ao Admin (curadoria centralizada das tabelas de referência)."""
 
-    permission_classes = [AdminEditaDemaisVisualizam]
+    permission_classes = [MasterEditaDemaisVisualizam]
     pagination_class = CatalogoPagination
     search_fields = ["nome", "descricao"]
 

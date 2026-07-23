@@ -8,14 +8,23 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     perfil_display = serializers.CharField(source="get_perfil_display", read_only=True)
+    nivel_display = serializers.CharField(source="get_nivel_display", read_only=True)
     is_interno = serializers.BooleanField(read_only=True)
     is_cliente = serializers.BooleanField(read_only=True)
+    # Hierarquia definida com o cliente: ambiente (BackEnd/FrontEnd) × nível.
+    ambiente = serializers.CharField(read_only=True)
+    grupo_acesso = serializers.CharField(read_only=True)
+    is_master = serializers.BooleanField(read_only=True)
+    pode_excluir = serializers.BooleanField(read_only=True)
+    pode_curar_dados_sistema = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
         fields = [
             "id", "email", "nome", "perfil", "perfil_display",
-            "is_interno", "is_cliente", "empresa", "cliente",
+            "nivel", "nivel_display", "ambiente", "grupo_acesso",
+            "is_interno", "is_cliente", "is_master", "pode_excluir",
+            "pode_curar_dados_sistema", "empresa", "cliente",
             "celular", "cargo", "conselho_classe", "is_active",
         ]
         read_only_fields = ["id"]
@@ -27,7 +36,7 @@ class UserWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            "id", "email", "nome", "perfil", "password",
+            "id", "email", "nome", "perfil", "nivel", "password",
             "empresa", "cliente", "celular", "cpf", "cargo",
             "conselho_classe", "is_active",
         ]

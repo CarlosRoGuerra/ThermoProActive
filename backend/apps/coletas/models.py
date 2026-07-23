@@ -56,6 +56,18 @@ class Direcao(models.TextChoices):
     AXIAL = "A", "Axial"
 
 
+class ParametroMedicao(models.TextChoices):
+    """
+    Parâmetro coletado no ponto — compõe a nomenclatura do relatório (ex.: "1HA"
+    = mancal 1, direção Horizontal, parâmetro Aceleração).
+    """
+
+    ACELERACAO = "A", "Aceleração"
+    VELOCIDADE = "V", "Velocidade"
+    ENVELOPE = "E", "Envelope"
+    DEMODULACAO = "D", "Demodulação"
+
+
 class SistemaTermografia(models.TextChoices):
     ELETRICO = "ELETRICO", "Sistemas Elétricos"
     MEC_DINAMICO = "MEC_DINAMICO", "Sistemas Mecânicos Dinâmicos"
@@ -126,7 +138,13 @@ class MedicaoVibracao(TimeStampedModel):
     )
 
     ponto_medicao = models.CharField("Ponto de medição", max_length=80, help_text="Ex.: Mancal LA")
+    numero_mancal = models.PositiveSmallIntegerField(
+        "Nº do mancal", null=True, blank=True, help_text="1, 2, 3… conforme a numeração do croqui."
+    )
     direcao = models.CharField("Direção", max_length=1, choices=Direcao.choices)
+    parametro = models.CharField(
+        "Parâmetro", max_length=1, choices=ParametroMedicao.choices, blank=True
+    )
     rotacao_rpm = models.PositiveIntegerField("Rotação na coleta (RPM)", null=True, blank=True)
 
     # Grandezas medidas
@@ -152,6 +170,14 @@ class MedicaoVibracao(TimeStampedModel):
 
     def __str__(self):
         return f"{self.equipamento.tag} — {self.ponto_medicao} ({self.direcao}): {self.velocidade_rms} mm/s"
+
+    @property
+    def codigo_ponto(self) -> str:
+        """
+        Nomenclatura do relatório: nº do mancal + direção + parâmetro (ex.: "1HA").
+        Omite as partes ainda não informadas.
+        """
+        return f"{self.numero_mancal or ''}{self.direcao or ''}{self.parametro or ''}"
 
     def _historico_vrms(self, limite: int = 3) -> list:
         """Vrms das medições anteriores do mesmo equipamento/ponto/direção."""
