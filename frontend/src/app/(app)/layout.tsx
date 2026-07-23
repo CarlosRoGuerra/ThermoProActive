@@ -7,8 +7,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   Bell,
+  Building2,
   ClipboardList,
   Database,
+  Factory,
   FileBarChart,
   FileText,
   Home,
@@ -42,7 +44,9 @@ const NAV: NavItem[] = [
   { href: "/equipamentos", label: "Equipamentos", icon: Activity, cliente: true, interno: true },
   { href: "/laudos", label: "Laudos", icon: FileText, cliente: true, interno: true },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart, cliente: true, interno: true },
-  { href: "/cadastros", label: "Cadastros", icon: Database, cliente: false, interno: true },
+  { href: "/clientes", label: "Clientes", icon: Building2, cliente: false, interno: true },
+  { href: "/prestadores", label: "Prestadores", icon: Factory, cliente: false, interno: true },
+  { href: "/cadastros", label: "Dados de sistema", icon: Database, cliente: false, interno: true },
 ];
 
 function iniciais(nome: string) {
@@ -114,7 +118,9 @@ function SidebarContent({
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-fg">{user.nome}</p>
-            <p className="truncate text-[11px] text-fg-subtle">{user.perfil_display}</p>
+            <p className="truncate text-[11px] text-fg-subtle" title={user.perfil_display}>
+              {user.grupo_acesso}
+            </p>
           </div>
           <button
             onClick={onLogout}

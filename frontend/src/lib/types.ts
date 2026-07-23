@@ -9,14 +9,24 @@ export type Perfil =
   | "CLIENTE_PCM"
   | "CLIENTE_MANUT";
 
+// Hierarquia de acesso definida com o cliente: ambiente (BackEnd/FrontEnd) × nível.
+export type Nivel = "MASTER" | "SENIOR" | "PLENO" | "JUNIOR";
+
 export interface User {
   id: number;
   email: string;
   nome: string;
   perfil: Perfil;
   perfil_display: string;
+  nivel: Nivel;
+  nivel_display: string;
+  ambiente: string; // "BackEnd" | "FrontEnd"
+  grupo_acesso: string; // ex.: "BackEnd-Master"
   is_interno: boolean;
   is_cliente: boolean;
+  is_master: boolean;
+  pode_excluir: boolean;
+  pode_curar_dados_sistema: boolean;
   empresa: number | null;
   cliente: number | null;
   cargo: string;
@@ -35,12 +45,22 @@ export interface Equipamento {
   id: number;
   setor: number;
   setor_nome: string;
+  area_id: number;
+  area_nome: string;
   cliente_id: number;
+  // Hierarquia Equipamento → Sub-item (ex.: Caldeira → Exaustor)
+  equipamento_pai: number | null;
+  equipamento_pai_tag: string | null;
+  is_subitem: boolean;
+  nivel: number;
+  caminho: string;
+  qtd_subitens: number;
   tag: string;
   nome: string;
   tipo: string;
   fabricante: string;
   modelo: string;
+  numero_serie: string;
   potencia_kw: string | null;
   rotacao_nominal_rpm: number | null;
   classe_iso: string;
@@ -48,12 +68,46 @@ export interface Equipamento {
   componentes: Componente[];
 }
 
+/** Empresa CONTRATADA (prestadora de serviço) — sai no cabeçalho dos relatórios. */
+export interface Empresa {
+  id: number;
+  nome: string; // razão social
+  cnpj: string;
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+  cidade_uf: string;
+  endereco_formatado: string;
+  contato_gestor: string;
+  departamento: string;
+}
+
 export interface Cliente {
   id: number;
-  nome: string;
+  // Identificação
+  nome: string; // razão social
+  nome_fantasia: string;
   cnpj: string;
   unidade_negocio: string;
+  // Endereço estruturado (preenchido pela busca de CEP)
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
   cidade_uf: string;
+  endereco_formatado: string;
+  // Contato
+  contato_gestor: string;
+  departamento: string;
+  email: string;
+  telefone: string;
 }
 
 export interface MedicaoVibracao {

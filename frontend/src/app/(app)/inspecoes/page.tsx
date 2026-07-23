@@ -6,6 +6,7 @@ import { ArrowRight, ClipboardList, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Cliente, Inspecao, Paginated } from "@/lib/types";
+import { Combobox } from "@/components/combobox";
 import {
   Button,
   Card,
@@ -76,18 +77,18 @@ export default function InspecoesPage() {
         <Card>
           <h2 className="mb-3 text-sm font-semibold text-fg">Nova inspeção</h2>
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Cliente" className="min-w-[200px] flex-1">
-              <Select
+            <Field label="Cliente" className="min-w-[260px] flex-1">
+              <Combobox
                 value={novoCliente}
-                onChange={(e) => setNovoCliente(e.target.value ? Number(e.target.value) : "")}
-              >
-                <option value="">Selecione…</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </Select>
+                onChange={setNovoCliente}
+                options={clientes.map((c) => ({
+                  id: c.id,
+                  label: c.nome_fantasia || c.nome,
+                  hint: [c.cnpj, c.cidade_uf].filter(Boolean).join(" · "),
+                }))}
+                placeholder="Buscar cliente…"
+                permiteLimpar={false}
+              />
             </Field>
             <Field label="Tipo de análise">
               <Select value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)}>

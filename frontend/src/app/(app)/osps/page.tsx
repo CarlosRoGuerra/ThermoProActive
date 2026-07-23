@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Wrench } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { AlertTriangle, Plus, Wrench } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useClientes } from "@/lib/hierarquia";
 import type { OrdemServico, Paginated } from "@/lib/types";
 import {
   Badge,
+  Button,
   EmptyState,
+  Field,
   PageHeader,
   PriorityBadge,
   Select,
@@ -21,9 +26,13 @@ import {
   TR,
   Card,
 } from "@/components/ui";
+import { Combobox } from "@/components/combobox";
 
+// Ciclo acordado com o cliente: Aberta → Planejada → Executada → Finalizada.
 const STATUS_FLOW = [
   "ABERTA",
+  "PLANEJADA",
+  "EXECUTADA",
   "EM_ANALISE",
   "EM_EXECUCAO",
   "AGUARDANDO_APROVACAO",
@@ -32,6 +41,8 @@ const STATUS_FLOW = [
 ];
 const STATUS_LABEL: Record<string, string> = {
   ABERTA: "Aberta",
+  PLANEJADA: "Planejada",
+  EXECUTADA: "Executada",
   EM_ANALISE: "Em análise",
   EM_EXECUCAO: "Em execução",
   AGUARDANDO_APROVACAO: "Aguardando aprovação",
@@ -41,17 +52,27 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function OspsPage() {
   const { user } = useAuth();
+  const router = useRouter();
+  const podeEditar = !!user?.is_interno;
+  const { opcoes: opcoesClientes } = useClientes();
+  const [cliente, setCliente] = useState<number | "">("");
   const [osps, setOsps] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function reload() {
-    const data = await api<Paginated<OrdemServico>>("/osps/?ordering=-criado_em");
+  async function reload(clienteId: number | "" = cliente) {
+    // Filtro por cliente no servidor — essencial quando houver milhares de OSPs.
+    const filtro = clienteId ? `&cliente=${clienteId}` : "";
+    const data = await api<Paginated<OrdemServico>>(
+      `/osps/?ordering=-criado_em&page_size=1000${filtro}`
+    );
     setOsps(data.results);
   }
 
   useEffect(() => {
-    reload().finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    reload(cliente).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente]);
 
   async function mudarStatus(id: number, status: string) {
     await api(`/osps/${id}/status/`, { method: "PATCH", body: { status } });
@@ -63,8 +84,29 @@ export default function OspsPage() {
       <PageHeader
         icon={Wrench}
         title="Ordens de Serviço Preditivas"
-        description="Geradas automaticamente a partir de medições críticas (Anexo I 2.6)."
+        description="Corretiva orientada pela preditiva (Anexo I 2.6)."
+        actions={
+          podeEditar ? (
+            <Link href="/osps/nova">
+              <Button icon={Plus}>Nova OSP</Button>
+            </Link>
+          ) : undefined
+        }
       />
+
+      <Card>
+        <Field label="Filtrar por cliente">
+          <div className="max-w-md">
+            <Combobox
+              value={cliente}
+              onChange={setCliente}
+              options={opcoesClientes}
+              placeholder="Todos os clientes"
+              limparLabel="Todos os clientes"
+            />
+          </div>
+        </Field>
+      </Card>
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Database, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { MultiSelect } from "@/components/multiselect";
 import { useAuth } from "@/lib/auth";
 import type { Paginated } from "@/lib/types";
 import {
@@ -13,6 +14,7 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   Spinner,
   Table,
   TBody,
@@ -23,13 +25,14 @@ import {
   cn,
 } from "@/components/ui";
 
-type FieldType = "text" | "number" | "color" | "multiref" | "date";
+type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha";
 type FieldDef = {
   key: string;
   label: string;
   type?: FieldType;
   required?: boolean;
   optionsEndpoint?: string; // para type "multiref"
+  escolhas?: { valor: string; texto: string }[]; // para type "escolha"
   maxLength?: number; // limite espelhando o max_length do modelo
 };
 type CatalogDef = { key: string; label: string; endpoint: string; fields: FieldDef[]; columns: string[] };
@@ -53,6 +56,9 @@ const COL_LABELS: Record<string, string> = {
   numero_serie: "Nº de série",
   data_ultima_calibracao: "Última calibração",
   entidade_calibracao: "Entidade de calibração",
+  periodicidade_display: "Frequência",
+  proxima_calibracao: "Próxima calibração",
+  software_analise: "Software",
 };
 
 const CATALOGOS: CatalogDef[] = [
@@ -93,9 +99,24 @@ const CATALOGOS: CatalogDef[] = [
       { key: "modelo", label: "Modelo" },
       { key: "numero_serie", label: "Nº de série" },
       { key: "data_ultima_calibracao", label: "Última calibração", type: "date" },
+      {
+        key: "periodicidade_calibracao",
+        label: "Frequência de calibração",
+        type: "escolha",
+        escolhas: [
+          { valor: "6", texto: "Semestral" },
+          { valor: "12", texto: "Anual" },
+          { valor: "24", texto: "Bienal" },
+          { valor: "36", texto: "Trienal" },
+        ],
+      },
       { key: "entidade_calibracao", label: "Entidade de calibração" },
+      { key: "software_analise", label: "Software de análise" },
     ],
-    columns: ["tipo", "marca", "modelo", "numero_serie", "data_ultima_calibracao"],
+    columns: [
+      "tipo", "marca", "modelo", "numero_serie",
+      "data_ultima_calibracao", "periodicidade_display", "proxima_calibracao",
+    ],
   },
   catSimples("tipos-equipamento", "Tipos de equipamento"),
   catComTecnologias("tipos-componente", "Tipos de componente"),
@@ -192,7 +213,9 @@ function haystack(r: Row, def: CatalogDef) {
 
 export default function CadastrosPage() {
   const { user } = useAuth();
-  const isAdmin = user?.perfil === "ADMIN";
+  // Curadoria dos dados de sistema é exclusiva do nível Master (definido com o cliente).
+  const podeEditar = !!user?.pode_curar_dados_sistema;
+  const podeExcluir = !!user?.pode_excluir;
 
   const [sel, setSel] = useState<CatalogDef>(CATALOGOS[0]);
   const [rows, setRows] = useState<Row[]>([]);
@@ -286,6 +309,8 @@ export default function CadastrosPage() {
         const v = form[f.key];
         if (f.type === "multiref") {
           body[f.key] = Array.isArray(v) ? v : [];
+        } else if (f.type === "escolha") {
+          if (v !== "" && v !== undefined) body[f.key] = Number(v);
         } else if (f.type === "number") {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
         } else if (f.type === "date") {
@@ -349,8 +374,8 @@ export default function CadastrosPage() {
     <div className="space-y-6">
       <PageHeader
         icon={Database}
-        title="Cadastros"
-        description="Tabelas de referência do sistema (Anexo I 2.2). Rotas e vínculos relacionais via painel administrativo."
+        title="Dados de sistema"
+        description="Tabelas de referência que alimentam os campos do sistema (Anexo I 2.2). Curadoria exclusiva do nível Master."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[230px_1fr]">
@@ -375,7 +400,7 @@ export default function CadastrosPage() {
 
         <div className="space-y-4">
           {/* Formulário de criar/editar — somente Admin (curadoria centralizada). */}
-          {isAdmin ? (
+          {podeEditar ? (
             <Card>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-fg">
@@ -401,34 +426,32 @@ export default function CadastrosPage() {
                         className="h-10 w-16 cursor-pointer rounded-lg border border-border bg-surface p-1"
                       />
                     ) : f.type === "multiref" ? (
-                      <div className="flex max-w-xl flex-wrap gap-1.5">
-                        {(options[f.optionsEndpoint ?? ""] ?? []).length === 0 ? (
-                          <span className="text-xs text-fg-subtle">
-                            Nenhuma tecnologia cadastrada ainda.
-                          </span>
-                        ) : (
-                          (options[f.optionsEndpoint ?? ""] ?? []).map((o) => {
-                            const selected =
-                              Array.isArray(form[f.key]) && (form[f.key] as number[]).includes(o.id);
-                            return (
-                              <button
-                                key={o.id}
-                                type="button"
-                                onClick={() => toggleTec(f.key, o.id)}
-                                className={cn(
-                                  "rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
-                                  selected
-                                    ? "bg-accent-subtle text-accent-subtle-fg ring-accent/20"
-                                    : "bg-surface-muted text-fg-muted ring-border hover:text-fg"
-                                )}
-                                title={o.nome}
-                              >
-                                {optionLabel(o)}
-                              </button>
-                            );
-                          })
-                        )}
+                      /* Lista suspensa mostrando o NOME da tecnologia (pedido do cliente). */
+                      <div className="w-64">
+                        <MultiSelect
+                          value={Array.isArray(form[f.key]) ? (form[f.key] as number[]) : []}
+                          onChange={(ids) => setForm((prev) => ({ ...prev, [f.key]: ids }))}
+                          options={(options[f.optionsEndpoint ?? ""] ?? []).map((o) => ({
+                            id: o.id,
+                            label: o.nome,
+                            hint: o.sigla || undefined,
+                          }))}
+                          placeholder="Selecione as tecnologias…"
+                          emptyText="Nenhuma tecnologia cadastrada ainda."
+                        />
                       </div>
+                    ) : f.type === "escolha" ? (
+                      <Select
+                        value={(form[f.key] as string) ?? ""}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {(f.escolhas ?? []).map((o) => (
+                          <option key={o.valor} value={o.valor}>
+                            {o.texto}
+                          </option>
+                        ))}
+                      </Select>
                     ) : (
                       <Input
                         type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
@@ -453,8 +476,9 @@ export default function CadastrosPage() {
           ) : (
             <Card>
               <p className="text-sm text-fg-muted">
-                Você pode consultar e buscar os cadastros. A criação e edição são restritas ao
-                perfil <span className="font-medium text-fg">Administrador</span>.
+                Você pode consultar e buscar os dados de sistema. A criação e edição são
+                restritas ao nível <span className="font-medium text-fg">Master</span> — solicite
+                a inclusão a quem tem esse acesso.
               </p>
             </Card>
           )}
@@ -496,7 +520,7 @@ export default function CadastrosPage() {
                 {sel.columns.map((c) => (
                   <TH key={c}>{colLabel(c)}</TH>
                 ))}
-                {isAdmin && <TH />}
+                {podeEditar && <TH />}
               </THead>
               <TBody>
                 {pageRows.map((r) => (
@@ -516,7 +540,7 @@ export default function CadastrosPage() {
                             <span className="flex flex-wrap gap-1">
                               {(r[c] as TecOption[]).map((t) => (
                                 <Badge key={t.id} tone="accent">
-                                  {optionLabel(t)}
+                                  {t.nome}
                                 </Badge>
                               ))}
                             </span>
@@ -528,7 +552,7 @@ export default function CadastrosPage() {
                         )}
                       </TD>
                     ))}
-                    {isAdmin && (
+                    {podeEditar && (
                       <TD className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -538,13 +562,15 @@ export default function CadastrosPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" /> Editar
                           </button>
-                          <button
-                            onClick={() => remover(r.id)}
-                            aria-label="Remover"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition-colors hover:bg-danger-subtle"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Remover
-                          </button>
+                          {podeExcluir && (
+                            <button
+                              onClick={() => remover(r.id)}
+                              aria-label="Remover"
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition-colors hover:bg-danger-subtle"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" /> Remover
+                            </button>
+                          )}
                         </div>
                       </TD>
                     )}

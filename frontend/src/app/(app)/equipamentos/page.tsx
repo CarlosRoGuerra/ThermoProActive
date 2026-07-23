@@ -1,101 +1,318 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, Search } from "lucide-react";
-import { api } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Activity, CornerDownRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { useClientes } from "@/lib/hierarquia";
 import type { Equipamento, Paginated } from "@/lib/types";
-import { Badge, Card, CardsSkeleton, EmptyState, PageHeader } from "@/components/ui";
-import { Stagger, StaggerItem } from "@/components/motion";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Spinner,
+  Table,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  cn,
+} from "@/components/ui";
+import { Combobox } from "@/components/combobox";
+
+const PAGE_SIZE = 10;
+
+function pageWindow(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | "…")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) out.push("…");
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < total - 1) out.push("…");
+  out.push(total);
+  return out;
+}
 
 export default function EquipamentosPage() {
-  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
+  const { user } = useAuth();
+  const router = useRouter();
+  const podeEditar = !!user?.is_interno;
+  const podeExcluir = !!user?.pode_excluir;
+
+  const { opcoes: opcoesClientes } = useClientes();
+  const [cliente, setCliente] = useState<number | "">("");
+  const [rows, setRows] = useState<Equipamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
+  const [page, setPage] = useState(1);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // O filtro por cliente é aplicado no servidor: evita trazer milhares de
+  // equipamentos de todos os clientes para o navegador.
+  useEffect(() => {
+    setLoading(true);
+    const filtro = cliente ? `&setor__area__cliente=${cliente}` : "";
+    api<Paginated<Equipamento>>(`/equipamentos/?page_size=1000${filtro}`)
+      .then((d) => setRows(d.results))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+    setPage(1);
+  }, [cliente]);
+
+  async function remover(e: Equipamento) {
+    if (!confirm(`Remover o equipamento “${e.tag}”?`)) return;
+    setMsg(null);
+    try {
+      await api(`/equipamentos/${e.id}/`, { method: "DELETE" });
+      setRows((r) => r.filter((x) => x.id !== e.id));
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : "Erro ao remover o equipamento.");
+    }
+  }
+
+  const visibleRows = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    const filtrados = q
+      ? rows.filter((e) =>
+          [e.tag, e.nome, e.fabricante, e.modelo, e.numero_serie, e.setor_nome]
+            .map((v) => String(v ?? "").toLowerCase())
+            .join(" ")
+            .includes(q)
+        )
+      : rows;
+
+    // Sem busca, mostra a árvore: cada sub-item logo abaixo do seu equipamento
+    // principal (Caldeira → Exaustor), como na hierarquia acordada com o cliente.
+    if (q) {
+      return [...filtrados].sort((a, b) =>
+        String(a.tag ?? "").localeCompare(String(b.tag ?? ""), "pt-BR", { numeric: true })
+      );
+    }
+    const porTag = (a: Equipamento, b: Equipamento) =>
+      String(a.tag ?? "").localeCompare(String(b.tag ?? ""), "pt-BR", { numeric: true });
+    const filhosDe = (paiId: number | null) =>
+      filtrados.filter((e) => e.equipamento_pai === paiId).sort(porTag);
+
+    const ordenados: Equipamento[] = [];
+    const empilhar = (paiId: number | null, profundidade: number) => {
+      for (const e of filhosDe(paiId)) {
+        ordenados.push(e);
+        if (profundidade < 5) empilhar(e.id, profundidade + 1);
+      }
+    };
+    empilhar(null, 0);
+    // Sub-itens cujo pai foi filtrado fora entram no fim, para não sumirem.
+    for (const e of filtrados) if (!ordenados.includes(e)) ordenados.push(e);
+    return ordenados;
+  }, [rows, busca]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
+  const pageRows = visibleRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => {
-    api<Paginated<Equipamento>>("/equipamentos/")
-      .then((d) => setEquipamentos(d.results))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtrados = equipamentos.filter(
-    (e) =>
-      e.tag.toLowerCase().includes(busca.toLowerCase()) ||
-      e.nome.toLowerCase().includes(busca.toLowerCase())
-  );
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         icon={Activity}
         title="Equipamentos"
-        description="Cadastro de máquinas e componentes (Anexo I 2.2 / 3.1)."
+        description="Máquinas monitoradas, organizadas por Cliente → Área → Setor."
+        actions={
+          podeEditar ? (
+            <Link href="/equipamentos/novo">
+              <Button icon={Plus}>Novo equipamento</Button>
+            </Link>
+          ) : undefined
+        }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por TAG ou nome…"
-          className="input pl-9"
-        />
-      </div>
+      {/* Filtros */}
+      <Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Filtrar por cliente">
+            <Combobox
+              value={cliente}
+              onChange={setCliente}
+              options={opcoesClientes}
+              placeholder="Todos os clientes"
+              limparLabel="Todos os clientes"
+            />
+          </Field>
+          <Field label="Buscar">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
+              <Input
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="TAG, nº de série, fabricante…"
+                className="pl-9"
+              />
+            </div>
+          </Field>
+        </div>
+      </Card>
+
+      {msg && (
+        <Card>
+          <p className="text-sm text-danger-fg">{msg}</p>
+        </Card>
+      )}
 
       {loading ? (
-        <CardsSkeleton count={6} />
-      ) : filtrados.length === 0 ? (
+        <Card>
+          <Spinner />
+        </Card>
+      ) : visibleRows.length === 0 ? (
         <Card>
           <EmptyState
-            icon={Activity}
-            title="Nenhum equipamento encontrado"
-            description={busca ? "Ajuste o termo de busca." : "Cadastre equipamentos para começar a monitorá-los."}
+            icon={busca ? Search : Activity}
+            title={busca ? "Nada encontrado" : "Nenhum equipamento"}
+            description={
+              busca
+                ? `Nenhum equipamento corresponde a “${busca}”.`
+                : cliente
+                  ? "Este cliente ainda não tem equipamentos cadastrados."
+                  : "Cadastre o primeiro equipamento para começar a monitorá-lo."
+            }
+            action={
+              !busca && podeEditar ? (
+                <Link href="/equipamentos/novo">
+                  <Button icon={Plus}>Novo equipamento</Button>
+                </Link>
+              ) : undefined
+            }
           />
         </Card>
       ) : (
-        <Stagger className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtrados.map((e) => (
-            <StaggerItem key={e.id}>
-              <Card interactive className="h-full">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-base font-semibold text-fg">{e.tag}</p>
-                    <p className="text-sm text-fg-muted">{e.nome}</p>
-                  </div>
-                  <Badge tone="accent">Classe {e.classe_iso}</Badge>
-                </div>
-                <dl className="mt-4 space-y-1.5 text-xs">
-                  <Row k="Setor" v={e.setor_nome} />
-                  <Row k="Fabricante" v={e.fabricante || "—"} />
-                  <Row k="Rotação nominal" v={e.rotacao_nominal_rpm ? `${e.rotacao_nominal_rpm} RPM` : "—"} />
-                  <Row k="Potência" v={e.potencia_kw ? `${e.potencia_kw} kW` : "—"} />
-                </dl>
-                {e.componentes.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border pt-3">
-                    {e.componentes.map((c) => (
-                      <span
-                        key={c.id}
-                        className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-fg-muted"
-                      >
-                        {c.nome}
+        <>
+          <Table>
+            <THead>
+              <TH>TAG</TH>
+              <TH>Equipamento</TH>
+              <TH>Setor</TH>
+              <TH>Fabricante</TH>
+              <TH>Classe</TH>
+              {podeEditar && <TH />}
+            </THead>
+            <TBody>
+              {pageRows.map((e) => (
+                <TR
+                  key={e.id}
+                  onClick={podeEditar ? () => router.push(`/equipamentos/${e.id}`) : undefined}
+                >
+                  <TD className="font-mono text-xs font-semibold text-fg">
+                    {/* Indenta o sub-item para deixar a hierarquia visível. */}
+                    <span style={{ paddingLeft: `${e.nivel * 14}px` }} className="inline-flex items-center gap-1.5">
+                      {e.is_subitem && <CornerDownRight className="h-3 w-3 shrink-0 text-fg-subtle" />}
+                      {e.tag}
+                    </span>
+                  </TD>
+                  <TD className="text-fg">
+                    {e.nome}
+                    {e.qtd_subitens > 0 && (
+                      <Badge tone="neutral" className="ml-2">
+                        {e.qtd_subitens} sub-{e.qtd_subitens > 1 ? "itens" : "item"}
+                      </Badge>
+                    )}
+                    {e.componentes?.length > 0 && (
+                      <span className="block text-xs text-fg-subtle">
+                        {e.componentes.map((c) => c.nome).join(" · ")}
                       </span>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </StaggerItem>
-          ))}
-        </Stagger>
-      )}
-    </div>
-  );
-}
+                    )}
+                  </TD>
+                  <TD>{e.setor_nome || "—"}</TD>
+                  <TD>{e.fabricante || "—"}</TD>
+                  <TD>
+                    <Badge tone="accent">{e.classe_iso}</Badge>
+                  </TD>
+                  {podeEditar && (
+                    <TD className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/equipamentos/${e.id}`}
+                          onClick={(ev) => ev.stopPropagation()}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Editar
+                        </Link>
+                        {podeExcluir && (
+                          <button
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              remover(e);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition-colors hover:bg-danger-subtle"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Remover
+                          </button>
+                        )}
+                      </div>
+                    </TD>
+                  )}
+                </TR>
+              ))}
+            </TBody>
+          </Table>
 
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex justify-between">
-      <dt className="text-fg-subtle">{k}</dt>
-      <dd className="font-medium text-fg">{v}</dd>
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+              <p className="text-xs text-fg-subtle">
+                Mostrando {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleRows.length)} de{" "}
+                {visibleRows.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+                >
+                  ‹ Anterior
+                </button>
+                {pageWindow(page, totalPages).map((n, i) =>
+                  n === "…" ? (
+                    <span key={`e${i}`} className="px-1.5 text-xs text-fg-subtle">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={n}
+                      onClick={() => setPage(n)}
+                      className={cn(
+                        "min-w-[2rem] rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                        n === page
+                          ? "bg-accent text-accent-fg"
+                          : "text-fg-muted hover:bg-surface-muted hover:text-fg"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+                >
+                  Próxima ›
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
