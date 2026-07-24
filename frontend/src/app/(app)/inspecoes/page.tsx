@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Cliente, Inspecao, Paginated } from "@/lib/types";
 import { Combobox } from "@/components/combobox";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import {
   Button,
   Card,
@@ -28,13 +29,19 @@ import {
 
 export default function InspecoesPage() {
   const { user } = useAuth();
+  const { clienteAtivo } = useClienteAtivo();
   const [inspecoes, setInspecoes] = useState<Inspecao[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [novoCliente, setNovoCliente] = useState<number | "">("");
+  // Nova inspeção já começa no cliente ativo (o ambiente escolhido).
+  const [novoCliente, setNovoCliente] = useState<number | "">(clienteAtivo?.id ?? "");
   const [novoTipo, setNovoTipo] = useState("VIBRACAO");
   const [novaData, setNovaData] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    if (clienteAtivo) setNovoCliente(clienteAtivo.id);
+  }, [clienteAtivo]);
 
   async function reload() {
     const data = await api<Paginated<Inspecao>>("/inspecoes/");

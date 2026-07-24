@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Activity, CornerDownRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { useClientes } from "@/lib/hierarquia";
 import type { Equipamento, Paginated } from "@/lib/types";
 import {
@@ -48,12 +49,19 @@ export default function EquipamentosPage() {
   const podeExcluir = !!user?.pode_excluir;
 
   const { opcoes: opcoesClientes } = useClientes();
-  const [cliente, setCliente] = useState<number | "">("");
+  const { clienteAtivo } = useClienteAtivo();
+  // A tela já entra filtrada pelo cliente ativo (o "ambiente" escolhido).
+  const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
   const [rows, setRows] = useState<Equipamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Ativar um cliente (ou recuperá-lo do localStorage) já aplica o filtro aqui.
+  useEffect(() => {
+    if (clienteAtivo) setCliente(clienteAtivo.id);
+  }, [clienteAtivo]);
 
   // O filtro por cliente é aplicado no servidor: evita trazer milhares de
   // equipamentos de todos os clientes para o navegador.

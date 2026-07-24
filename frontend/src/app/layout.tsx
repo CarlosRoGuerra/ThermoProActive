@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { ClienteAtivoProvider } from "@/lib/cliente-ativo";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="font-sans">
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ClienteAtivoProvider>{children}</ClienteAtivoProvider>
+        </AuthProvider>
       </body>
     </html>
   );

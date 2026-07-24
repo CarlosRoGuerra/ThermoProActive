@@ -18,10 +18,12 @@ import {
   LogOut,
   Menu,
   Wrench,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import type { User } from "@/lib/types";
 import { Spinner, ThemeToggle, cn } from "@/components/ui";
 
@@ -37,6 +39,9 @@ type NavItem = {
 // executivo é a home da equipe interna. As demais telas servem aos dois perfis
 // (a API restringe os dados do cliente ao próprio parque — somente leitura).
 const NAV: NavItem[] = [
+  // Clientes em primeiro: é por onde o analista escolhe o tomador de serviço
+  // antes de iniciar a inspeção (pedido do cliente).
+  { href: "/clientes", label: "Clientes", icon: Building2, cliente: false, interno: true },
   { href: "/portal", label: "Início", icon: Home, cliente: true, interno: false },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, cliente: false, interno: true },
   { href: "/inspecoes", label: "Inspeções", icon: ClipboardList, cliente: true, interno: true },
@@ -44,9 +49,9 @@ const NAV: NavItem[] = [
   { href: "/equipamentos", label: "Equipamentos", icon: Activity, cliente: true, interno: true },
   { href: "/laudos", label: "Laudos", icon: FileText, cliente: true, interno: true },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart, cliente: true, interno: true },
-  { href: "/clientes", label: "Clientes", icon: Building2, cliente: false, interno: true },
-  { href: "/prestadores", label: "Prestadores", icon: Factory, cliente: false, interno: true },
   { href: "/cadastros", label: "Dados de sistema", icon: Database, cliente: false, interno: true },
+  // Prestadores por último, junto dos dados de sistema (curadoria administrativa).
+  { href: "/prestadores", label: "Prestadores", icon: Factory, cliente: false, interno: true },
 ];
 
 function iniciais(nome: string) {
@@ -72,6 +77,7 @@ function SidebarContent({
   onNavigate?: () => void;
   onLogout: () => void;
 }) {
+  const { clienteAtivo, limpar: limparCliente } = useClienteAtivo();
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2.5 px-5 py-5">
@@ -112,6 +118,39 @@ function SidebarContent({
       </nav>
 
       <div className="border-t border-border p-3">
+        {/* Cliente ativo — o ambiente em que o analista está trabalhando. */}
+        {clienteAtivo ? (
+          <div className="mb-2 rounded-lg border border-accent/30 bg-accent-subtle px-2.5 py-2">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 shrink-0 text-accent" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-accent-subtle-fg">
+                  Atendendo
+                </p>
+                <p className="truncate text-xs font-semibold text-fg" title={clienteAtivo.nome}>
+                  {clienteAtivo.nome_fantasia || clienteAtivo.nome}
+                </p>
+              </div>
+              <button
+                onClick={limparCliente}
+                aria-label="Sair do ambiente do cliente"
+                className="rounded p-1 text-fg-subtle transition-colors hover:bg-surface hover:text-fg"
+                title="Sair do ambiente do cliente"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <Link
+            href="/clientes"
+            onClick={onNavigate}
+            className="mb-2 block rounded-lg border border-dashed border-border-strong px-2.5 py-2 text-center text-[11px] text-fg-subtle transition-colors hover:border-accent hover:text-fg"
+          >
+            Nenhum cliente ativo · escolher
+          </Link>
+        )}
+
         <div className="flex items-center gap-3 px-2 py-1.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-semibold text-fg-muted">
             {iniciais(user.nome)}

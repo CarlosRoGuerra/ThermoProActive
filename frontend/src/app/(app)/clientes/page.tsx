@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Building2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Building2, CircleCheck, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import type { Cliente, Paginated } from "@/lib/types";
 import {
   Button,
@@ -39,6 +40,7 @@ function pageWindow(current: number, total: number): (number | "…")[] {
 
 export default function ClientesPage() {
   const { user } = useAuth();
+  const { clienteAtivo, ativar } = useClienteAtivo();
   const router = useRouter();
   const podeEditar = !!user?.is_interno;
   const podeExcluir = !!user?.pode_excluir;
@@ -165,10 +167,17 @@ export default function ClientesPage() {
               {podeEditar && <TH />}
             </THead>
             <TBody>
-              {pageRows.map((c) => (
+              {pageRows.map((c) => {
+                const ativo = clienteAtivo?.id === c.id;
+                return (
                 <TR key={c.id} onClick={podeEditar ? () => router.push(`/clientes/${c.id}`) : undefined}>
                   <TD className="font-medium text-fg">
-                    {c.nome}
+                    <span className="flex items-center gap-2">
+                      {ativo && (
+                        <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="Cliente ativo" />
+                      )}
+                      {c.nome}
+                    </span>
                     {c.nome_fantasia && (
                       <span className="block text-xs font-normal text-fg-subtle">
                         {c.nome_fantasia}
@@ -182,6 +191,35 @@ export default function ClientesPage() {
                   {podeEditar && (
                     <TD className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            ativar({
+                              id: c.id,
+                              nome: c.nome,
+                              nome_fantasia: c.nome_fantasia,
+                              logomarca: c.logomarca,
+                            });
+                          }}
+                          aria-label={ativo ? "Cliente ativo" : "Ativar cliente"}
+                          disabled={ativo}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                            ativo
+                              ? "cursor-default bg-accent-subtle text-accent-subtle-fg"
+                              : "text-fg-muted hover:bg-surface-muted hover:text-fg"
+                          )}
+                        >
+                          {ativo ? (
+                            <>
+                              <CircleCheck className="h-3.5 w-3.5" /> Ativo
+                            </>
+                          ) : (
+                            <>
+                              <Power className="h-3.5 w-3.5" /> Ativar
+                            </>
+                          )}
+                        </button>
                         <Link
                           href={`/clientes/${c.id}`}
                           onClick={(e) => e.stopPropagation()}
@@ -206,7 +244,8 @@ export default function ClientesPage() {
                     </TD>
                   )}
                 </TR>
-              ))}
+                );
+              })}
             </TBody>
           </Table>
 

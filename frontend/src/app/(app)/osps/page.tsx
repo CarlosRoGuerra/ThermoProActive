@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AlertTriangle, Plus, Wrench } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { useClientes } from "@/lib/hierarquia";
 import type { OrdemServico, Paginated } from "@/lib/types";
 import {
@@ -55,7 +56,8 @@ export default function OspsPage() {
   const router = useRouter();
   const podeEditar = !!user?.is_interno;
   const { opcoes: opcoesClientes } = useClientes();
-  const [cliente, setCliente] = useState<number | "">("");
+  const { clienteAtivo } = useClienteAtivo();
+  const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
   const [osps, setOsps] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,6 +69,11 @@ export default function OspsPage() {
     );
     setOsps(data.results);
   }
+
+  // Ativar um cliente (ou recuperá-lo do localStorage) já filtra as OSPs aqui.
+  useEffect(() => {
+    if (clienteAtivo) setCliente(clienteAtivo.id);
+  }, [clienteAtivo]);
 
   useEffect(() => {
     setLoading(true);
