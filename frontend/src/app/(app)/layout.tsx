@@ -26,6 +26,7 @@ import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import type { User } from "@/lib/types";
 import { Spinner, ThemeToggle, cn } from "@/components/ui";
+import { ClienteSwitcher } from "@/components/cliente-switcher";
 
 type NavItem = {
   href: string;
@@ -269,6 +270,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex-1" />
+          {/* Seletor do cliente ativo (só faz sentido para a equipe interna). */}
+          {user.is_interno && <ClienteSwitcher />}
           <ThemeToggle />
           <Link
             href="/notificacoes"
