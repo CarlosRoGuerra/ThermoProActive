@@ -94,6 +94,15 @@ CONSIDERACOES = [
 ]
 
 
+def _logo(obj, request) -> str | None:
+    """URL absoluta da logomarca (para sair na capa/cabeçalho do relatório)."""
+    logo = getattr(obj, "logomarca", None)
+    if not logo:
+        return None
+    url = logo.url
+    return request.build_absolute_uri(url) if request else url
+
+
 def _endereco(obj) -> dict:
     """Bloco de endereço já formatado para o cabeçalho do documento."""
     if obj is None:
@@ -122,7 +131,7 @@ def _equipamentos_da_inspecao(inspecao):
     return ordem
 
 
-def montar_relatorio_tecnico(laudo) -> dict:
+def montar_relatorio_tecnico(laudo, request=None) -> dict:
     """Monta o payload completo do relatório técnico a partir do laudo."""
     inspecao = laudo.inspecao
     cliente = inspecao.cliente
@@ -200,6 +209,7 @@ def montar_relatorio_tecnico(laudo) -> dict:
             "cnpj": empresa.cnpj if empresa else "",
             "endereco": _endereco(empresa),
             "contato": empresa.contato_gestor if empresa else "",
+            "logo": _logo(empresa, request) if empresa else None,
         },
         "contratante": {
             "nome": cliente.nome,
@@ -211,6 +221,7 @@ def montar_relatorio_tecnico(laudo) -> dict:
             "departamento": cliente.departamento,
             "email": cliente.email,
             "telefone": cliente.telefone,
+            "logo": _logo(cliente, request),
         },
         "instrumentacao": [
             {

@@ -84,6 +84,7 @@ export interface Empresa {
   endereco_formatado: string;
   contato_gestor: string;
   departamento: string;
+  logomarca: string | null;
 }
 
 export interface Cliente {
@@ -108,6 +109,7 @@ export interface Cliente {
   departamento: string;
   email: string;
   telefone: string;
+  logomarca: string | null;
 }
 
 export interface MedicaoVibracao {

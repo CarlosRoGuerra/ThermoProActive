@@ -54,13 +54,17 @@ interface RequestOptions {
 
 export async function api<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, retry = true } = opts;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // FormData (upload de arquivo) vai como multipart — o navegador define o
+  // Content-Type com o boundary correto, então não o fixamos aqui.
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  const headers: Record<string, string> = {};
+  if (!isForm) headers["Content-Type"] = "application/json";
   if (tokens.access) headers["Authorization"] = `Bearer ${tokens.access}`;
 
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
   });
 
   if (res.status === 401 && retry && (await tryRefresh())) {

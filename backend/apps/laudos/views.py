@@ -41,7 +41,7 @@ class LaudoViewSet(viewsets.ModelViewSet):
         Payload completo do Relatório Técnico (capa + seções A, C e D).
         O front renderiza em HTML paginado e o usuário imprime em PDF.
         """
-        return Response(montar_relatorio_tecnico(self.get_object()))
+        return Response(montar_relatorio_tecnico(self.get_object(), request))
 
     @action(detail=True, methods=["post"], permission_classes=[IsInterno])
     def emitir(self, request, pk=None):

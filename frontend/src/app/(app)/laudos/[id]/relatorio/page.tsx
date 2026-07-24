@@ -27,6 +27,7 @@ type Parte = {
   contato_gestor?: string;
   departamento?: string;
   contato?: string;
+  logo?: string | null;
 };
 type LinhaAvaliacao = {
   rotulo: string;
@@ -147,12 +148,18 @@ function Folha({
   return (
     <section className="folha">
       <header className="doc-topo">
-        <div>
-          <strong className="block text-[10pt] text-[color:var(--doc-accent)]">
-            {contratada.nome}
-          </strong>
-          CNPJ {contratada.cnpj}
-          {contratada.endereco?.formatado && <> · {contratada.endereco.formatado}</>}
+        <div className="flex items-center gap-2">
+          {contratada.logo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={contratada.logo} alt="" className="h-8 w-8 shrink-0 object-contain" />
+          )}
+          <div>
+            <strong className="block text-[10pt] text-[color:var(--doc-accent)]">
+              {contratada.nome}
+            </strong>
+            CNPJ {contratada.cnpj}
+            {contratada.endereco?.formatado && <> · {contratada.endereco.formatado}</>}
+          </div>
         </div>
         <div className="shrink-0 text-right font-semibold uppercase tracking-wide text-[color:var(--doc-accent)]">
           {secao}
@@ -224,6 +231,13 @@ export default function RelatorioTecnicoPage() {
             </div>
 
             <div className="mt-auto space-y-6 pb-10">
+              {contratante.logo && (
+                <img
+                  src={contratante.logo}
+                  alt={`Logomarca ${contratante.nome}`}
+                  className="h-[130px] w-[130px] object-contain"
+                />
+              )}
               <div>
                 <p className="text-[8pt] uppercase tracking-widest text-[color:var(--doc-muted)]">
                   Contratante

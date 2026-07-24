@@ -7,6 +7,7 @@ import { ArrowLeft, Building2, Loader2, MapPin, Phone, Save } from "lucide-react
 import { api, ApiError } from "@/lib/api";
 import type { Cliente } from "@/lib/types";
 import { Button, Card, Field, Input, Spinner } from "@/components/ui";
+import { LogoUpload } from "@/components/logo-upload";
 
 const UFS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
@@ -90,6 +91,9 @@ export function ClienteForm({ clienteId }: { clienteId?: number }) {
   const editando = clienteId !== undefined;
 
   const [form, setForm] = useState<Form>(FORM_VAZIO);
+  const [logoAtual, setLogoAtual] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoAlterada, setLogoAlterada] = useState(false);
   const [carregando, setCarregando] = useState(editando);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -104,7 +108,7 @@ export function ClienteForm({ clienteId }: { clienteId?: number }) {
   useEffect(() => {
     if (!editando) return;
     api<Cliente>(`/clientes/${clienteId}/`)
-      .then((c) =>
+      .then((c) => {
         setForm({
           nome: c.nome ?? "",
           nome_fantasia: c.nome_fantasia ?? "",
@@ -121,11 +125,17 @@ export function ClienteForm({ clienteId }: { clienteId?: number }) {
           departamento: c.departamento ?? "",
           email: c.email ?? "",
           telefone: c.telefone ?? "",
-        })
-      )
+        });
+        setLogoAtual(c.logomarca ?? null);
+      })
       .catch(() => setMsg("Não foi possível carregar este cliente."))
       .finally(() => setCarregando(false));
   }, [clienteId, editando]);
+
+  function aoEscolherLogo(arquivo: File | null) {
+    setLogoFile(arquivo);
+    setLogoAlterada(true);
+  }
 
   /** Consulta o ViaCEP e preenche o endereço automaticamente. */
   async function buscarCep(cepBruto: string) {
@@ -160,10 +170,19 @@ export function ClienteForm({ clienteId }: { clienteId?: number }) {
     setSalvando(true);
     setMsg(null);
     try {
+      // Com nova logo, envia multipart (arquivo + campos); senão, JSON simples.
+      let body: FormData | Form = form;
+      if (logoAlterada) {
+        const fd = new FormData();
+        Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+        // logoFile nulo = usuário removeu a logo → envia vazio para limpar.
+        fd.append("logomarca", logoFile ?? "");
+        body = fd;
+      }
       if (editando) {
-        await api(`/clientes/${clienteId}/`, { method: "PATCH", body: form });
+        await api(`/clientes/${clienteId}/`, { method: "PATCH", body });
       } else {
-        await api("/clientes/", { method: "POST", body: form });
+        await api("/clientes/", { method: "POST", body });
       }
       router.push("/clientes");
     } catch (e) {
@@ -239,6 +258,13 @@ export function ClienteForm({ clienteId }: { clienteId?: number }) {
               onChange={(e) => set("unidade_negocio", e.target.value)}
             />
           </Field>
+        </div>
+        <div className="mt-4 border-t border-border pt-4">
+          <LogoUpload
+            urlAtual={logoAtual}
+            onArquivo={aoEscolherLogo}
+            ajuda="Imagem quadrada, idealmente 250×250 px. Aparece na capa dos relatórios técnicos deste cliente."
+          />
         </div>
       </Card>
 

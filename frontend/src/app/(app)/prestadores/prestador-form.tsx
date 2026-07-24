@@ -7,6 +7,7 @@ import { ArrowLeft, Building2, Loader2, MapPin, Phone, Save } from "lucide-react
 import { api, ApiError } from "@/lib/api";
 import type { Empresa } from "@/lib/types";
 import { Button, Card, Field, Input, Spinner } from "@/components/ui";
+import { LogoUpload } from "@/components/logo-upload";
 
 const UFS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
@@ -86,6 +87,9 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
   const editando = prestadorId !== undefined;
 
   const [form, setForm] = useState<Form>(FORM_VAZIO);
+  const [logoAtual, setLogoAtual] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoAlterada, setLogoAlterada] = useState(false);
   const [carregando, setCarregando] = useState(editando);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -97,10 +101,15 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
     []
   );
 
+  function aoEscolherLogo(arquivo: File | null) {
+    setLogoFile(arquivo);
+    setLogoAlterada(true);
+  }
+
   useEffect(() => {
     if (!editando) return;
     api<Empresa>(`/empresas/${prestadorId}/`)
-      .then((c) =>
+      .then((c) => {
         setForm({
           nome: c.nome ?? "",
           cnpj: c.cnpj ?? "",
@@ -113,8 +122,9 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
           uf: c.uf ?? "",
           contato_gestor: c.contato_gestor ?? "",
           departamento: c.departamento ?? "",
-        })
-      )
+        });
+        setLogoAtual(c.logomarca ?? null);
+      })
       .catch(() => setMsg("Não foi possível carregar este prestador."))
       .finally(() => setCarregando(false));
   }, [prestadorId, editando]);
@@ -152,10 +162,17 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
     setSalvando(true);
     setMsg(null);
     try {
+      let body: FormData | Form = form;
+      if (logoAlterada) {
+        const fd = new FormData();
+        Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+        fd.append("logomarca", logoFile ?? "");
+        body = fd;
+      }
       if (editando) {
-        await api(`/empresas/${prestadorId}/`, { method: "PATCH", body: form });
+        await api(`/empresas/${prestadorId}/`, { method: "PATCH", body });
       } else {
-        await api("/empresas/", { method: "POST", body: form });
+        await api("/empresas/", { method: "POST", body });
       }
       router.push("/prestadores");
     } catch (e) {
@@ -216,6 +233,13 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
               onChange={(e) => set("cnpj", formatarCnpj(e.target.value))}
             />
           </Field>
+        </div>
+        <div className="mt-4 border-t border-border pt-4">
+          <LogoUpload
+            urlAtual={logoAtual}
+            onArquivo={aoEscolherLogo}
+            ajuda="Imagem quadrada, idealmente 250×250 px. Aparece no cabeçalho dos relatórios técnicos."
+          />
         </div>
       </Card>
 
