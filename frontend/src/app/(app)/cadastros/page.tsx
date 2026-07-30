@@ -79,8 +79,9 @@ const COL_LABELS: Record<string, string> = {
   area_nome: "Área",
 };
 
-const CATALOGOS: CatalogDef[] = [
-  // --- Localização do cliente ativo (Cliente → Área → Setor) ---
+// Estrutura do cliente ativo (Cliente → Área → Setor). NÃO é dado de sistema:
+// aparece dentro do cliente, não em "Dados de sistema".
+const CATALOGOS_CLIENTE: CatalogDef[] = [
   {
     key: "areas",
     label: "Áreas",
@@ -115,6 +116,10 @@ const CATALOGOS: CatalogDef[] = [
     ],
     columns: ["codigo", "nome", "complemento", "area_nome"],
   },
+];
+
+// Tabelas de referência do sistema (curadoria do nível Master).
+const CATALOGOS_SISTEMA: CatalogDef[] = [
   {
     key: "normas",
     label: "Normas (NBRs)",
@@ -197,6 +202,9 @@ const CATALOGOS: CatalogDef[] = [
   catSimples("falhas-recorrentes", "Falhas recorrentes"),
   catSimples("grupos-acesso", "Grupos de acesso"),
 ];
+
+// Lista completa (para resolver ?item=... vindo de qualquer menu).
+const CATALOGOS = [...CATALOGOS_CLIENTE, ...CATALOGOS_SISTEMA];
 
 function catSimples(endpoint: string, label: string): CatalogDef {
   return {
@@ -479,16 +487,28 @@ function CadastrosInner() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        icon={Database}
-        title="Dados de sistema"
-        description="Tabelas de referência que alimentam os campos do sistema (Anexo I 2.2). Curadoria exclusiva do nível Master."
-      />
+      {sel.escopoCliente ? (
+        <PageHeader
+          icon={Building2}
+          title="Estrutura do cliente"
+          description={
+            clienteAtivo
+              ? `Áreas e setores de ${clienteAtivo.nome_fantasia || clienteAtivo.nome}.`
+              : "Áreas e setores pertencem a um cliente. Ative um cliente para gerenciá-los."
+          }
+        />
+      ) : (
+        <PageHeader
+          icon={Database}
+          title="Dados de sistema"
+          description="Tabelas de referência que alimentam os campos do sistema (Anexo I 2.2). Curadoria do nível Master."
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[230px_1fr]">
         <Card padding={false} className="h-fit p-2">
           <nav className="space-y-0.5">
-            {CATALOGOS.map((c) => (
+            {(sel.escopoCliente ? CATALOGOS_CLIENTE : CATALOGOS_SISTEMA).map((c) => (
               <button
                 key={c.key}
                 onClick={() => setSel(c)}

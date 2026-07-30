@@ -35,15 +35,12 @@ type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
-  cliente: boolean;
-  interno: boolean;
   children?: { href: string; label: string }[];
 };
 
-// Itens do submenu "Dados de sistema" — cada um abre um catálogo (?item=chave).
+// Submenu "Dados de sistema" — só tabelas de referência do sistema.
+// Áreas/Setores saíram daqui: são dados do CLIENTE, ficam sob o menu Clientes.
 const DADOS_SISTEMA: { href: string; label: string }[] = [
-  { href: "/cadastros?item=areas", label: "Áreas" },
-  { href: "/cadastros?item=setores", label: "Setores" },
   { href: "/cadastros?item=normas", label: "Normas (NBRs)" },
   { href: "/cadastros?item=tecnologias", label: "Tecnologias de análise" },
   { href: "/cadastros?item=instrumentos", label: "Instrumentação" },
@@ -58,31 +55,43 @@ const DADOS_SISTEMA: { href: string; label: string }[] = [
   { href: "/cadastros?item=grupos-acesso", label: "Grupos de acesso" },
 ];
 
-// "Início" é a home do Portal do Cliente (Anexo I 2.7); o "Dashboard" operacional/
-// executivo é a home da equipe interna. As demais telas servem aos dois perfis
-// (a API restringe os dados do cliente ao próprio parque — somente leitura).
-const NAV: NavItem[] = [
-  // Clientes em primeiro: é por onde o analista escolhe o tomador de serviço
-  // antes de iniciar a inspeção (pedido do cliente).
-  { href: "/clientes", label: "Clientes", icon: Building2, cliente: false, interno: true },
-  { href: "/portal", label: "Início", icon: Home, cliente: true, interno: false },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, cliente: false, interno: true },
-  { href: "/inspecoes", label: "Inspeções", icon: ClipboardList, cliente: true, interno: true },
-  { href: "/osps", label: "Ordens de Serviço", icon: Wrench, cliente: true, interno: true },
-  { href: "/equipamentos", label: "Equipamentos", icon: Activity, cliente: true, interno: true },
-  { href: "/laudos", label: "Laudos", icon: FileText, cliente: true, interno: true },
-  { href: "/relatorios", label: "Relatórios", icon: FileBarChart, cliente: true, interno: true },
-  {
-    href: "/cadastros",
-    label: "Dados de sistema",
-    icon: Database,
-    cliente: false,
-    interno: true,
-    children: DADOS_SISTEMA,
-  },
-  // Prestadores por último, junto dos dados de sistema (curadoria administrativa).
-  { href: "/prestadores", label: "Prestadores", icon: Factory, cliente: false, interno: true },
+// Estrutura do cliente ativo — só aparece sob "Clientes" quando há um ativo.
+const ESTRUTURA_CLIENTE: { href: string; label: string }[] = [
+  { href: "/cadastros?item=areas", label: "Áreas" },
+  { href: "/cadastros?item=setores", label: "Setores" },
+  { href: "/equipamentos", label: "Equipamentos" },
 ];
+
+// Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há
+// um cliente ativo (ver montarNavInterno).
+const NAV_INTERNO: NavItem[] = [
+  { href: "/clientes", label: "Clientes", icon: Building2 },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/inspecoes", label: "Inspeções", icon: ClipboardList },
+  { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
+  { href: "/laudos", label: "Laudos", icon: FileText },
+  { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
+  { href: "/cadastros", label: "Dados de sistema", icon: Database, children: DADOS_SISTEMA },
+  { href: "/prestadores", label: "Prestadores", icon: Factory },
+];
+
+// Menu do cliente externo (Portal — Anexo I 2.7): só leitura do próprio parque.
+const NAV_CLIENTE: NavItem[] = [
+  { href: "/portal", label: "Início", icon: Home },
+  { href: "/inspecoes", label: "Inspeções", icon: ClipboardList },
+  { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
+  { href: "/equipamentos", label: "Equipamentos", icon: Activity },
+  { href: "/laudos", label: "Laudos", icon: FileText },
+  { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
+];
+
+function montarNavInterno(temClienteAtivo: boolean): NavItem[] {
+  return NAV_INTERNO.map((item) =>
+    item.href === "/clientes"
+      ? { ...item, children: temClienteAtivo ? ESTRUTURA_CLIENTE : undefined }
+      : item
+  );
+}
 
 function iniciais(nome: string) {
   return nome
@@ -139,21 +148,39 @@ function SidebarContent({
           const Icon = item.icon;
 
           // Grupo com submenu — só no modo expandido; colapsado vira link direto.
+          // O rótulo navega para a página; a setinha expande/recolhe o submenu.
           if (item.children && !colapsada) {
-            const aberto = submenus[item.href] ?? active;
+            const aberto = submenus[item.href] ?? (item.href === "/clientes" ? true : active);
             return (
               <div key={item.href}>
-                <button
-                  onClick={() => setSubmenus((s) => ({ ...s, [item.href]: !aberto }))}
+                <div
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150",
-                    active ? "text-fg" : "text-fg-muted hover:bg-surface-muted hover:text-fg"
+                    "relative flex items-center rounded-lg pr-1 transition-colors duration-150",
+                    active ? "bg-accent-subtle" : "hover:bg-surface-muted"
                   )}
                 >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span className="flex-1 text-left">{item.label}</span>
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", aberto && "rotate-180")} />
-                </button>
+                  {active && (
+                    <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
+                  )}
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "flex flex-1 items-center gap-3 px-3 py-2 text-sm font-medium",
+                      active ? "text-accent-subtle-fg" : "text-fg-muted"
+                    )}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    {item.label}
+                  </Link>
+                  <button
+                    onClick={() => setSubmenus((s) => ({ ...s, [item.href]: !aberto }))}
+                    aria-label={aberto ? "Recolher submenu" : "Expandir submenu"}
+                    className="rounded p-1 text-fg-subtle transition-colors hover:text-fg"
+                  >
+                    <ChevronDown className={cn("h-4 w-4 transition-transform", aberto && "rotate-180")} />
+                  </button>
+                </div>
                 {aberto && (
                   <div className="mb-1 ml-5 space-y-0.5 border-l border-border pl-2">
                     {item.children.map((c) => (
@@ -278,6 +305,7 @@ function SidebarContent({
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth();
+  const { clienteAtivo } = useClienteAtivo();
   const router = useRouter();
   const pathname = usePathname();
   const [naoLidas, setNaoLidas] = useState(0);
@@ -338,7 +366,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const items = NAV.filter((n) => (user.is_cliente ? n.cliente : n.interno));
+  const items = user.is_cliente ? NAV_CLIENTE : montarNavInterno(!!clienteAtivo);
   const logout = () => {
     signOut();
     router.replace("/login");
