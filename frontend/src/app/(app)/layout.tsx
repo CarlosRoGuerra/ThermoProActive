@@ -9,8 +9,6 @@ import {
   Bell,
   Building2,
   ChevronDown,
-  ChevronsLeft,
-  ChevronsRight,
   ClipboardList,
   Database,
   Factory,
@@ -20,6 +18,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Pin,
+  PinOff,
   Wrench,
   X,
   type LucideIcon,
@@ -99,17 +99,19 @@ function SidebarContent({
   pathname,
   user,
   colapsada = false,
+  fixada = false,
   onNavigate,
   onLogout,
-  onToggleColapsar,
+  onTogglePin,
 }: {
   items: NavItem[];
   pathname: string;
   user: User;
   colapsada?: boolean;
+  fixada?: boolean;
   onNavigate?: () => void;
   onLogout: () => void;
-  onToggleColapsar?: () => void;
+  onTogglePin?: () => void;
 }) {
   const { clienteAtivo, limpar: limparCliente } = useClienteAtivo();
   const [submenus, setSubmenus] = useState<Record<string, boolean>>(() => ({
@@ -195,24 +197,16 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Recolher/expandir (só no desktop) */}
-      {onToggleColapsar && (
+      {/* Fixar aberto / desafixar (aparece só quando expandida, no desktop) */}
+      {onTogglePin && !colapsada && (
         <div className="px-3 pb-1">
           <button
-            onClick={onToggleColapsar}
-            title={colapsada ? "Expandir menu" : "Recolher menu"}
-            className={cn(
-              "flex w-full items-center rounded-lg py-2 text-xs font-medium text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg",
-              colapsada ? "justify-center px-2" : "gap-3 px-3"
-            )}
+            onClick={onTogglePin}
+            title={fixada ? "Desafixar — recolher ao tirar o mouse" : "Fixar o menu aberto"}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg"
           >
-            {colapsada ? (
-              <ChevronsRight className="h-5 w-5" />
-            ) : (
-              <>
-                <ChevronsLeft className="h-5 w-5 shrink-0" /> Recolher
-              </>
-            )}
+            {fixada ? <PinOff className="h-4 w-4 shrink-0" /> : <Pin className="h-4 w-4 shrink-0" />}
+            {fixada ? "Desafixar" : "Fixar aberto"}
           </button>
         </div>
       )}
@@ -289,25 +283,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [naoLidas, setNaoLidas] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [drawer, setDrawer] = useState(false);
-  const [colapsada, setColapsada] = useState(false);
+  // Padrão: menu recolhido (trilho de ícones) que expande ao passar o mouse.
+  // "fixada" trava o menu aberto (empurra o conteúdo); preferência salva.
+  const [fixada, setFixada] = useState(false);
+  const [hoverMenu, setHoverMenu] = useState(false);
+  const menuExpandido = fixada || hoverMenu;
 
-  // Preferência de menu recolhido, salva no navegador.
   useEffect(() => {
     try {
-      setColapsada(localStorage.getItem("tpa-sidebar-colapsada") === "1");
+      setFixada(localStorage.getItem("tpa-sidebar-fixada") === "1");
     } catch {
       /* localStorage indisponível */
     }
   }, []);
 
-  function toggleColapsar() {
-    setColapsada((v) => {
+  function togglePin() {
+    setFixada((v) => {
       const nova = !v;
       try {
-        localStorage.setItem("tpa-sidebar-colapsada", nova ? "1" : "0");
+        localStorage.setItem("tpa-sidebar-fixada", nova ? "1" : "0");
       } catch {
         /* ignore */
       }
+      if (nova) setHoverMenu(false);
       return nova;
     });
   }
@@ -348,21 +346,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      {/* Sidebar fixa (desktop) */}
+      {/* Sidebar (desktop): trilho de 68px que expande sobre o conteúdo ao passar
+          o mouse. Fixada, ocupa a largura cheia e empurra o conteúdo. */}
       <aside
         className={cn(
-          "no-print hidden shrink-0 border-r border-border bg-surface transition-[width] duration-200 lg:block",
-          colapsada ? "w-[68px]" : "w-64"
+          "no-print relative hidden shrink-0 transition-[width] duration-200 lg:block",
+          fixada ? "w-64" : "w-[68px]"
         )}
       >
-        <SidebarContent
-          items={items}
-          pathname={pathname}
-          user={user}
-          colapsada={colapsada}
-          onLogout={logout}
-          onToggleColapsar={toggleColapsar}
-        />
+        <div
+          onMouseEnter={() => !fixada && setHoverMenu(true)}
+          onMouseLeave={() => setHoverMenu(false)}
+          className={cn(
+            "absolute inset-y-0 left-0 border-r border-border bg-surface transition-[width] duration-200",
+            menuExpandido ? "w-64" : "w-[68px]",
+            menuExpandido && !fixada ? "z-40 shadow-xl" : "z-10"
+          )}
+        >
+          <SidebarContent
+            items={items}
+            pathname={pathname}
+            user={user}
+            colapsada={!menuExpandido}
+            fixada={fixada}
+            onLogout={logout}
+            onTogglePin={togglePin}
+          />
+        </div>
       </aside>
 
       {/* Drawer (mobile) */}
