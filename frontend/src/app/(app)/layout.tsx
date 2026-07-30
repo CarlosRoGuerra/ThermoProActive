@@ -8,6 +8,9 @@ import {
   Activity,
   Bell,
   Building2,
+  ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
   ClipboardList,
   Database,
   Factory,
@@ -34,7 +37,26 @@ type NavItem = {
   icon: LucideIcon;
   cliente: boolean;
   interno: boolean;
+  children?: { href: string; label: string }[];
 };
+
+// Itens do submenu "Dados de sistema" — cada um abre um catálogo (?item=chave).
+const DADOS_SISTEMA: { href: string; label: string }[] = [
+  { href: "/cadastros?item=areas", label: "Áreas" },
+  { href: "/cadastros?item=setores", label: "Setores" },
+  { href: "/cadastros?item=normas", label: "Normas (NBRs)" },
+  { href: "/cadastros?item=tecnologias", label: "Tecnologias de análise" },
+  { href: "/cadastros?item=instrumentos", label: "Instrumentação" },
+  { href: "/cadastros?item=tipos-equipamento", label: "Tipos de equipamento" },
+  { href: "/cadastros?item=tipos-componente", label: "Tipos de componente" },
+  { href: "/cadastros?item=tipos-anomalia", label: "Tipos de anomalia" },
+  { href: "/cadastros?item=tipos-recomendacao", label: "Tipos de recomendação" },
+  { href: "/cadastros?item=criticidades", label: "Tipos de criticidade" },
+  { href: "/cadastros?item=classificacoes-inspecao", label: "Classificações de inspeção" },
+  { href: "/cadastros?item=tipos-inspecao", label: "Tipos de inspeção" },
+  { href: "/cadastros?item=falhas-recorrentes", label: "Falhas recorrentes" },
+  { href: "/cadastros?item=grupos-acesso", label: "Grupos de acesso" },
+];
 
 // "Início" é a home do Portal do Cliente (Anexo I 2.7); o "Dashboard" operacional/
 // executivo é a home da equipe interna. As demais telas servem aos dois perfis
@@ -50,7 +72,14 @@ const NAV: NavItem[] = [
   { href: "/equipamentos", label: "Equipamentos", icon: Activity, cliente: true, interno: true },
   { href: "/laudos", label: "Laudos", icon: FileText, cliente: true, interno: true },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart, cliente: true, interno: true },
-  { href: "/cadastros", label: "Dados de sistema", icon: Database, cliente: false, interno: true },
+  {
+    href: "/cadastros",
+    label: "Dados de sistema",
+    icon: Database,
+    cliente: false,
+    interno: true,
+    children: DADOS_SISTEMA,
+  },
   // Prestadores por último, junto dos dados de sistema (curadoria administrativa).
   { href: "/prestadores", label: "Prestadores", icon: Factory, cliente: false, interno: true },
 ];
@@ -69,102 +98,180 @@ function SidebarContent({
   items,
   pathname,
   user,
+  colapsada = false,
   onNavigate,
   onLogout,
+  onToggleColapsar,
 }: {
   items: NavItem[];
   pathname: string;
   user: User;
+  colapsada?: boolean;
   onNavigate?: () => void;
   onLogout: () => void;
+  onToggleColapsar?: () => void;
 }) {
   const { clienteAtivo, limpar: limparCliente } = useClienteAtivo();
+  const [submenus, setSubmenus] = useState<Record<string, boolean>>(() => ({
+    "/cadastros": pathname.startsWith("/cadastros"),
+  }));
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 font-bold text-white shadow-sm">
+      {/* Marca */}
+      <div className={cn("flex items-center py-5", colapsada ? "justify-center px-2" : "gap-2.5 px-5")}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 font-bold text-white shadow-sm">
           T
         </div>
-        <div>
-          <p className="text-sm font-semibold tracking-tight text-fg">ThermoProActive</p>
-          <p className="text-[11px] text-fg-subtle">Manutenção Preditiva</p>
-        </div>
+        {!colapsada && (
+          <div>
+            <p className="text-sm font-semibold tracking-tight text-fg">ThermoProActive</p>
+            <p className="text-[11px] text-fg-subtle">Manutenção Preditiva</p>
+          </div>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 py-2">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
         {items.map((item) => {
           const active = pathname.startsWith(item.href);
           const Icon = item.icon;
+
+          // Grupo com submenu — só no modo expandido; colapsado vira link direto.
+          if (item.children && !colapsada) {
+            const aberto = submenus[item.href] ?? active;
+            return (
+              <div key={item.href}>
+                <button
+                  onClick={() => setSubmenus((s) => ({ ...s, [item.href]: !aberto }))}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150",
+                    active ? "text-fg" : "text-fg-muted hover:bg-surface-muted hover:text-fg"
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", aberto && "rotate-180")} />
+                </button>
+                {aberto && (
+                  <div className="mb-1 ml-5 space-y-0.5 border-l border-border pl-2">
+                    {item.children.map((c) => (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        onClick={onNavigate}
+                        className="block rounded-md px-3 py-1.5 text-[13px] text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
+                      >
+                        {c.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={onNavigate}
               aria-current={active ? "page" : undefined}
+              title={colapsada ? item.label : undefined}
               className={cn(
-                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150",
+                "relative flex items-center rounded-lg py-2 text-sm font-medium transition-colors duration-150",
+                colapsada ? "justify-center px-2" : "gap-3 px-3",
                 active
                   ? "bg-accent-subtle text-accent-subtle-fg"
                   : "text-fg-muted hover:bg-surface-muted hover:text-fg"
               )}
             >
-              {active && (
+              {active && !colapsada && (
                 <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
               )}
               <Icon className="h-5 w-5 shrink-0" />
-              {item.label}
+              {!colapsada && item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="border-t border-border p-3">
-        {/* Cliente ativo — o ambiente em que o analista está trabalhando. */}
-        {clienteAtivo ? (
-          <div className="mb-2 rounded-lg border border-accent/30 bg-accent-subtle px-2.5 py-2">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 shrink-0 text-accent" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-accent-subtle-fg">
-                  Atendendo
-                </p>
-                <p className="truncate text-xs font-semibold text-fg" title={clienteAtivo.nome}>
-                  {clienteAtivo.nome_fantasia || clienteAtivo.nome}
-                </p>
-              </div>
-              <button
-                onClick={limparCliente}
-                aria-label="Sair do ambiente do cliente"
-                className="rounded p-1 text-fg-subtle transition-colors hover:bg-surface hover:text-fg"
-                title="Sair do ambiente do cliente"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <Link
-            href="/clientes"
-            onClick={onNavigate}
-            className="mb-2 block rounded-lg border border-dashed border-border-strong px-2.5 py-2 text-center text-[11px] text-fg-subtle transition-colors hover:border-accent hover:text-fg"
+      {/* Recolher/expandir (só no desktop) */}
+      {onToggleColapsar && (
+        <div className="px-3 pb-1">
+          <button
+            onClick={onToggleColapsar}
+            title={colapsada ? "Expandir menu" : "Recolher menu"}
+            className={cn(
+              "flex w-full items-center rounded-lg py-2 text-xs font-medium text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg",
+              colapsada ? "justify-center px-2" : "gap-3 px-3"
+            )}
           >
-            Nenhum cliente ativo · escolher
-          </Link>
-        )}
+            {colapsada ? (
+              <ChevronsRight className="h-5 w-5" />
+            ) : (
+              <>
+                <ChevronsLeft className="h-5 w-5 shrink-0" /> Recolher
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
-        <div className="flex items-center gap-3 px-2 py-1.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-semibold text-fg-muted">
+      {/* Rodapé */}
+      <div className="border-t border-border p-3">
+        {/* Cliente ativo (só no modo expandido — no colapsado, o chip do topo mostra). */}
+        {!colapsada &&
+          (clienteAtivo ? (
+            <div className="mb-2 rounded-lg border border-accent/30 bg-accent-subtle px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 shrink-0 text-accent" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-accent-subtle-fg">
+                    Atendendo
+                  </p>
+                  <p className="truncate text-xs font-semibold text-fg" title={clienteAtivo.nome}>
+                    {clienteAtivo.nome_fantasia || clienteAtivo.nome}
+                  </p>
+                </div>
+                <button
+                  onClick={limparCliente}
+                  aria-label="Sair do ambiente do cliente"
+                  className="rounded p-1 text-fg-subtle transition-colors hover:bg-surface hover:text-fg"
+                  title="Sair do ambiente do cliente"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Link
+              href="/clientes"
+              onClick={onNavigate}
+              className="mb-2 block rounded-lg border border-dashed border-border-strong px-2.5 py-2 text-center text-[11px] text-fg-subtle transition-colors hover:border-accent hover:text-fg"
+            >
+              Nenhum cliente ativo · escolher
+            </Link>
+          ))}
+
+        <div className={cn("flex items-center py-1.5", colapsada ? "flex-col gap-2" : "gap-3 px-2")}>
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-sm font-semibold text-fg-muted"
+            title={colapsada ? user.nome : undefined}
+          >
             {iniciais(user.nome)}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-fg">{user.nome}</p>
-            <p className="truncate text-[11px] text-fg-subtle" title={user.perfil_display}>
-              {user.grupo_acesso}
-            </p>
-          </div>
+          {!colapsada && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-fg">{user.nome}</p>
+              <p className="truncate text-[11px] text-fg-subtle" title={user.perfil_display}>
+                {user.grupo_acesso}
+              </p>
+            </div>
+          )}
           <button
             onClick={onLogout}
             aria-label="Sair"
+            title="Sair"
             className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg"
           >
             <LogOut className="h-4 w-4" />
@@ -182,6 +289,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [naoLidas, setNaoLidas] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [colapsada, setColapsada] = useState(false);
+
+  // Preferência de menu recolhido, salva no navegador.
+  useEffect(() => {
+    try {
+      setColapsada(localStorage.getItem("tpa-sidebar-colapsada") === "1");
+    } catch {
+      /* localStorage indisponível */
+    }
+  }, []);
+
+  function toggleColapsar() {
+    setColapsada((v) => {
+      const nova = !v;
+      try {
+        localStorage.setItem("tpa-sidebar-colapsada", nova ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return nova;
+    });
+  }
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -220,8 +349,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       {/* Sidebar fixa (desktop) */}
-      <aside className="no-print hidden w-64 shrink-0 border-r border-border bg-surface lg:block">
-        <SidebarContent items={items} pathname={pathname} user={user} onLogout={logout} />
+      <aside
+        className={cn(
+          "no-print hidden shrink-0 border-r border-border bg-surface transition-[width] duration-200 lg:block",
+          colapsada ? "w-[68px]" : "w-64"
+        )}
+      >
+        <SidebarContent
+          items={items}
+          pathname={pathname}
+          user={user}
+          colapsada={colapsada}
+          onLogout={logout}
+          onToggleColapsar={toggleColapsar}
+        />
       </aside>
 
       {/* Drawer (mobile) */}

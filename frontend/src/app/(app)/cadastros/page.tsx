@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Database, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { Building2, Database, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { MultiSelect } from "@/components/multiselect";
 import { useAuth } from "@/lib/auth";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
 import type { Paginated } from "@/lib/types";
 import {
   Badge,
@@ -25,17 +28,30 @@ import {
   cn,
 } from "@/components/ui";
 
-type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha";
+type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref";
 type FieldDef = {
   key: string;
   label: string;
   type?: FieldType;
   required?: boolean;
-  optionsEndpoint?: string; // para type "multiref"
+  optionsEndpoint?: string; // para type "multiref" e "ref"
   escolhas?: { valor: string; texto: string }[]; // para type "escolha"
+  escopoClienteAtivo?: boolean; // "ref" cujas opções pertencem ao cliente ativo (ex.: áreas)
   maxLength?: number; // limite espelhando o max_length do modelo
 };
-type CatalogDef = { key: string; label: string; endpoint: string; fields: FieldDef[]; columns: string[] };
+type CatalogDef = {
+  key: string;
+  label: string;
+  endpoint: string;
+  fields: FieldDef[];
+  columns: string[];
+  // Registros que pertencem ao cliente ativo (Áreas/Setores). `param` filtra a
+  // lista; `injeta` acrescenta o cliente ao criar (só a Área tem cliente direto).
+  escopoCliente?: { param: string; injeta?: boolean };
+  // "interno": qualquer usuário interno edita (dados operacionais do cliente).
+  // Ausente: só o nível Master (dados de referência do sistema).
+  permissao?: "interno";
+};
 
 // Quantidade de itens por página na listagem.
 const PAGE_SIZE = 10;
@@ -59,9 +75,46 @@ const COL_LABELS: Record<string, string> = {
   periodicidade_display: "Frequência",
   proxima_calibracao: "Próxima calibração",
   software_analise: "Software",
+  complemento: "Complemento",
+  area_nome: "Área",
 };
 
 const CATALOGOS: CatalogDef[] = [
+  // --- Localização do cliente ativo (Cliente → Área → Setor) ---
+  {
+    key: "areas",
+    label: "Áreas",
+    endpoint: "areas",
+    escopoCliente: { param: "cliente", injeta: true },
+    permissao: "interno",
+    fields: [
+      { key: "codigo", label: "Código", maxLength: 20 },
+      { key: "nome", label: "Nome da área", required: true, maxLength: 120 },
+      { key: "complemento", label: "Complemento", maxLength: 120 },
+    ],
+    columns: ["codigo", "nome", "complemento"],
+  },
+  {
+    key: "setores",
+    label: "Setores",
+    endpoint: "setores",
+    escopoCliente: { param: "area__cliente" },
+    permissao: "interno",
+    fields: [
+      {
+        key: "area",
+        label: "Área",
+        type: "ref",
+        required: true,
+        optionsEndpoint: "areas",
+        escopoClienteAtivo: true,
+      },
+      { key: "codigo", label: "Código", maxLength: 20 },
+      { key: "nome", label: "Nome do setor", required: true, maxLength: 120 },
+      { key: "complemento", label: "Complemento", maxLength: 120 },
+    ],
+    columns: ["codigo", "nome", "complemento", "area_nome"],
+  },
   {
     key: "normas",
     label: "Normas (NBRs)",
@@ -191,7 +244,7 @@ function pageWindow(current: number, total: number): (number | "…")[] {
   return out;
 }
 
-type TecOption = { id: number; nome: string; sigla?: string };
+type TecOption = { id: number; nome: string; sigla?: string; identificacao?: string };
 type Row = Record<string, unknown> & { id: number };
 type FormValue = string | number[];
 
@@ -218,12 +271,30 @@ function haystack(r: Row, def: CatalogDef) {
 }
 
 export default function CadastrosPage() {
-  const { user } = useAuth();
-  // Curadoria dos dados de sistema é exclusiva do nível Master (definido com o cliente).
-  const podeEditar = !!user?.pode_curar_dados_sistema;
-  const podeExcluir = !!user?.pode_excluir;
+  return (
+    <Suspense fallback={<Spinner />}>
+      <CadastrosInner />
+    </Suspense>
+  );
+}
 
-  const [sel, setSel] = useState<CatalogDef>(CATALOGOS[0]);
+function CadastrosInner() {
+  const { user } = useAuth();
+  const { clienteAtivo } = useClienteAtivo();
+  const searchParams = useSearchParams();
+  const itemParam = searchParams.get("item");
+  const [sel, setSel] = useState<CatalogDef>(
+    () => CATALOGOS.find((c) => c.key === itemParam) ?? CATALOGOS[0]
+  );
+
+  // Áreas/Setores: qualquer interno gerencia (dado operacional do cliente).
+  // Demais catálogos: só o nível Master (dado de referência do sistema).
+  const podeEditar =
+    sel.permissao === "interno" ? !!user?.is_interno : !!user?.pode_curar_dados_sistema;
+  const podeExcluir = !!user?.pode_excluir;
+  // Catálogo do cliente ativo sem cliente escolhido: não dá para listar/criar.
+  const precisaCliente = !!sel.escopoCliente && !clienteAtivo;
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<Record<string, FormValue>>({});
@@ -246,34 +317,60 @@ export default function CadastrosPage() {
   );
 
   async function reload(def: CatalogDef) {
+    // Áreas/Setores só existem dentro de um cliente: sem cliente ativo, nada a listar.
+    if (def.escopoCliente && !clienteAtivo) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      // Catálogos são pequenos: traz a lista completa para ordenar/buscar no cliente.
-      const data = await api<Paginated<Row>>(`/${def.endpoint}/?page_size=1000`);
+      const escopo =
+        def.escopoCliente && clienteAtivo
+          ? `&${def.escopoCliente.param}=${clienteAtivo.id}`
+          : "";
+      const data = await api<Paginated<Row>>(`/${def.endpoint}/?page_size=1000${escopo}`);
       setRows(data.results);
     } finally {
       setLoading(false);
     }
   }
 
-  // Ao trocar de catálogo: reseta form/edição/busca, recarrega e busca opções de multiref.
+  // A URL (?item=...) escolhe o catálogo — usado pelo submenu do menu lateral.
+  useEffect(() => {
+    const alvo = CATALOGOS.find((c) => c.key === itemParam);
+    if (alvo && alvo.key !== sel.key) setSel(alvo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemParam]);
+
+  // Troca de catálogo: limpa formulário e busca.
   useEffect(() => {
     setForm(emptyForm);
     setEditingId(null);
     setMsg(null);
     setQuery("");
     setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
+
+  // Recarrega a lista e as opções dos campos relacionais. Depende também do
+  // cliente ativo, porque áreas/setores (e o seletor de área) são dele.
+  useEffect(() => {
     reload(sel);
     for (const f of sel.fields) {
-      if (f.type === "multiref" && f.optionsEndpoint && !options[f.optionsEndpoint]) {
+      if ((f.type === "multiref" || f.type === "ref") && f.optionsEndpoint) {
         const ep = f.optionsEndpoint;
-        api<Paginated<TecOption>>(`/${ep}/?page_size=1000`)
+        const query =
+          f.escopoClienteAtivo && clienteAtivo
+            ? `?cliente=${clienteAtivo.id}&page_size=1000`
+            : "?page_size=1000";
+        api<Paginated<TecOption>>(`/${ep}/${query}`)
           .then((d) => setOptions((o) => ({ ...o, [ep]: d.results })))
           .catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel]);
+  }, [sel, clienteAtivo]);
 
   function toggleTec(key: string, id: number) {
     setForm((prev) => {
@@ -315,7 +412,7 @@ export default function CadastrosPage() {
         const v = form[f.key];
         if (f.type === "multiref") {
           body[f.key] = Array.isArray(v) ? v : [];
-        } else if (f.type === "escolha") {
+        } else if (f.type === "escolha" || f.type === "ref") {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
         } else if (f.type === "number") {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
@@ -327,6 +424,10 @@ export default function CadastrosPage() {
           // text / color — na edição enviamos mesmo vazio (permite limpar campos opcionais)
           if (editingId !== null || (v !== "" && v !== undefined)) body[f.key] = v ?? "";
         }
+      }
+      // Área pertence ao cliente ativo: acrescenta o vínculo ao criar.
+      if (sel.escopoCliente?.injeta && clienteAtivo && editingId === null) {
+        body.cliente = clienteAtivo.id;
       }
       if (editingId !== null) {
         await api(`/${sel.endpoint}/${editingId}/`, { method: "PATCH", body });
@@ -405,8 +506,21 @@ export default function CadastrosPage() {
         </Card>
 
         <div className="space-y-4">
-          {/* Formulário de criar/editar — somente Admin (curadoria centralizada). */}
-          {podeEditar ? (
+          {/* Áreas/Setores exigem um cliente ativo (elas pertencem a ele). */}
+          {precisaCliente ? (
+            <Card>
+              <EmptyState
+                icon={Building2}
+                title="Selecione um cliente"
+                description="Áreas e setores pertencem a um cliente. Ative um cliente no seletor do topo para cadastrá-los."
+                action={
+                  <Link href="/clientes">
+                    <Button icon={Building2}>Ir para Clientes</Button>
+                  </Link>
+                }
+              />
+            </Card>
+          ) : podeEditar ? (
             <Card>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-fg">
@@ -458,6 +572,18 @@ export default function CadastrosPage() {
                           </option>
                         ))}
                       </Select>
+                    ) : f.type === "ref" ? (
+                      <Select
+                        value={(form[f.key] as string) ?? ""}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      >
+                        <option value="">Selecione…</option>
+                        {(options[f.optionsEndpoint ?? ""] ?? []).map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.identificacao || o.nome}
+                          </option>
+                        ))}
+                      </Select>
                     ) : (
                       <Input
                         type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
@@ -490,6 +616,7 @@ export default function CadastrosPage() {
           )}
 
           {/* Busca */}
+          {!precisaCliente && (
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
             <Input
@@ -502,8 +629,9 @@ export default function CadastrosPage() {
               className="pl-9"
             />
           </div>
+          )}
 
-          {loading ? (
+          {precisaCliente ? null : loading ? (
             <Card>
               <Spinner />
             </Card>
