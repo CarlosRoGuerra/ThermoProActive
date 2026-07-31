@@ -161,6 +161,18 @@ class ClasseISO(models.TextChoices):
     IV = "IV", "Classe IV (base flexível)"
 
 
+class CriticidadeEquip(models.TextChoices):
+    """
+    Criticidade do equipamento para o processo produtivo (padrão A/B/C).
+    Norteia a periodicidade de monitoramento contratada (ex.: A = mensal,
+    B = bimestral, C = trimestral — varia por contrato do cliente).
+    """
+
+    A = "A", "A — Alta (crítico ao processo)"
+    B = "B", "B — Média (importante)"
+    C = "C", "C — Baixa (auxiliar)"
+
+
 class Equipamento(BaseModel):
     """
     Local de inspeção [Equipamento] / máquina — itens 2.2.1.17 e 3.1.8.
@@ -184,7 +196,13 @@ class Equipamento(BaseModel):
     )
     tag = models.CharField("TAG", max_length=60, help_text="Identificação no campo (ex.: BBA-101)")
     nome = models.CharField("Nome/Descrição", max_length=160)
-    tipo = models.CharField("Tipo de equipamento", max_length=80, blank=True)
+    # Tipo vem do catálogo "Tipos de equipamento" (Dados de sistema). O campo texto
+    # `tipo` é mantido sincronizado com o nome, para leitores antigos e relatórios.
+    tipo_equipamento = models.ForeignKey(
+        "TipoEquipamento", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="equipamentos", verbose_name="Tipo de equipamento",
+    )
+    tipo = models.CharField("Tipo (texto)", max_length=80, blank=True)
     fabricante = models.CharField("Fabricante", max_length=80, blank=True)
     modelo = models.CharField("Modelo", max_length=80, blank=True)
     numero_serie = models.CharField("Número de série", max_length=80, blank=True)
@@ -194,11 +212,21 @@ class Equipamento(BaseModel):
         "Classe ISO (vibração)", max_length=3, choices=ClasseISO.choices,
         default=ClasseISO.II, help_text="Define os limiares de severidade da análise de vibração.",
     )
+    criticidade = models.CharField(
+        "Criticidade (importância)", max_length=1, choices=CriticidadeEquip.choices,
+        blank=True, help_text="Classificação A/B/C da importância no processo produtivo.",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "Equipamento"
         verbose_name_plural = "Equipamentos"
         unique_together = [("setor", "tag")]
+
+    def save(self, *args, **kwargs):
+        # Espelha o nome do tipo no campo texto (compatibilidade/relatórios).
+        if self.tipo_equipamento_id:
+            self.tipo = (self.tipo_equipamento.nome or "")[:80]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.tag} — {self.nome}"

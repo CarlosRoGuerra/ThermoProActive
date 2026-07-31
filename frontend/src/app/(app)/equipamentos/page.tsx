@@ -3,18 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Activity, CornerDownRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Activity, Building2, CornerDownRight, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
-import { useClientes } from "@/lib/hierarquia";
 import type { Equipamento, Paginated } from "@/lib/types";
 import {
   Badge,
   Button,
   Card,
   EmptyState,
-  Field,
   Input,
   PageHeader,
   Spinner,
@@ -26,7 +24,6 @@ import {
   TR,
   cn,
 } from "@/components/ui";
-import { Combobox } from "@/components/combobox";
 
 const PAGE_SIZE = 10;
 
@@ -48,32 +45,30 @@ export default function EquipamentosPage() {
   const podeEditar = !!user?.is_interno;
   const podeExcluir = !!user?.pode_excluir;
 
-  const { opcoes: opcoesClientes } = useClientes();
   const { clienteAtivo } = useClienteAtivo();
-  // A tela já entra filtrada pelo cliente ativo (o "ambiente" escolhido).
-  const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
   const [rows, setRows] = useState<Equipamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Ativar um cliente (ou recuperá-lo do localStorage) já aplica o filtro aqui.
+  // A tela mostra sempre os equipamentos do CLIENTE ATIVO. Trocar o cliente no
+  // topo re-filtra aqui automaticamente (mesma lógica das Áreas/Setores).
   useEffect(() => {
-    if (clienteAtivo) setCliente(clienteAtivo.id);
-  }, [clienteAtivo]);
-
-  // O filtro por cliente é aplicado no servidor: evita trazer milhares de
-  // equipamentos de todos os clientes para o navegador.
-  useEffect(() => {
+    if (!clienteAtivo) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const filtro = cliente ? `&setor__area__cliente=${cliente}` : "";
-    api<Paginated<Equipamento>>(`/equipamentos/?page_size=1000${filtro}`)
+    setPage(1);
+    api<Paginated<Equipamento>>(
+      `/equipamentos/?page_size=1000&setor__area__cliente=${clienteAtivo.id}`
+    )
       .then((d) => setRows(d.results))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-    setPage(1);
-  }, [cliente]);
+  }, [clienteAtivo]);
 
   async function remover(e: Equipamento) {
     if (!confirm(`Remover o equipamento “${e.tag}”?`)) return;
@@ -134,9 +129,13 @@ export default function EquipamentosPage() {
       <PageHeader
         icon={Activity}
         title="Equipamentos"
-        description="Máquinas monitoradas, organizadas por Cliente → Área → Setor."
+        description={
+          clienteAtivo
+            ? `Equipamentos de ${clienteAtivo.nome_fantasia || clienteAtivo.nome}, por Área → Setor.`
+            : "Máquinas monitoradas, organizadas por Cliente → Área → Setor."
+        }
         actions={
-          podeEditar ? (
+          podeEditar && clienteAtivo ? (
             <Link href="/equipamentos/novo">
               <Button icon={Plus}>Novo equipamento</Button>
             </Link>
@@ -144,34 +143,36 @@ export default function EquipamentosPage() {
         }
       />
 
-      {/* Filtros */}
-      <Card>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Filtrar por cliente">
-            <Combobox
-              value={cliente}
-              onChange={setCliente}
-              options={opcoesClientes}
-              placeholder="Todos os clientes"
-              limparLabel="Todos os clientes"
-            />
-          </Field>
-          <Field label="Buscar">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
-              <Input
-                value={busca}
-                onChange={(e) => {
-                  setBusca(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="TAG, nº de série, fabricante…"
-                className="pl-9"
-              />
-            </div>
-          </Field>
+      {/* Sem cliente ativo não há o que mostrar — os equipamentos são dele. */}
+      {!clienteAtivo && (
+        <Card>
+          <EmptyState
+            icon={Building2}
+            title="Selecione um cliente"
+            description="Os equipamentos pertencem a um cliente. Ative um cliente no seletor do topo para vê-los e cadastrá-los."
+            action={
+              <Link href="/clientes">
+                <Button icon={Building2}>Ir para Clientes</Button>
+              </Link>
+            }
+          />
+        </Card>
+      )}
+
+      {clienteAtivo && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
+          <Input
+            value={busca}
+            onChange={(e) => {
+              setBusca(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Buscar por TAG, nº de série, fabricante…"
+            className="pl-9"
+          />
         </div>
-      </Card>
+      )}
 
       {msg && (
         <Card>
@@ -179,7 +180,7 @@ export default function EquipamentosPage() {
         </Card>
       )}
 
-      {loading ? (
+      {!clienteAtivo ? null : loading ? (
         <Card>
           <Spinner />
         </Card>
@@ -191,9 +192,7 @@ export default function EquipamentosPage() {
             description={
               busca
                 ? `Nenhum equipamento corresponde a “${busca}”.`
-                : cliente
-                  ? "Este cliente ainda não tem equipamentos cadastrados."
-                  : "Cadastre o primeiro equipamento para começar a monitorá-lo."
+                : "Este cliente ainda não tem equipamentos cadastrados."
             }
             action={
               !busca && podeEditar ? (

@@ -102,6 +102,11 @@ class EquipamentoSerializer(serializers.ModelSerializer):
     nivel = serializers.IntegerField(read_only=True)
     caminho = serializers.CharField(read_only=True)
     qtd_subitens = serializers.IntegerField(source="subitens.count", read_only=True)
+    # Tipo vindo do catálogo (Dados de sistema): grava por id, lê o nome.
+    tipo_equipamento_nome = serializers.CharField(
+        source="tipo_equipamento.nome", read_only=True, default=None
+    )
+    criticidade_display = serializers.CharField(source="get_criticidade_display", read_only=True)
 
     class Meta:
         model = Equipamento
@@ -109,11 +114,13 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             "id", "setor", "setor_nome", "area_id", "area_nome", "cliente_id",
             "equipamento_pai", "equipamento_pai_tag", "is_subitem", "nivel",
             "caminho", "qtd_subitens",
-            "tag", "nome", "tipo",
+            "tag", "nome", "tipo_equipamento", "tipo_equipamento_nome", "tipo",
             "fabricante", "modelo", "numero_serie", "potencia_kw",
             "rotacao_nominal_rpm", "classe_iso", "classe_iso_display",
+            "criticidade", "criticidade_display",
             "componentes", "criado_em",
         ]
+        read_only_fields = ["tipo"]
 
     def validate(self, attrs):
         """Roda a checagem de ciclo do modelo também na API."""

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Activity, ArrowLeft, MapPin, Save, Settings } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { useAreasSetores, useClientes } from "@/lib/hierarquia";
+import { useClienteAtivo } from "@/lib/cliente-ativo";
+import { useAreasSetores } from "@/lib/hierarquia";
 import type { Equipamento, Paginated } from "@/lib/types";
 import { Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { Combobox } from "@/components/combobox";
@@ -20,19 +21,22 @@ const CLASSES_ISO = [
 type Form = {
   tag: string;
   nome: string;
-  tipo: string;
+  tipo_equipamento: string; // id do catálogo "Tipos de equipamento"
   fabricante: string;
   modelo: string;
   numero_serie: string;
   potencia_kw: string;
   rotacao_nominal_rpm: string;
   classe_iso: string;
+  criticidade: string;
 };
 
 const FORM_VAZIO: Form = {
-  tag: "", nome: "", tipo: "", fabricante: "", modelo: "", numero_serie: "",
-  potencia_kw: "", rotacao_nominal_rpm: "", classe_iso: "II",
+  tag: "", nome: "", tipo_equipamento: "", fabricante: "", modelo: "", numero_serie: "",
+  potencia_kw: "", rotacao_nominal_rpm: "", classe_iso: "II", criticidade: "",
 };
+
+type OpcaoTipo = { id: number; nome: string };
 
 function Secao({
   icon: Icon,
@@ -60,18 +64,32 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   const router = useRouter();
   const editando = equipamentoId !== undefined;
 
+  const { clienteAtivo } = useClienteAtivo();
   const [form, setForm] = useState<Form>(FORM_VAZIO);
-  const [cliente, setCliente] = useState<number | "">("");
+  // O cliente vem do "ambiente" ativo — não se escolhe de novo aqui.
+  const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
   const [area, setArea] = useState<number | "">("");
   const [setor, setSetor] = useState<number | "">("");
   const [pai, setPai] = useState<number | "">("");
   const [candidatosPai, setCandidatosPai] = useState<Equipamento[]>([]);
+  const [tiposEquip, setTiposEquip] = useState<OpcaoTipo[]>([]);
   const [carregando, setCarregando] = useState(editando);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const { opcoes: opcoesClientes } = useClientes();
   const { opcoesAreas, opcoesSetores } = useAreasSetores(cliente, area);
+
+  // Novo equipamento: segue o cliente ativo (troca de cliente no topo reflete aqui).
+  useEffect(() => {
+    if (!editando && clienteAtivo) setCliente(clienteAtivo.id);
+  }, [clienteAtivo, editando]);
+
+  // Tipos de equipamento vêm do catálogo (Dados de sistema).
+  useEffect(() => {
+    api<Paginated<OpcaoTipo>>("/tipos-equipamento/?page_size=1000")
+      .then((d) => setTiposEquip(d.results))
+      .catch(() => setTiposEquip([]));
+  }, []);
 
   // Possíveis "equipamentos principais": os do mesmo setor, menos o próprio.
   useEffect(() => {
@@ -100,13 +118,14 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         setForm({
           tag: e.tag ?? "",
           nome: e.nome ?? "",
-          tipo: e.tipo ?? "",
+          tipo_equipamento: e.tipo_equipamento ? String(e.tipo_equipamento) : "",
           fabricante: e.fabricante ?? "",
           modelo: e.modelo ?? "",
           numero_serie: e.numero_serie ?? "",
           potencia_kw: e.potencia_kw ? String(e.potencia_kw) : "",
           rotacao_nominal_rpm: e.rotacao_nominal_rpm ? String(e.rotacao_nominal_rpm) : "",
           classe_iso: e.classe_iso ?? "II",
+          criticidade: e.criticidade ?? "",
         });
         setCliente(e.cliente_id ?? "");
         // Descobre a área a partir do setor para preencher o passo intermediário.
@@ -132,11 +151,12 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         equipamento_pai: pai === "" ? null : pai,
         tag: form.tag,
         nome: form.nome,
-        tipo: form.tipo,
+        tipo_equipamento: form.tipo_equipamento === "" ? null : Number(form.tipo_equipamento),
         fabricante: form.fabricante,
         modelo: form.modelo,
         numero_serie: form.numero_serie,
         classe_iso: form.classe_iso,
+        criticidade: form.criticidade,
       };
       body.potencia_kw = form.potencia_kw === "" ? null : Number(form.potencia_kw);
       body.rotacao_nominal_rpm =
@@ -181,27 +201,18 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         </p>
       </div>
 
-      {/* --- Localização (cascata) --- */}
+      {/* --- Localização (dentro do cliente ativo) --- */}
       <Card>
         <Secao
           icon={MapPin}
           titulo="Localização"
-          descricao="Escolha o cliente e desça até o setor onde a máquina está instalada."
+          descricao={
+            clienteAtivo
+              ? `Cliente: ${clienteAtivo.nome_fantasia || clienteAtivo.nome}. Escolha a área e o setor.`
+              : "Ative um cliente no topo para cadastrar equipamentos."
+          }
         />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Cliente *">
-            <Combobox
-              value={cliente}
-              onChange={(v) => {
-                setCliente(v);
-                setArea("");
-                setSetor("");
-              }}
-              options={opcoesClientes}
-              placeholder="Buscar cliente…"
-              permiteLimpar={false}
-            />
-          </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Área *">
             <Combobox
               value={area}
@@ -211,7 +222,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
                 setPai("");
               }}
               options={opcoesAreas}
-              placeholder={cliente ? "Buscar área…" : "Escolha o cliente antes"}
+              placeholder={cliente ? "Buscar área…" : "Ative um cliente antes"}
               emptyText="Nenhuma área cadastrada para este cliente."
               disabled={!cliente}
               permiteLimpar={false}
@@ -278,7 +289,17 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
             />
           </Field>
           <Field label="Tipo de equipamento">
-            <Input value={form.tipo} maxLength={80} onChange={(e) => set("tipo", e.target.value)} />
+            <Select
+              value={form.tipo_equipamento}
+              onChange={(e) => set("tipo_equipamento", e.target.value)}
+            >
+              <option value="">Selecione…</option>
+              {tiposEquip.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nome}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="Fabricante">
             <Input
@@ -332,7 +353,19 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
               ))}
             </Select>
           </Field>
+          <Field label="Criticidade (importância)">
+            <Select value={form.criticidade} onChange={(e) => set("criticidade", e.target.value)}>
+              <option value="">— não classificado —</option>
+              <option value="A">A — Alta (crítico ao processo)</option>
+              <option value="B">B — Média (importante)</option>
+              <option value="C">C — Baixa (auxiliar)</option>
+            </Select>
+          </Field>
         </div>
+        <p className="mt-3 text-xs text-fg-subtle">
+          A criticidade (padrão A/B/C) indica a importância do equipamento no processo e
+          norteia a periodicidade de monitoramento contratada.
+        </p>
       </Card>
 
       {msg && (

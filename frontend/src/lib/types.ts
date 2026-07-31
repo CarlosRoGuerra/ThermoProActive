@@ -57,7 +57,9 @@ export interface Equipamento {
   qtd_subitens: number;
   tag: string;
   nome: string;
-  tipo: string;
+  tipo: string; // texto legado (espelha o nome do tipo)
+  tipo_equipamento: number | null; // FK ao catálogo "Tipos de equipamento"
+  tipo_equipamento_nome: string | null;
   fabricante: string;
   modelo: string;
   numero_serie: string;
@@ -65,6 +67,8 @@ export interface Equipamento {
   rotacao_nominal_rpm: number | null;
   classe_iso: string;
   classe_iso_display: string;
+  criticidade: string; // "" | "A" | "B" | "C"
+  criticidade_display: string;
   componentes: Componente[];
 }
 
