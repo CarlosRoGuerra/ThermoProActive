@@ -60,6 +60,7 @@ const ESTRUTURA_CLIENTE: { href: string; label: string }[] = [
   { href: "/cadastros?item=areas", label: "Áreas" },
   { href: "/cadastros?item=setores", label: "Setores" },
   { href: "/equipamentos", label: "Equipamentos" },
+  { href: "/rotas", label: "Rotas" },
 ];
 
 // Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há

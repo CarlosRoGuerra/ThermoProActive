@@ -505,8 +505,14 @@ class Rota(BaseModel):
 
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="rotas")
     nome = models.CharField("Nome da rota", max_length=120)
+    # Tecnologia da rota (ex.: Vibração, Termografia) — uma rota é por técnica.
+    tecnologia = models.ForeignKey(
+        TecnologiaAnalise, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="rotas", verbose_name="Tecnologia",
+    )
     descricao = models.TextField("Descrição", blank=True)
     periodicidade_dias = models.PositiveIntegerField("Periodicidade (dias)", null=True, blank=True)
+    # Equipamentos que compõem a rota (montados pela árvore Área → Setor → Equipamento).
     equipamentos = models.ManyToManyField(Equipamento, blank=True, related_name="rotas")
 
     class Meta(BaseModel.Meta):

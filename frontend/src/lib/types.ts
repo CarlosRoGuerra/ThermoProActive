@@ -116,6 +116,20 @@ export interface Cliente {
   logomarca: string | null;
 }
 
+export interface Rota {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  nome: string;
+  tecnologia: number | null;
+  tecnologia_nome: string | null;
+  descricao: string;
+  periodicidade_dias: number | null;
+  equipamentos: number[];
+  qtd_equipamentos: number;
+  criado_em: string;
+}
+
 export interface MedicaoVibracao {
   id: number;
   inspecao: number;

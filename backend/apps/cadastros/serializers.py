@@ -215,6 +215,7 @@ class GrupoAcessoSerializer(serializers.ModelSerializer):
 
 class RotaSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True, default=None)
     qtd_equipamentos = serializers.IntegerField(source="equipamentos.count", read_only=True)
 
     class Meta:
