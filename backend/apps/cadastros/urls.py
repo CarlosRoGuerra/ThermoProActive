@@ -5,6 +5,7 @@ from .views import (
     ClassificacaoInspecaoViewSet,
     ClienteViewSet,
     ComponenteViewSet,
+    CondicaoViewSet,
     EmpresaViewSet,
     EquipamentoViewSet,
     FalhaRecorrenteViewSet,
@@ -43,6 +44,7 @@ router.register("tipos-componente", TipoComponenteViewSet)
 router.register("tipos-anomalia", TipoAnomaliaViewSet)
 router.register("tipos-recomendacao", TipoRecomendacaoViewSet)
 router.register("tipos-criticidade", TipoCriticidadeViewSet)
+router.register("condicoes", CondicaoViewSet)
 router.register("grupos-acesso", GrupoAcessoViewSet)
 
 urlpatterns = router.urls

@@ -28,7 +28,7 @@ import {
   cn,
 } from "@/components/ui";
 
-type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref";
+type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref" | "boolean";
 type FieldDef = {
   key: string;
   label: string;
@@ -77,6 +77,7 @@ const COL_LABELS: Record<string, string> = {
   software_analise: "Software",
   complemento: "Complemento",
   area_nome: "Área",
+  gera_acao: "Gera análise?",
 };
 
 // Estrutura do cliente ativo (Cliente → Área → Setor). NÃO é dado de sistema:
@@ -196,6 +197,21 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
       { key: "cor", label: "Cor", type: "color" },
     ],
     columns: ["nome", "nivel", "cor"],
+  },
+  {
+    // Condição operacional do equipamento no momento da inspeção de campo.
+    // "gera_acao" = ao selecioná-la, o campo exige registrar uma análise.
+    key: "condicoes",
+    label: "Condições",
+    endpoint: "condicoes",
+    fields: [
+      { key: "nome", label: "Nome", required: true, maxLength: 250 },
+      { key: "gera_acao", label: "Gera análise?", type: "boolean" },
+      { key: "nivel", label: "Nível", type: "number" },
+      { key: "cor", label: "Cor", type: "color" },
+      { key: "descricao", label: "Descrição" },
+    ],
+    columns: ["nome", "gera_acao", "nivel", "cor"],
   },
   catSimples("classificacoes-inspecao", "Classificações de inspeção"),
   catSimples("tipos-inspecao", "Tipos de inspeção"),
@@ -395,6 +411,8 @@ function CadastrosInner() {
         f[fd.key] = Array.isArray(r[fd.key]) ? (r[fd.key] as number[]) : [];
       } else if (fd.type === "color") {
         f[fd.key] = String(r[fd.key] ?? "#64748b");
+      } else if (fd.type === "boolean") {
+        f[fd.key] = r[fd.key] ? "true" : "false";
       } else {
         f[fd.key] = r[fd.key] == null ? "" : String(r[fd.key]);
       }
@@ -420,6 +438,8 @@ function CadastrosInner() {
         const v = form[f.key];
         if (f.type === "multiref") {
           body[f.key] = Array.isArray(v) ? v : [];
+        } else if (f.type === "boolean") {
+          body[f.key] = v === "true";
         } else if (f.type === "escolha" || f.type === "ref") {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
         } else if (f.type === "number") {
@@ -592,6 +612,14 @@ function CadastrosInner() {
                           </option>
                         ))}
                       </Select>
+                    ) : f.type === "boolean" ? (
+                      <Select
+                        value={(form[f.key] as string) ?? "false"}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      >
+                        <option value="false">Não</option>
+                        <option value="true">Sim</option>
+                      </Select>
                     ) : f.type === "ref" ? (
                       <Select
                         value={(form[f.key] as string) ?? ""}
@@ -689,6 +717,8 @@ function CadastrosInner() {
                             />
                             {String(r[c] ?? "")}
                           </span>
+                        ) : typeof r[c] === "boolean" ? (
+                          <Badge tone={r[c] ? "warning" : "neutral"}>{r[c] ? "Sim" : "Não"}</Badge>
                         ) : Array.isArray(r[c]) ? (
                           (r[c] as TecOption[]).length ? (
                             <span className="flex flex-wrap gap-1">

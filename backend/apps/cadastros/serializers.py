@@ -5,6 +5,7 @@ from .models import (
     ClassificacaoInspecao,
     Cliente,
     Componente,
+    Condicao,
     Empresa,
     Equipamento,
     FalhaRecorrente,
@@ -204,6 +205,12 @@ class TipoRecomendacaoSerializer(TecnologiasVinculoMixin):
 class TipoCriticidadeSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoCriticidade
+        exclude = ["ativo"]
+
+
+class CondicaoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Condicao
         exclude = ["ativo"]
 
 

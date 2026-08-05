@@ -492,6 +492,31 @@ class TipoCriticidade(Catalogo):
         ordering = ["nivel"]
 
 
+class Condicao(Catalogo):
+    """
+    Condição operacional do equipamento no momento da inspeção de campo.
+
+    Ex.: "OK", "Parado para manutenção", "Parado para produção" (não geram ação) ou
+    condições que exigem registrar uma análise (`gera_acao=True` → o formulário de
+    campo abre o botão de análise). É distinta do *grau de risco* (essa é a situação
+    do equipamento na coleta; o grau de risco é definido depois, na análise final).
+    """
+
+    gera_acao = models.BooleanField(
+        "Gera análise", default=False,
+        help_text="Se marcado, selecionar esta condição exige registrar uma análise no campo.",
+    )
+    cor = models.CharField("Cor (hex)", max_length=7, default="#64748b", help_text="Ex.: #22c55e")
+    nivel = models.PositiveSmallIntegerField(
+        "Nível", default=0, help_text="Ordem de severidade (0 = menor)."
+    )
+
+    class Meta(Catalogo.Meta):
+        verbose_name = "Condição"
+        verbose_name_plural = "Condições"
+        ordering = ["nivel", "nome"]
+
+
 class GrupoAcesso(Catalogo):
     """Grupos de acesso — item 2.2.1.13 (agrupamento lógico; permissões finas por perfil)."""
 

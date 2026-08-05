@@ -8,6 +8,7 @@ from .models import (
     ClassificacaoInspecao,
     Cliente,
     Componente,
+    Condicao,
     Empresa,
     Equipamento,
     FalhaRecorrente,
@@ -29,6 +30,7 @@ from .serializers import (
     ClassificacaoInspecaoSerializer,
     ClienteSerializer,
     ComponenteSerializer,
+    CondicaoSerializer,
     EmpresaSerializer,
     EquipamentoSerializer,
     FalhaRecorrenteSerializer,
@@ -196,6 +198,13 @@ class TipoRecomendacaoViewSet(CatalogoViewSet):
 class TipoCriticidadeViewSet(CatalogoViewSet):
     queryset = TipoCriticidade.objects.ativos()
     serializer_class = TipoCriticidadeSerializer
+
+
+class CondicaoViewSet(CatalogoViewSet):
+    queryset = Condicao.objects.ativos()
+    serializer_class = CondicaoSerializer
+    # Filtro usado no campo: separar condições que exigem análise das que não exigem.
+    filterset_fields = ["gera_acao"]
 
 
 class GrupoAcessoViewSet(CatalogoViewSet):
