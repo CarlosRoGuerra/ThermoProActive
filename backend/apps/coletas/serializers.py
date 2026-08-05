@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from .models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
+from .models import (
+    Achado,
+    AchadoImagem,
+    Carregamento,
+    Inspecao,
+    ItemInspecao,
+    MedicaoTecnica,
+    MedicaoTermografia,
+    MedicaoVibracao,
+)
 
 
 class MedicaoVibracaoSerializer(serializers.ModelSerializer):
@@ -120,3 +129,120 @@ class InspecaoListSerializer(serializers.ModelSerializer):
             "tecnico_nome", "data", "status", "status_display",
             "criticidade_maxima", "qtd_medicoes", "criado_em",
         ]
+
+
+# =============================================================================
+# Fluxo de inspeção campo → escritório (Carregamento → Item → Achado → Imagens)
+# =============================================================================
+
+
+class AchadoImagemSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+
+    class Meta:
+        model = AchadoImagem
+        fields = ["id", "achado", "tipo", "tipo_display", "arquivo", "legenda", "criado_em"]
+
+
+class AchadoSerializer(serializers.ModelSerializer):
+    # Rastreabilidade (somente leitura — vem do item/carregamento/equipamento).
+    equipamento_tag = serializers.CharField(source="item.equipamento.tag", read_only=True)
+    equipamento_nome = serializers.CharField(source="item.equipamento.nome", read_only=True)
+    equipamento_id = serializers.IntegerField(source="item.equipamento_id", read_only=True)
+    area_nome = serializers.CharField(source="item.equipamento.setor.area.nome", read_only=True)
+    setor_nome = serializers.CharField(source="item.equipamento.setor.nome", read_only=True)
+    tipo_equipamento_nome = serializers.CharField(
+        source="item.equipamento.tipo_equipamento.nome", read_only=True, default=None
+    )
+    tecnologia_nome = serializers.CharField(
+        source="item.carregamento.tecnologia.nome", read_only=True
+    )
+    analista_nome = serializers.CharField(source="item.carregamento.analista.nome", read_only=True)
+    data = serializers.DateField(source="item.carregamento.data", read_only=True)
+    # Nomes legíveis dos catálogos selecionados.
+    tipo_componente_nome = serializers.CharField(source="tipo_componente.nome", read_only=True, default=None)
+    tipo_anomalia_nome = serializers.CharField(source="tipo_anomalia.nome", read_only=True, default=None)
+    recomendacao_nome = serializers.CharField(source="recomendacao.nome", read_only=True, default=None)
+    grau_risco_nome = serializers.CharField(source="grau_risco.nome", read_only=True, default=None)
+    imagens = AchadoImagemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Achado
+        exclude = ["ativo"]
+
+
+class ItemInspecaoSerializer(serializers.ModelSerializer):
+    equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
+    equipamento_nome = serializers.CharField(source="equipamento.nome", read_only=True)
+    area_nome = serializers.CharField(source="equipamento.setor.area.nome", read_only=True)
+    setor_nome = serializers.CharField(source="equipamento.setor.nome", read_only=True)
+    tipo_equipamento_nome = serializers.CharField(
+        source="equipamento.tipo_equipamento.nome", read_only=True, default=None
+    )
+    condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
+    condicao_gera_acao = serializers.BooleanField(source="condicao.gera_acao", read_only=True, default=None)
+    data = serializers.DateField(source="carregamento.data", read_only=True)
+    achados = AchadoSerializer(many=True, read_only=True)
+    qtd_achados = serializers.IntegerField(source="achados.count", read_only=True)
+
+    class Meta:
+        model = ItemInspecao
+        exclude = ["ativo"]
+
+
+class CarregamentoListSerializer(serializers.ModelSerializer):
+    """Versão enxuta para a listagem (sem itens aninhados)."""
+
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
+    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default=None)
+    analista_nome = serializers.CharField(source="analista.nome", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
+    pode_transferir = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Carregamento
+        fields = [
+            "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome",
+            "rota", "rota_nome", "analista", "analista_nome", "data",
+            "numero_relatorio", "status", "status_display", "qtd_itens",
+            "pode_transferir", "transferido_em", "criado_em",
+        ]
+
+
+class CarregamentoSerializer(serializers.ModelSerializer):
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
+    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default=None)
+    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default=None)
+    analista_nome = serializers.CharField(source="analista.nome", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    itens = ItemInspecaoSerializer(many=True, read_only=True)
+    qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
+    qtd_pendentes = serializers.IntegerField(source="itens_pendentes.count", read_only=True)
+    pode_transferir = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Carregamento
+        exclude = ["ativo"]
+        # O analista é opcional no POST: assume o usuário autenticado (ver create()).
+        extra_kwargs = {"analista": {"required": False}}
+
+    def create(self, validated_data):
+        # Analista padrão = usuário logado; ao carregar uma rota, materializa um
+        # item por equipamento selecionado nela.
+        request = self.context.get("request")
+        if request and not validated_data.get("analista"):
+            validated_data["analista"] = request.user
+        carregamento = super().create(validated_data)
+        if carregamento.rota_id:
+            # Ordem natural de inspeção: área → setor → tag (não a ordem de cadastro).
+            equipamentos = carregamento.rota.equipamentos.order_by(
+                "setor__area__nome", "setor__nome", "tag"
+            )
+            ItemInspecao.objects.bulk_create([
+                ItemInspecao(carregamento=carregamento, equipamento=eq, ordem=i)
+                for i, eq in enumerate(equipamentos, start=1)
+            ])
+        return carregamento

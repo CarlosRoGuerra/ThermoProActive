@@ -2,17 +2,33 @@ from collections import defaultdict
 
 from django.db.models import Count, Sum
 from django.utils import timezone
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import InternoEditaClienteVisualiza
 
-from .models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
+from .models import (
+    Achado,
+    AchadoImagem,
+    Carregamento,
+    Inspecao,
+    ItemInspecao,
+    MedicaoTecnica,
+    MedicaoTermografia,
+    MedicaoVibracao,
+    StatusCarregamento,
+)
 from .serializers import (
+    AchadoImagemSerializer,
+    AchadoSerializer,
+    CarregamentoListSerializer,
+    CarregamentoSerializer,
     InspecaoListSerializer,
     InspecaoSerializer,
+    ItemInspecaoSerializer,
     MedicaoTecnicaSerializer,
     MedicaoTermografiaSerializer,
     MedicaoVibracaoSerializer,
@@ -87,6 +103,122 @@ class MedicaoTecnicaViewSet(viewsets.ModelViewSet):
             "equipamento", "componente", "instrumento", "inspecao"
         )
         return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+
+
+# =============================================================================
+# Fluxo de inspeção campo → escritório
+# =============================================================================
+
+
+class CarregamentoViewSet(viewsets.ModelViewSet):
+    """Análise de campo: "carregar rota", listar itens e transferir."""
+
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["cliente", "tecnologia", "status", "analista", "rota"]
+    search_fields = ["numero_relatorio"]
+    ordering_fields = ["data", "criado_em"]
+
+    def get_queryset(self):
+        qs = (
+            Carregamento.objects.ativos()
+            .select_related("cliente", "tecnologia", "rota", "instrumento", "analista")
+            .prefetch_related(
+                "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
+            )
+        )
+        return escopo_cliente(qs, self.request.user)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return CarregamentoListSerializer
+        return CarregamentoSerializer
+
+    @action(detail=True, methods=["post"])
+    def transferir(self, request, pk=None):
+        """Encerra a rota: exige condição em TODOS os itens; envia à Análise final."""
+        carregamento = self.get_object()
+        if carregamento.status != StatusCarregamento.EM_CAMPO:
+            return Response(
+                {"detail": "Esta rota já foi transferida ou descartada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        pendentes = carregamento.itens_pendentes.count()
+        if pendentes:
+            return Response(
+                {"detail": f"Há {pendentes} equipamento(s) sem condição. "
+                           "Preencha a condição de todos antes de transferir."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        carregamento.status = StatusCarregamento.TRANSFERIDA
+        carregamento.transferido_em = timezone.now()
+        carregamento.save(update_fields=["status", "transferido_em", "atualizado_em"])
+        return Response(self.get_serializer(carregamento).data)
+
+    @action(detail=True, methods=["post"])
+    def descartar(self, request, pk=None):
+        """"Apagar tudo": marca o carregamento como descartado (sai da tela de campo)."""
+        carregamento = self.get_object()
+        carregamento.status = StatusCarregamento.DESCARTADA
+        carregamento.save(update_fields=["status", "atualizado_em"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ItemInspecaoViewSet(viewsets.ModelViewSet):
+    """Itens da folha de campo: definir condição e "adicionar/remover linha"."""
+
+    serializer_class = ItemInspecaoSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["carregamento", "equipamento", "condicao"]
+
+    def get_queryset(self):
+        qs = (
+            ItemInspecao.objects.ativos()
+            .select_related("equipamento__setor__area", "condicao", "carregamento")
+            .prefetch_related("achados__imagens")
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="carregamento__cliente")
+
+
+class AchadoViewSet(viewsets.ModelViewSet):
+    """
+    Análises (achados). Serve tanto o formulário de campo quanto a Análise final.
+    Filtros de escritório: `item__carregamento__status=TRANSFERIDA`, `confirmada`,
+    `visivel_cliente`, `item__carregamento__tecnologia`.
+    """
+
+    serializer_class = AchadoSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = [
+        "item", "item__carregamento", "item__carregamento__status",
+        "item__carregamento__tecnologia", "confirmada", "visivel_cliente",
+    ]
+    ordering_fields = ["criado_em", "numero_osp"]
+
+    def get_queryset(self):
+        qs = (
+            Achado.objects.ativos()
+            .select_related(
+                "item__equipamento__setor__area", "item__carregamento__tecnologia",
+                "item__carregamento__analista", "tipo_componente", "tipo_anomalia",
+                "recomendacao", "grau_risco",
+            )
+            .prefetch_related("imagens")
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="item__carregamento__cliente")
+
+
+class AchadoImagemViewSet(viewsets.ModelViewSet):
+    """Upload das evidências (800×600) na Análise final."""
+
+    serializer_class = AchadoImagemSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["achado", "tipo"]
+
+    def get_queryset(self):
+        qs = AchadoImagem.objects.select_related("achado__item__carregamento")
+        return escopo_cliente(
+            qs, self.request.user, campo_cliente="achado__item__carregamento__cliente"
+        )
 
 
 def _conta_criticidade(queryset) -> dict:

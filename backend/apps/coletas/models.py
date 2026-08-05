@@ -11,8 +11,21 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
-from apps.cadastros.models import Cliente, Componente, Equipamento, Instrumento
+from apps.cadastros.models import (
+    Cliente,
+    Componente,
+    Condicao,
+    Equipamento,
+    Instrumento,
+    Rota,
+    TecnologiaAnalise,
+    TipoAnomalia,
+    TipoComponente,
+    TipoCriticidade,
+    TipoRecomendacao,
+)
 from apps.core.models import BaseModel, TimeStampedModel
 
 from . import rules, rules_tecnicas
@@ -319,3 +332,226 @@ class MedicaoTecnica(TimeStampedModel):
         self.criticidade = resultado.criticidade
         self.diagnostico_sugerido = resultado.diagnostico
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# Fluxo de inspeção campo → escritório (spec dos áudios do Fabrício)
+#
+# Máquina de estados em duas etapas:
+#   1) Análise de campo  — o inspetor "carrega uma rota" (Carregamento), percorre
+#      os equipamentos (ItemInspecao), define a Condição de cada um e, quando há
+#      falha, registra uma ou mais análises (Achado). É a "tabela transitória".
+#   2) Transferência     — trava exigindo condição em todos os itens; ao confirmar,
+#      o Carregamento passa a TRANSFERIDA e os Achados aparecem na Análise final.
+#   3) Análise final      — refino no escritório: correção, nº de OSP, upload das
+#      imagens (AchadoImagem) e liberação (visivel_cliente=True) para o portal.
+#
+# Implementado por status/flags (sem cópia física de tabelas): mesmo comportamento,
+# sem duplicação de dados.
+# =============================================================================
+
+
+class StatusCarregamento(models.TextChoices):
+    EM_CAMPO = "EM_CAMPO", "Em campo"
+    TRANSFERIDA = "TRANSFERIDA", "Transferida"
+    DESCARTADA = "DESCARTADA", "Descartada"
+
+
+class Carregamento(BaseModel):
+    """
+    "Carregar rota" da Análise de campo: cabeçalho da inspeção em andamento.
+
+    Enquanto `status=EM_CAMPO` é a folha de campo (transitória). A Transferência
+    valida que todo item tem condição e passa para `TRANSFERIDA`.
+    """
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="carregamentos")
+    tecnologia = models.ForeignKey(
+        TecnologiaAnalise, on_delete=models.PROTECT, related_name="carregamentos",
+        verbose_name="Tecnologia",
+    )
+    rota = models.ForeignKey(
+        Rota, on_delete=models.PROTECT, related_name="carregamentos", null=True, blank=True
+    )
+    instrumento = models.ForeignKey(
+        Instrumento, on_delete=models.SET_NULL, related_name="carregamentos", null=True, blank=True
+    )
+    analista = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="carregamentos",
+        verbose_name="Analista responsável",
+    )
+    data = models.DateField("Data", default=timezone.localdate)
+    # Número do relatório (capa). Novo número ou reaproveitar um existente para
+    # anexar mais rotas ao mesmo relatório — definido na abertura da rota.
+    numero_relatorio = models.CharField("Número do relatório", max_length=40, blank=True)
+    status = models.CharField(
+        max_length=12, choices=StatusCarregamento.choices, default=StatusCarregamento.EM_CAMPO
+    )
+    transferido_em = models.DateTimeField("Transferido em", null=True, blank=True)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Carregamento de rota"
+        verbose_name_plural = "Carregamentos de rota"
+
+    def __str__(self):
+        return f"Carregamento #{self.pk} — {self.tecnologia} — {self.data}"
+
+    @property
+    def itens_pendentes(self):
+        """Itens ainda sem condição — bloqueiam a transferência."""
+        return self.itens.filter(condicao__isnull=True)
+
+    @property
+    def pode_transferir(self) -> bool:
+        return self.status == StatusCarregamento.EM_CAMPO and not self.itens_pendentes.exists()
+
+
+class ItemInspecao(BaseModel):
+    """
+    Uma linha da folha de campo: um equipamento da rota dentro de um Carregamento.
+
+    Pode haver mais de uma linha para o mesmo equipamento ("Adicionar linha", para
+    lançar vários problemas) — distinguidas por `ordem`. A `condicao` é obrigatória
+    para transferir; se ela gerar ação, o item recebe um ou mais `Achado`.
+    """
+
+    carregamento = models.ForeignKey(Carregamento, on_delete=models.CASCADE, related_name="itens")
+    equipamento = models.ForeignKey(
+        Equipamento, on_delete=models.PROTECT, related_name="itens_inspecao"
+    )
+    condicao = models.ForeignKey(
+        Condicao, on_delete=models.SET_NULL, related_name="itens", null=True, blank=True
+    )
+    # Nº da linha dentro do carregamento (código da lista, distinto da tag).
+    ordem = models.PositiveIntegerField("Ordem", default=1)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Item de inspeção"
+        verbose_name_plural = "Itens de inspeção"
+        ordering = ["ordem", "id"]
+
+    def __str__(self):
+        return f"{self.equipamento.tag} (#{self.ordem}) — {self.carregamento_id}"
+
+
+class Achado(BaseModel):
+    """
+    Análise de uma anomalia registrada em um item (o "problema"). Nasce no campo e
+    é refinada no escritório. Vira uma OSP na Análise final.
+
+    Campos comuns a todas as tecnologias + blocos específicos (vibração/termografia).
+    `visivel_cliente` só vai a True quando confirmado no escritório com as imagens.
+    """
+
+    item = models.ForeignKey(ItemInspecao, on_delete=models.CASCADE, related_name="achados")
+
+    # --- Comum a todas as tecnologias ---
+    tipo_componente = models.ForeignKey(
+        TipoComponente, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True
+    )
+    componente_texto = models.CharField(
+        "Componente (texto)", max_length=120, blank=True, help_text="Ex.: DJ5"
+    )
+    detalhe = models.CharField(
+        "Detalhe do componente", max_length=200, blank=True,
+        help_text="Uso interno (ex.: nº da imagem no termovisor) — não sai para o cliente.",
+    )
+    tipo_anomalia = models.ForeignKey(
+        TipoAnomalia, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True
+    )
+    anomalia_texto = models.TextField("Anomalia (texto)", blank=True)
+    recomendacao = models.ForeignKey(
+        TipoRecomendacao, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True
+    )
+    recomendacao_texto = models.TextField("Recomendação (texto)", blank=True)
+    observacoes = models.TextField("Observações", blank=True)
+
+    # --- Vibração ---
+    aceleracao_global = models.DecimalField(
+        "Global de aceleração (g)", max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    velocidade_global = models.DecimalField(
+        "Global de velocidade (mm/s)", max_digits=8, decimal_places=3, null=True, blank=True
+    )
+
+    # --- Termografia: temperaturas ---
+    temperatura_medida = models.DecimalField(
+        "Temperatura medida (°C)", max_digits=6, decimal_places=1, null=True, blank=True
+    )
+    temperatura_referencia = models.DecimalField(
+        "Temperatura de referência (°C)", max_digits=6, decimal_places=1, null=True, blank=True
+    )
+    delta_t = models.DecimalField(
+        "ΔT (°C)", max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+    )
+    carga_percentual = models.DecimalField(
+        "Carga (%)", max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    # Temperaturas corrigidas em função da carga (fórmula a definir com o cliente).
+    temperatura_medida_corrigida = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+    )
+    temperatura_referencia_corrigida = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+    )
+    delta_t_corrigido = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+    )
+
+    # --- Termografia: grandezas elétricas (nominal + fases A/B/C ou R/S/T) ---
+    corrente_nominal = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    corrente_a = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    corrente_b = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    corrente_c = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    tensao_nominal = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    tensao_a = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    tensao_b = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    tensao_c = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+
+    # --- Escritório (Análise final) ---
+    grau_risco = models.ForeignKey(
+        TipoCriticidade, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True,
+        verbose_name="Grau de risco",
+    )
+    numero_osp = models.CharField("Número da OSP", max_length=40, blank=True)
+    confirmada = models.BooleanField("Confirmada no escritório", default=False)
+    visivel_cliente = models.BooleanField("Visível para o cliente", default=False)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Achado / análise"
+        verbose_name_plural = "Achados / análises"
+
+    def __str__(self):
+        return f"Achado #{self.pk} — {self.item.equipamento.tag}"
+
+    def save(self, *args, **kwargs):
+        # ΔT é sempre derivado da medida e da referência.
+        if self.temperatura_medida is not None and self.temperatura_referencia is not None:
+            self.delta_t = self.temperatura_medida - self.temperatura_referencia
+        else:
+            self.delta_t = None
+        super().save(*args, **kwargs)
+
+
+class TipoImagem(models.TextChoices):
+    REAL = "REAL", "Foto real"
+    TERMICA = "TERMICA", "Imagem térmica"
+    TENDENCIA = "TENDENCIA", "Linha de tendência"
+    ESPECTRO = "ESPECTRO", "Espectro"
+
+
+class AchadoImagem(TimeStampedModel):
+    """Evidência anexada no escritório. Padrão 800×600 (validado no upload/serializer)."""
+
+    achado = models.ForeignKey(Achado, on_delete=models.CASCADE, related_name="imagens")
+    tipo = models.CharField("Tipo de imagem", max_length=12, choices=TipoImagem.choices)
+    arquivo = models.ImageField("Arquivo", upload_to="achados/")
+    legenda = models.CharField("Legenda", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "Imagem do achado"
+        verbose_name_plural = "Imagens dos achados"
+        ordering = ["tipo", "id"]
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — Achado #{self.achado_id}"
