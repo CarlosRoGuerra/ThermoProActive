@@ -63,12 +63,18 @@ const ESTRUTURA_CLIENTE: { href: string; label: string }[] = [
   { href: "/rotas", label: "Rotas" },
 ];
 
+// Submenus de Inspeções — o fluxo campo → escritório do Fabrício.
+const INSPECOES_SUBMENU: { href: string; label: string }[] = [
+  { href: "/inspecoes/campo", label: "Análise de campo" },
+  { href: "/inspecoes/final", label: "Análise final" },
+];
+
 // Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há
 // um cliente ativo (ver montarNavInterno).
 const NAV_INTERNO: NavItem[] = [
   { href: "/clientes", label: "Clientes", icon: Building2 },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inspecoes", label: "Inspeções", icon: ClipboardList },
+  { href: "/inspecoes/campo", label: "Inspeções", icon: ClipboardList, children: INSPECOES_SUBMENU },
   { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
   { href: "/laudos", label: "Laudos", icon: FileText },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
@@ -126,6 +132,8 @@ function SidebarContent({
   const { clienteAtivo, limpar: limparCliente } = useClienteAtivo();
   const [submenus, setSubmenus] = useState<Record<string, boolean>>(() => ({
     "/cadastros": pathname.startsWith("/cadastros"),
+    // Inspeções fica aberto em qualquer subrota (campo ou final).
+    "/inspecoes/campo": pathname.startsWith("/inspecoes"),
   }));
 
   return (

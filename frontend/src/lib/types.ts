@@ -130,6 +130,150 @@ export interface Rota {
   criado_em: string;
 }
 
+// --- Fluxo de inspeção campo → escritório ---
+
+export type StatusCarregamento = "EM_CAMPO" | "TRANSFERIDA" | "DESCARTADA";
+export type TipoImagemAchado = "REAL" | "TERMICA" | "TENDENCIA" | "ESPECTRO";
+
+export interface AchadoImagem {
+  id: number;
+  achado: number;
+  tipo: TipoImagemAchado;
+  tipo_display: string;
+  arquivo: string;
+  legenda: string;
+  criado_em: string;
+}
+
+// Campos numéricos vêm como string do DRF (DecimalField).
+export interface Achado {
+  id: number;
+  item: number;
+  // Comum
+  tipo_componente: number | null;
+  tipo_componente_nome: string | null;
+  componente_texto: string;
+  detalhe: string;
+  tipo_anomalia: number | null;
+  tipo_anomalia_nome: string | null;
+  anomalia_texto: string;
+  recomendacao: number | null;
+  recomendacao_nome: string | null;
+  recomendacao_texto: string;
+  observacoes: string;
+  // Vibração
+  aceleracao_global: string | null;
+  velocidade_global: string | null;
+  // Termografia — temperaturas
+  temperatura_medida: string | null;
+  temperatura_referencia: string | null;
+  delta_t: string | null;
+  carga_percentual: string | null;
+  temperatura_medida_corrigida: string | null;
+  temperatura_referencia_corrigida: string | null;
+  delta_t_corrigido: string | null;
+  // Termografia — grandezas elétricas (nominal + fases A/B/C · R/S/T)
+  corrente_nominal: string | null;
+  corrente_a: string | null;
+  corrente_b: string | null;
+  corrente_c: string | null;
+  tensao_nominal: string | null;
+  tensao_a: string | null;
+  tensao_b: string | null;
+  tensao_c: string | null;
+  // Escritório
+  grau_risco: number | null;
+  grau_risco_nome: string | null;
+  numero_osp: string;
+  confirmada: boolean;
+  visivel_cliente: boolean;
+  // Rastreabilidade (somente leitura)
+  equipamento_tag: string;
+  equipamento_nome: string;
+  equipamento_id: number;
+  area_nome: string;
+  setor_nome: string;
+  tipo_equipamento_nome: string | null;
+  tecnologia: number;
+  tecnologia_nome: string;
+  analista_nome: string;
+  data: string;
+  imagens: AchadoImagem[];
+  criado_em: string;
+}
+
+export interface ItemInspecao {
+  id: number;
+  carregamento: number;
+  equipamento: number;
+  condicao: number | null;
+  ordem: number;
+  equipamento_tag: string;
+  equipamento_nome: string;
+  area_nome: string;
+  setor_nome: string;
+  tipo_equipamento_nome: string | null;
+  condicao_nome: string | null;
+  condicao_gera_acao: boolean | null;
+  data: string;
+  achados: Achado[];
+  qtd_achados: number;
+  criado_em: string;
+}
+
+export interface Carregamento {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  tecnologia: number;
+  tecnologia_nome: string;
+  rota: number | null;
+  rota_nome: string | null;
+  instrumento: number | null;
+  instrumento_nome: string | null;
+  analista: number;
+  analista_nome: string;
+  data: string;
+  numero_relatorio: string;
+  status: StatusCarregamento;
+  status_display: string;
+  transferido_em: string | null;
+  itens: ItemInspecao[];
+  qtd_itens: number;
+  qtd_pendentes: number;
+  pode_transferir: boolean;
+  criado_em: string;
+}
+
+export interface CarregamentoLista {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  tecnologia: number;
+  tecnologia_nome: string;
+  rota: number | null;
+  rota_nome: string | null;
+  analista: number;
+  analista_nome: string;
+  data: string;
+  numero_relatorio: string;
+  status: StatusCarregamento;
+  status_display: string;
+  qtd_itens: number;
+  pode_transferir: boolean;
+  transferido_em: string | null;
+  criado_em: string;
+}
+
+export interface Condicao {
+  id: number;
+  nome: string;
+  gera_acao: boolean;
+  cor: string;
+  nivel: number;
+  descricao: string;
+}
+
 export interface MedicaoVibracao {
   id: number;
   inspecao: number;

@@ -154,6 +154,7 @@ class AchadoSerializer(serializers.ModelSerializer):
     tipo_equipamento_nome = serializers.CharField(
         source="item.equipamento.tipo_equipamento.nome", read_only=True, default=None
     )
+    tecnologia = serializers.IntegerField(source="item.carregamento.tecnologia_id", read_only=True)
     tecnologia_nome = serializers.CharField(
         source="item.carregamento.tecnologia.nome", read_only=True
     )

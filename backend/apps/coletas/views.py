@@ -189,8 +189,9 @@ class AchadoViewSet(viewsets.ModelViewSet):
     serializer_class = AchadoSerializer
     permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = [
-        "item", "item__carregamento", "item__carregamento__status",
-        "item__carregamento__tecnologia", "confirmada", "visivel_cliente",
+        "item", "item__carregamento", "item__carregamento__cliente",
+        "item__carregamento__status", "item__carregamento__tecnologia",
+        "confirmada", "visivel_cliente",
     ]
     ordering_fields = ["criado_em", "numero_osp"]
 
