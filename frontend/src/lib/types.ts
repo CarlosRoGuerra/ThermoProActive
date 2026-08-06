@@ -253,6 +253,8 @@ export interface CarregamentoLista {
   tecnologia_nome: string;
   rota: number | null;
   rota_nome: string | null;
+  instrumento: number | null;
+  instrumento_nome: string | null;
   analista: number;
   analista_nome: string;
   data: string;

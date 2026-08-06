@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save, Search } from "lucide-react";
+import { ArrowLeft, Save, Search, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
@@ -12,6 +12,7 @@ import { Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 
 type TecOpt = { id: number; nome: string };
 type InstrumentoOpt = { id: number; tipo: string; marca: string; modelo: string };
+const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
 export default function CarregarRotaPage() {
   const router = useRouter();
@@ -23,11 +24,13 @@ export default function CarregarRotaPage() {
   const [instrumento, setInstrumento] = useState("");
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
 
-  // Número do relatório: gerar novo (automático) ou utilizar outro (informado).
+  // Número do relatório: gerar novo (AAAAMMDD+seq automático) ou reaproveitar um.
   const [modoNumero, setModoNumero] = useState<"novo" | "outro">("novo");
   const [sequencial, setSequencial] = useState("");
-  const [buscando, setBuscando] = useState(false);
   const [buscaMsg, setBuscaMsg] = useState<string | null>(null);
+  const [pickerAberto, setPickerAberto] = useState(false);
+  const [carregandoPicker, setCarregandoPicker] = useState(false);
+  const [numerosDisponiveis, setNumerosDisponiveis] = useState<CarregamentoLista[]>([]);
 
   const [tecnologias, setTecnologias] = useState<TecOpt[]>([]);
   const [rotas, setRotas] = useState<Rota[]>([]);
@@ -52,39 +55,55 @@ export default function CarregarRotaPage() {
       .catch(() => setRotas([]));
   }, [clienteAtivo]);
 
-  // Rotas da tecnologia escolhida (ou sem tecnologia definida).
   const rotasFiltradas = useMemo(() => {
     if (!tecnologia) return rotas;
     const tid = Number(tecnologia);
     return rotas.filter((r) => r.tecnologia === null || r.tecnologia === tid);
   }, [rotas, tecnologia]);
 
-  async function buscarNumero() {
-    if (!clienteAtivo || sequencial.trim() === "") return;
-    setBuscando(true);
+  // "Utilizar outro número": abre a janela com os relatórios já gerados para o
+  // cliente + tecnologia; ao escolher, traz as informações daquele relatório.
+  async function abrirPicker() {
+    if (!clienteAtivo) return;
+    if (!tecnologia) {
+      setBuscaMsg("Selecione a tecnologia primeiro.");
+      return;
+    }
     setBuscaMsg(null);
+    setCarregandoPicker(true);
+    setPickerAberto(true);
     try {
       const d = await api<Paginated<CarregamentoLista>>(
-        `/carregamentos/?cliente=${clienteAtivo.id}&numero_relatorio=${encodeURIComponent(
-          sequencial.trim()
-        )}&page_size=1`
+        `/carregamentos/?cliente=${clienteAtivo.id}&tecnologia=${tecnologia}&page_size=1000`
       );
-      setBuscaMsg(
-        d.count > 0
-          ? `Relatório encontrado (${d.count} carregamento(s)). As análises serão somadas a ele.`
-          : "Nenhum relatório com esse número — será criado um novo com este número."
-      );
+      const vistos = new Set<string>();
+      const distintos = [...d.results]
+        .sort((a, b) => (b.data ?? "").localeCompare(a.data ?? "") || b.id - a.id)
+        .filter((c) => {
+          if (!c.numero_relatorio || vistos.has(c.numero_relatorio)) return false;
+          vistos.add(c.numero_relatorio);
+          return true;
+        });
+      setNumerosDisponiveis(distintos);
     } catch {
-      setBuscaMsg("Não foi possível buscar agora.");
+      setNumerosDisponiveis([]);
     } finally {
-      setBuscando(false);
+      setCarregandoPicker(false);
     }
+  }
+
+  function escolherNumero(carg: CarregamentoLista) {
+    setSequencial(carg.numero_relatorio);
+    if (carg.instrumento != null) setInstrumento(String(carg.instrumento));
+    if (carg.data) setData(carg.data);
+    setPickerAberto(false);
+    setBuscaMsg(`Reaproveitando o relatório ${carg.numero_relatorio}.`);
   }
 
   async function salvar() {
     if (!clienteAtivo || !tecnologia) return;
     if (modoNumero === "outro" && sequencial.trim() === "") {
-      setMsg("Informe o sequencial do relatório ou escolha “Gerar novo número”.");
+      setMsg("Escolha um número em “Buscar” ou selecione “Gerar novo número”.");
       return;
     }
     setSalvando(true);
@@ -168,7 +187,7 @@ export default function CarregarRotaPage() {
           <Field label="Analista">
             <Input value={user?.nome ?? ""} disabled readOnly />
           </Field>
-          <Field label="Data">
+          <Field label="Data (último dia da inspeção)">
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </Field>
         </div>
@@ -182,7 +201,10 @@ export default function CarregarRotaPage() {
                 type="radio"
                 name="modoNumero"
                 checked={modoNumero === "novo"}
-                onChange={() => setModoNumero("novo")}
+                onChange={() => {
+                  setModoNumero("novo");
+                  setBuscaMsg(null);
+                }}
                 className="h-4 w-4"
                 style={{ accentColor: "var(--accent)" }}
               />
@@ -211,7 +233,7 @@ export default function CarregarRotaPage() {
                   onChange={(e) => setSequencial(e.target.value)}
                   className="sm:max-w-xs"
                 />
-                <Button variant="secondary" icon={Search} onClick={buscarNumero} loading={buscando}>
+                <Button variant="secondary" icon={Search} onClick={abrirPicker}>
                   Buscar
                 </Button>
               </div>
@@ -220,7 +242,8 @@ export default function CarregarRotaPage() {
           )}
           {modoNumero === "novo" && (
             <p className="mt-2 text-xs text-fg-subtle">
-              O sistema gera automaticamente o próximo número deste cliente ao carregar a rota.
+              O sistema gera <span className="font-mono">AAAAMMDD</span> + sequencial a partir da
+              data escolhida (o último dia da inspeção).
             </p>
           )}
         </div>
@@ -237,6 +260,51 @@ export default function CarregarRotaPage() {
           Carregar rota
         </Button>
       </div>
+
+      {/* Janela: relatórios já gerados para o cliente + tecnologia */}
+      {pickerAberto && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="my-8 w-full max-w-lg rounded-xl border border-border bg-surface p-5 shadow-xl">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-fg">Números de relatório</h2>
+              <button
+                onClick={() => setPickerAberto(false)}
+                className="rounded p-1 text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg"
+                aria-label="Fechar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-fg-subtle">
+              {tecnologias.find((t) => String(t.id) === tecnologia)?.nome} · escolha o número para reaproveitar.
+            </p>
+            {carregandoPicker ? (
+              <Spinner />
+            ) : numerosDisponiveis.length === 0 ? (
+              <p className="py-6 text-center text-sm text-fg-muted">
+                Nenhum relatório gerado para este cliente nesta tecnologia.
+              </p>
+            ) : (
+              <ul className="max-h-80 space-y-1.5 overflow-y-auto">
+                {numerosDisponiveis.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => escolherNumero(c)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:border-accent hover:bg-accent-subtle"
+                    >
+                      <span className="font-mono text-sm font-semibold text-fg">{c.numero_relatorio}</span>
+                      <span className="text-xs text-fg-subtle">
+                        {ddmmaaaa(c.data)}
+                        {c.instrumento_nome ? ` · ${c.instrumento_nome}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

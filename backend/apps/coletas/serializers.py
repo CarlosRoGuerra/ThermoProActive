@@ -199,6 +199,7 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
     rota_nome = serializers.CharField(source="rota.nome", read_only=True, default=None)
     analista_nome = serializers.CharField(source="analista.nome", read_only=True)
+    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
     pode_transferir = serializers.BooleanField(read_only=True)
@@ -207,7 +208,8 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
         model = Carregamento
         fields = [
             "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome",
-            "rota", "rota_nome", "analista", "analista_nome", "data",
+            "rota", "rota_nome", "instrumento", "instrumento_nome",
+            "analista", "analista_nome", "data",
             "numero_relatorio", "status", "status_display", "qtd_itens",
             "pode_transferir", "transferido_em", "criado_em",
         ]
@@ -232,20 +234,25 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         extra_kwargs = {"analista": {"required": False}}
 
     @staticmethod
-    def _proximo_numero(cliente) -> str:
-        """Próximo sequencial do relatório para o cliente no ano (ex.: 0007/2026)."""
-        ano = timezone.localdate().year
-        sufixo = f"/{ano}"
+    def _proximo_numero(cliente, data) -> str:
+        """
+        Número do relatório = AAAAMMDD + sequencial (ex.: 2026080601).
+
+        A data é a do ÚLTIMO dia da inspeção (escolhida no formulário) — regra de
+        auditoria do Fabrício. O sequencial distingue relatórios do mesmo cliente
+        na mesma data.
+        """
+        prefixo = data.strftime("%Y%m%d")
         maior = 0
         numeros = Carregamento.objects.filter(
-            cliente=cliente, numero_relatorio__endswith=sufixo
+            cliente=cliente, numero_relatorio__startswith=prefixo
         ).values_list("numero_relatorio", flat=True)
         for num in numeros:
             try:
-                maior = max(maior, int(str(num).split("/")[0]))
-            except (ValueError, IndexError):
+                maior = max(maior, int(str(num)[len(prefixo):]))
+            except (ValueError, TypeError):
                 continue
-        return f"{maior + 1:04d}{sufixo}"
+        return f"{prefixo}{maior + 1:02d}"
 
     def create(self, validated_data):
         # Analista padrão = usuário logado; ao carregar uma rota, materializa um
@@ -253,9 +260,10 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and not validated_data.get("analista"):
             validated_data["analista"] = request.user
-        # "Gerar novo número": número em branco → sequencial automático do cliente.
+        # "Gerar novo número": número em branco → AAAAMMDD + sequencial do cliente.
         if not validated_data.get("numero_relatorio"):
-            validated_data["numero_relatorio"] = self._proximo_numero(validated_data["cliente"])
+            data = validated_data.get("data") or timezone.localdate()
+            validated_data["numero_relatorio"] = self._proximo_numero(validated_data["cliente"], data)
         carregamento = super().create(validated_data)
         if carregamento.rota_id:
             # Ordem natural de inspeção: área → setor → tag (não a ordem de cadastro).
