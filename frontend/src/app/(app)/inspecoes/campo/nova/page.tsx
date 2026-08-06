@@ -42,9 +42,6 @@ export default function CarregarRotaPage() {
     api<Paginated<TecOpt>>("/tecnologias-analise/?page_size=1000")
       .then((d) => setTecnologias(d.results))
       .catch(() => setTecnologias([]));
-    api<Paginated<InstrumentoOpt>>("/instrumentos/?page_size=1000")
-      .then((d) => setInstrumentos(d.results))
-      .catch(() => setInstrumentos([]));
   }, []);
 
   useEffect(() => {
@@ -54,9 +51,18 @@ export default function CarregarRotaPage() {
       .catch(() => setRotas([]));
   }, [clienteAtivo]);
 
-  // Trocar a tecnologia invalida um relatório escolhido de outra tecnologia.
+  // Instrumentação filtrada pela tecnologia (vínculo feito no cadastro de
+  // Instrumentação). Trocar a tecnologia zera instrumento e o relatório escolhido.
   useEffect(() => {
     setRelatorioSel(null);
+    setInstrumento("");
+    if (!tecnologia) {
+      setInstrumentos([]);
+      return;
+    }
+    api<Paginated<InstrumentoOpt>>(`/instrumentos/?tecnologias=${tecnologia}&page_size=1000`)
+      .then((d) => setInstrumentos(d.results))
+      .catch(() => setInstrumentos([]));
   }, [tecnologia]);
 
   const rotasFiltradas = useMemo(() => {
@@ -171,8 +177,18 @@ export default function CarregarRotaPage() {
             </Select>
           </Field>
           <Field label="Instrumentação">
-            <Select value={instrumento} onChange={(e) => setInstrumento(e.target.value)}>
-              <option value="">— selecione —</option>
+            <Select
+              value={instrumento}
+              onChange={(e) => setInstrumento(e.target.value)}
+              disabled={!tecnologia}
+            >
+              <option value="">
+                {!tecnologia
+                  ? "Escolha a tecnologia primeiro"
+                  : instrumentos.length
+                    ? "— selecione —"
+                    : "Nenhum instrumento vinculado a esta tecnologia"}
+              </option>
               {instrumentos.map((i) => (
                 <option key={i.id} value={i.id}>
                   {[i.tipo, i.marca, i.modelo].filter(Boolean).join(" — ")}
@@ -222,8 +238,8 @@ export default function CarregarRotaPage() {
                 <Input type="date" value={dataTermino} onChange={(e) => setDataTermino(e.target.value)} />
               </Field>
               <p className="mt-2 text-xs text-fg-subtle">
-                Número = <span className="font-mono">AAAAMMDD</span> desta data + sequencial. Use o
-                último dia da inspeção (pode ser futuro).
+                Número = <span className="font-mono">RT-SIGLA-AAAA.MM.DD.seq</span> (a sigla vem da
+                tecnologia). Use o último dia da inspeção (pode ser futuro).
               </p>
             </div>
           ) : (

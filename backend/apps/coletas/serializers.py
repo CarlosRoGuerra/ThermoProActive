@@ -292,7 +292,7 @@ class CarregamentoSerializer(serializers.ModelSerializer):
             data_termino = data_termino_novo or data_coleta
             relatorio = Relatorio.objects.create(
                 cliente=cliente, tecnologia=tecnologia,
-                numero=Relatorio.proximo_numero(cliente, data_termino),
+                numero=Relatorio.proximo_numero(tecnologia, data_termino),
                 data_inicio=data_coleta, data_termino=data_termino,
             )
             validated_data["relatorio"] = relatorio

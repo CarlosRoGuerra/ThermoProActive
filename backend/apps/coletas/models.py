@@ -386,19 +386,23 @@ class Relatorio(BaseModel):
         return self.numero
 
     @staticmethod
-    def proximo_numero(cliente, data_termino) -> str:
-        """Número = AAAAMMDD-SEQ (ex.: 20260814-001). SEQ sequencial por cliente/data."""
-        prefixo = data_termino.strftime("%Y%m%d")
+    def proximo_numero(tecnologia, data_termino) -> str:
+        """
+        Número no padrão do Fabrício: RT-{SIGLA}-{AAAA.MM.DD}.{SEQ}
+        Ex.: RT-AVSMD-2026.04.23.02323
+
+        RT = "Relatório Técnico"; SIGLA = sigla da tecnologia; a data é o último dia
+        da inspeção (auditoria); SEQ é o sequencial GLOBAL da tabela de relatórios
+        (o cliente bate o olho e sabe tecnologia, ano, mês e dia).
+        """
+        sigla = (getattr(tecnologia, "sigla", "") or "").strip().upper() or "XX"
         maior = 0
-        numeros = Relatorio.objects.filter(
-            cliente=cliente, numero__startswith=prefixo
-        ).values_list("numero", flat=True)
-        for num in numeros:
+        for num in Relatorio.objects.values_list("numero", flat=True):
             try:
-                maior = max(maior, int(str(num).split("-")[1]))
+                maior = max(maior, int(str(num).rsplit(".", 1)[1]))
             except (IndexError, ValueError):
                 continue
-        return f"{prefixo}-{maior + 1:03d}"
+        return f"RT-{sigla}-{data_termino:%Y.%m.%d}.{maior + 1:05d}"
 
 
 class Carregamento(BaseModel):
