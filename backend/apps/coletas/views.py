@@ -19,6 +19,7 @@ from .models import (
     MedicaoTecnica,
     MedicaoTermografia,
     MedicaoVibracao,
+    Relatorio,
     StatusCarregamento,
 )
 from .serializers import (
@@ -32,6 +33,7 @@ from .serializers import (
     MedicaoTecnicaSerializer,
     MedicaoTermografiaSerializer,
     MedicaoVibracaoSerializer,
+    RelatorioSerializer,
 )
 
 
@@ -110,18 +112,34 @@ class MedicaoTecnicaViewSet(viewsets.ModelViewSet):
 # =============================================================================
 
 
+class RelatorioViewSet(viewsets.ModelViewSet):
+    """Relatórios (laudos) — usado na janela "Utilizar outro número"."""
+
+    serializer_class = RelatorioSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["cliente", "tecnologia"]
+    search_fields = ["numero"]
+    ordering_fields = ["data_termino", "numero", "criado_em"]
+
+    def get_queryset(self):
+        qs = Relatorio.objects.ativos().select_related("cliente", "tecnologia").order_by(
+            "-data_termino", "-numero"
+        )
+        return escopo_cliente(qs, self.request.user)
+
+
 class CarregamentoViewSet(viewsets.ModelViewSet):
     """Análise de campo: "carregar rota", listar itens e transferir."""
 
     permission_classes = [InternoEditaClienteVisualiza]
-    filterset_fields = ["cliente", "tecnologia", "status", "analista", "rota", "numero_relatorio"]
-    search_fields = ["numero_relatorio"]
-    ordering_fields = ["data", "criado_em"]
+    filterset_fields = ["cliente", "tecnologia", "status", "analista", "rota", "relatorio"]
+    search_fields = ["relatorio__numero"]
+    ordering_fields = ["data_coleta", "criado_em"]
 
     def get_queryset(self):
         qs = (
             Carregamento.objects.ativos()
-            .select_related("cliente", "tecnologia", "rota", "instrumento", "analista")
+            .select_related("cliente", "tecnologia", "relatorio", "rota", "instrumento", "analista")
             .prefetch_related(
                 "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
             )
@@ -200,8 +218,8 @@ class AchadoViewSet(viewsets.ModelViewSet):
             Achado.objects.ativos()
             .select_related(
                 "item__equipamento__setor__area", "item__carregamento__tecnologia",
-                "item__carregamento__analista", "tipo_componente", "tipo_anomalia",
-                "recomendacao", "grau_risco",
+                "item__carregamento__relatorio", "item__carregamento__analista",
+                "tipo_componente", "tipo_anomalia", "recomendacao", "grau_risco",
             )
             .prefetch_related("imagens")
         )

@@ -65,7 +65,7 @@ export default function AnaliseCampoPage() {
     return rows.filter((r) => {
       if (tecFiltro && String(r.tecnologia) !== tecFiltro) return false;
       if (!q) return true;
-      return [r.numero_relatorio, r.rota_nome, r.tecnologia_nome, r.analista_nome]
+      return [r.numero, r.rota_nome, r.tecnologia_nome, r.analista_nome]
         .map((v) => String(v ?? "").toLowerCase())
         .join(" ")
         .includes(q);
@@ -154,18 +154,18 @@ export default function AnaliseCampoPage() {
             <TH>Tecnologia</TH>
             <TH>Rota</TH>
             <TH>Analista</TH>
-            <TH>Data</TH>
+            <TH>Término</TH>
             <TH>Itens</TH>
             <TH>Situação</TH>
           </THead>
           <TBody>
             {visibleRows.map((r) => (
               <TR key={r.id} onClick={() => router.push(`/inspecoes/campo/${r.id}`)}>
-                <TD className="font-medium text-fg">{r.numero_relatorio || `#${r.id}`}</TD>
+                <TD className="font-mono font-medium text-fg">{r.numero || `#${r.id}`}</TD>
                 <TD><Badge tone="accent">{r.tecnologia_nome}</Badge></TD>
                 <TD>{r.rota_nome || "—"}</TD>
                 <TD>{r.analista_nome}</TD>
-                <TD className="tabular-nums">{r.data?.split("-").reverse().join("/")}</TD>
+                <TD className="tabular-nums">{r.data_termino?.split("-").reverse().join("/") ?? "—"}</TD>
                 <TD className="tabular-nums">{r.qtd_itens}</TD>
                 <TD>
                   {r.pode_transferir ? (

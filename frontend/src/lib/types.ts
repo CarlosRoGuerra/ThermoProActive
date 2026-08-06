@@ -185,6 +185,7 @@ export interface Achado {
   grau_risco: number | null;
   grau_risco_nome: string | null;
   numero_osp: string;
+  numero_relatorio: string | null;
   confirmada: boolean;
   visivel_cliente: boolean;
   // Rastreabilidade (somente leitura)
@@ -221,20 +222,36 @@ export interface ItemInspecao {
   criado_em: string;
 }
 
+export interface Relatorio {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  tecnologia: number;
+  tecnologia_nome: string;
+  numero: string;
+  data_inicio: string | null;
+  data_termino: string;
+  qtd_rotas: number;
+  criado_em: string;
+}
+
 export interface Carregamento {
   id: number;
   cliente: number;
   cliente_nome: string;
   tecnologia: number;
   tecnologia_nome: string;
+  relatorio: number | null;
+  numero: string | null;
+  data_inicio: string | null;
+  data_termino: string | null;
+  data_coleta: string;
   rota: number | null;
   rota_nome: string | null;
   instrumento: number | null;
   instrumento_nome: string | null;
   analista: number;
   analista_nome: string;
-  data: string;
-  numero_relatorio: string;
   status: StatusCarregamento;
   status_display: string;
   transferido_em: string | null;
@@ -251,14 +268,17 @@ export interface CarregamentoLista {
   cliente_nome: string;
   tecnologia: number;
   tecnologia_nome: string;
+  relatorio: number | null;
+  numero: string | null;
+  data_inicio: string | null;
+  data_termino: string | null;
+  data_coleta: string;
   rota: number | null;
   rota_nome: string | null;
   instrumento: number | null;
   instrumento_nome: string | null;
   analista: number;
   analista_nome: string;
-  data: string;
-  numero_relatorio: string;
   status: StatusCarregamento;
   status_display: string;
   qtd_itens: number;

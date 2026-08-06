@@ -357,18 +357,66 @@ class StatusCarregamento(models.TextChoices):
     DESCARTADA = "DESCARTADA", "Descartada"
 
 
+class Relatorio(BaseModel):
+    """
+    Agrupa as rotas (carregamentos) de uma inspeção sob um único número/laudo.
+
+    Fonte ÚNICA do número e das datas de auditoria: `data_termino` é o último dia
+    da inspeção (pode ser futura — regra de auditoria do Fabrício), compõe o número
+    e a OSP; `data_inicio` é o primeiro dia real de coleta das rotas. OSP e capa
+    leem sempre daqui, garantindo que todas as rotas do laudo tenham a mesma data.
+    """
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="relatorios")
+    tecnologia = models.ForeignKey(
+        TecnologiaAnalise, on_delete=models.PROTECT, related_name="relatorios", verbose_name="Tecnologia"
+    )
+    numero = models.CharField("Número do relatório", max_length=40)
+    data_inicio = models.DateField("Data de início", null=True, blank=True)
+    data_termino = models.DateField("Data de término (auditoria)")
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Relatório"
+        verbose_name_plural = "Relatórios"
+        constraints = [
+            models.UniqueConstraint(fields=["cliente", "numero"], name="uniq_relatorio_cliente_numero"),
+        ]
+
+    def __str__(self):
+        return self.numero
+
+    @staticmethod
+    def proximo_numero(cliente, data_termino) -> str:
+        """Número = AAAAMMDD-SEQ (ex.: 20260814-001). SEQ sequencial por cliente/data."""
+        prefixo = data_termino.strftime("%Y%m%d")
+        maior = 0
+        numeros = Relatorio.objects.filter(
+            cliente=cliente, numero__startswith=prefixo
+        ).values_list("numero", flat=True)
+        for num in numeros:
+            try:
+                maior = max(maior, int(str(num).split("-")[1]))
+            except (IndexError, ValueError):
+                continue
+        return f"{prefixo}-{maior + 1:03d}"
+
+
 class Carregamento(BaseModel):
     """
     "Carregar rota" da Análise de campo: cabeçalho da inspeção em andamento.
 
     Enquanto `status=EM_CAMPO` é a folha de campo (transitória). A Transferência
-    valida que todo item tem condição e passa para `TRANSFERIDA`.
+    valida que todo item tem condição e passa para `TRANSFERIDA`. O número/datas
+    de auditoria vêm do `relatorio` (várias rotas podem compartilhar o mesmo).
     """
 
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="carregamentos")
     tecnologia = models.ForeignKey(
         TecnologiaAnalise, on_delete=models.PROTECT, related_name="carregamentos",
         verbose_name="Tecnologia",
+    )
+    relatorio = models.ForeignKey(
+        Relatorio, on_delete=models.PROTECT, related_name="carregamentos", null=True, blank=True
     )
     rota = models.ForeignKey(
         Rota, on_delete=models.PROTECT, related_name="carregamentos", null=True, blank=True
@@ -380,10 +428,9 @@ class Carregamento(BaseModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="carregamentos",
         verbose_name="Analista responsável",
     )
-    data = models.DateField("Data", default=timezone.localdate)
-    # Número do relatório (capa). Novo número ou reaproveitar um existente para
-    # anexar mais rotas ao mesmo relatório — definido na abertura da rota.
-    numero_relatorio = models.CharField("Número do relatório", max_length=40, blank=True)
+    # Dia real em que a rota foi coletada (verdade interna, distinto da data de
+    # auditoria que fica no relatório).
+    data_coleta = models.DateField("Data de coleta", default=timezone.localdate)
     status = models.CharField(
         max_length=12, choices=StatusCarregamento.choices, default=StatusCarregamento.EM_CAMPO
     )
@@ -394,7 +441,7 @@ class Carregamento(BaseModel):
         verbose_name_plural = "Carregamentos de rota"
 
     def __str__(self):
-        return f"Carregamento #{self.pk} — {self.tecnologia} — {self.data}"
+        return f"Carregamento #{self.pk} — {self.tecnologia} — {self.data_coleta}"
 
     @property
     def itens_pendentes(self):

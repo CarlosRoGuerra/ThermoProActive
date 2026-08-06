@@ -182,15 +182,15 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight text-fg">
-                {carreg.numero_relatorio || `Carregamento #${carreg.id}`}
+              <h1 className="font-mono text-lg font-semibold tracking-tight text-fg">
+                {carreg.numero || `Carregamento #${carreg.id}`}
               </h1>
               <Badge tone="accent">{carreg.tecnologia_nome}</Badge>
               {transferida && <Badge tone="neutral">{carreg.status_display}</Badge>}
             </div>
             <p className="mt-1 text-sm text-fg-muted">
               {carreg.rota_nome ? `Rota ${carreg.rota_nome} · ` : ""}
-              {carreg.analista_nome} · {ddmmaaaa(carreg.data)}
+              {carreg.analista_nome} · término {ddmmaaaa(carreg.data_termino)}
             </p>
           </div>
           {!transferida && (

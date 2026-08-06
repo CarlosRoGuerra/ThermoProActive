@@ -13,6 +13,7 @@ from .views import (
     MedicaoTermografiaViewSet,
     MedicaoVibracaoViewSet,
     PortalVisaoGeralView,
+    RelatorioViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +22,7 @@ router.register("medicoes-vibracao", MedicaoVibracaoViewSet, basename="medicaovi
 router.register("medicoes-termografia", MedicaoTermografiaViewSet, basename="medicaotermografia")
 router.register("medicoes-tecnicas", MedicaoTecnicaViewSet, basename="medicaotecnica")
 # Fluxo de inspeção campo → escritório
+router.register("relatorios", RelatorioViewSet, basename="relatorio")
 router.register("carregamentos", CarregamentoViewSet, basename="carregamento")
 router.register("itens-inspecao", ItemInspecaoViewSet, basename="iteminspecao")
 router.register("achados", AchadoViewSet, basename="achado")

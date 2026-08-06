@@ -10,6 +10,7 @@ from .models import (
     MedicaoTecnica,
     MedicaoTermografia,
     MedicaoVibracao,
+    Relatorio,
 )
 
 
@@ -160,7 +161,9 @@ class AchadoSerializer(serializers.ModelSerializer):
         source="item.carregamento.tecnologia.nome", read_only=True
     )
     analista_nome = serializers.CharField(source="item.carregamento.analista.nome", read_only=True)
-    data = serializers.DateField(source="item.carregamento.data", read_only=True)
+    # "data" para o escritório/auditoria = data de término do relatório.
+    data = serializers.DateField(source="item.carregamento.relatorio.data_termino", read_only=True, default=None)
+    numero_relatorio = serializers.CharField(source="item.carregamento.relatorio.numero", read_only=True, default=None)
     # Nomes legíveis dos catálogos selecionados.
     tipo_componente_nome = serializers.CharField(source="tipo_componente.nome", read_only=True, default=None)
     tipo_anomalia_nome = serializers.CharField(source="tipo_anomalia.nome", read_only=True, default=None)
@@ -183,7 +186,7 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
     )
     condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
     condicao_gera_acao = serializers.BooleanField(source="condicao.gera_acao", read_only=True, default=None)
-    data = serializers.DateField(source="carregamento.data", read_only=True)
+    data = serializers.DateField(source="carregamento.data_coleta", read_only=True)
     achados = AchadoSerializer(many=True, read_only=True)
     qtd_achados = serializers.IntegerField(source="achados.count", read_only=True)
 
@@ -192,14 +195,29 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
         exclude = ["ativo"]
 
 
+class RelatorioSerializer(serializers.ModelSerializer):
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
+    tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
+    qtd_rotas = serializers.IntegerField(source="carregamentos.count", read_only=True)
+
+    class Meta:
+        model = Relatorio
+        exclude = ["ativo"]
+        # Número gerado no back; início derivado das rotas.
+        read_only_fields = ["numero", "data_inicio"]
+
+
 class CarregamentoListSerializer(serializers.ModelSerializer):
     """Versão enxuta para a listagem (sem itens aninhados)."""
 
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
-    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default=None)
+    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default="")
     analista_nome = serializers.CharField(source="analista.nome", read_only=True)
-    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default=None)
+    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default="")
+    numero = serializers.CharField(source="relatorio.numero", read_only=True, default=None)
+    data_inicio = serializers.DateField(source="relatorio.data_inicio", read_only=True, default=None)
+    data_termino = serializers.DateField(source="relatorio.data_termino", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
     pode_transferir = serializers.BooleanField(read_only=True)
@@ -208,9 +226,10 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
         model = Carregamento
         fields = [
             "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome",
+            "relatorio", "numero", "data_inicio", "data_termino", "data_coleta",
             "rota", "rota_nome", "instrumento", "instrumento_nome",
-            "analista", "analista_nome", "data",
-            "numero_relatorio", "status", "status_display", "qtd_itens",
+            "analista", "analista_nome",
+            "status", "status_display", "qtd_itens",
             "pode_transferir", "transferido_em", "criado_em",
         ]
 
@@ -218,52 +237,74 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
 class CarregamentoSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
-    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default=None)
-    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default=None)
+    rota_nome = serializers.CharField(source="rota.nome", read_only=True, default="")
+    instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default="")
     analista_nome = serializers.CharField(source="analista.nome", read_only=True)
+    numero = serializers.CharField(source="relatorio.numero", read_only=True, default=None)
+    data_inicio = serializers.DateField(source="relatorio.data_inicio", read_only=True, default=None)
+    data_termino = serializers.DateField(source="relatorio.data_termino", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     itens = ItemInspecaoSerializer(many=True, read_only=True)
     qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
     qtd_pendentes = serializers.IntegerField(source="itens_pendentes.count", read_only=True)
     pode_transferir = serializers.BooleanField(read_only=True)
+    # Entrada da Ação 1 ("Gerar novo número"): a data de término do novo relatório.
+    data_termino_novo = serializers.DateField(write_only=True, required=False)
 
     class Meta:
         model = Carregamento
         exclude = ["ativo"]
-        # O analista é opcional no POST: assume o usuário autenticado (ver create()).
-        extra_kwargs = {"analista": {"required": False}}
+        extra_kwargs = {
+            # analista assume o usuário logado; cliente/tecnologia vêm do relatório
+            # na Ação 2 (reaproveitar) e são exigidos na Ação 1 (ver validate).
+            "analista": {"required": False},
+            "cliente": {"required": False},
+            "tecnologia": {"required": False},
+            "relatorio": {"required": False},
+        }
 
-    @staticmethod
-    def _proximo_numero(cliente, data) -> str:
-        """
-        Número do relatório = AAAAMMDD + sequencial (ex.: 2026080601).
-
-        A data é a do ÚLTIMO dia da inspeção (escolhida no formulário) — regra de
-        auditoria do Fabrício. O sequencial distingue relatórios do mesmo cliente
-        na mesma data.
-        """
-        prefixo = data.strftime("%Y%m%d")
-        maior = 0
-        numeros = Carregamento.objects.filter(
-            cliente=cliente, numero_relatorio__startswith=prefixo
-        ).values_list("numero_relatorio", flat=True)
-        for num in numeros:
-            try:
-                maior = max(maior, int(str(num)[len(prefixo):]))
-            except (ValueError, TypeError):
-                continue
-        return f"{prefixo}{maior + 1:02d}"
+    def validate(self, attrs):
+        if not attrs.get("relatorio"):
+            # Ação 1: precisa de cliente, tecnologia e a data de término.
+            faltando = [c for c in ("cliente", "tecnologia") if not attrs.get(c)]
+            if not attrs.get("data_termino_novo"):
+                faltando.append("data_termino_novo")
+            if faltando:
+                raise serializers.ValidationError(
+                    {c: "Obrigatório ao gerar um novo número." for c in faltando}
+                )
+        return attrs
 
     def create(self, validated_data):
-        # Analista padrão = usuário logado; ao carregar uma rota, materializa um
-        # item por equipamento selecionado nela.
         request = self.context.get("request")
         if request and not validated_data.get("analista"):
             validated_data["analista"] = request.user
-        # "Gerar novo número": número em branco → AAAAMMDD + sequencial do cliente.
-        if not validated_data.get("numero_relatorio"):
-            data = validated_data.get("data") or timezone.localdate()
-            validated_data["numero_relatorio"] = self._proximo_numero(validated_data["cliente"], data)
+
+        data_coleta = validated_data.get("data_coleta") or timezone.localdate()
+        validated_data["data_coleta"] = data_coleta
+        data_termino_novo = validated_data.pop("data_termino_novo", None)
+        relatorio = validated_data.get("relatorio")
+
+        if relatorio is None:
+            # Ação 1 — "Gerar novo número": cria o relatório (fonte do número/datas).
+            cliente = validated_data["cliente"]
+            tecnologia = validated_data["tecnologia"]
+            data_termino = data_termino_novo or data_coleta
+            relatorio = Relatorio.objects.create(
+                cliente=cliente, tecnologia=tecnologia,
+                numero=Relatorio.proximo_numero(cliente, data_termino),
+                data_inicio=data_coleta, data_termino=data_termino,
+            )
+            validated_data["relatorio"] = relatorio
+        else:
+            # Ação 2 — "Utilizar outro número": herda cliente/tecnologia do relatório
+            # e recua a data de início se esta coleta for anterior.
+            validated_data["cliente"] = relatorio.cliente
+            validated_data["tecnologia"] = relatorio.tecnologia
+            if relatorio.data_inicio is None or data_coleta < relatorio.data_inicio:
+                relatorio.data_inicio = data_coleta
+                relatorio.save(update_fields=["data_inicio"])
+
         carregamento = super().create(validated_data)
         if carregamento.rota_id:
             # Ordem natural de inspeção: área → setor → tag (não a ordem de cadastro).
