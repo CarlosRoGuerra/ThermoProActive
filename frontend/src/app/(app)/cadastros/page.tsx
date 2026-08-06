@@ -199,19 +199,20 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
     columns: ["nome", "nivel", "cor"],
   },
   {
-    // Condição operacional do equipamento no momento da inspeção de campo.
-    // "gera_acao" = ao selecioná-la, o campo exige registrar uma análise.
+    // Condição do equipamento na inspeção — alimenta o campo "Condição" da folha
+    // de campo. "gera_acao" = ao selecioná-la, o campo exige registrar uma análise.
     key: "condicoes",
-    label: "Condições",
+    label: "Condição do Equipamento",
     endpoint: "condicoes",
     fields: [
-      { key: "nome", label: "Nome", required: true, maxLength: 250 },
+      { key: "sigla", label: "Sigla", maxLength: 20 },
+      { key: "nome", label: "Nome (nomenclatura)", required: true, maxLength: 250 },
       { key: "gera_acao", label: "Gera análise?", type: "boolean" },
       { key: "nivel", label: "Nível", type: "number" },
       { key: "cor", label: "Cor", type: "color" },
-      { key: "descricao", label: "Descrição" },
+      { key: "descricao", label: "Descritivo" },
     ],
-    columns: ["nome", "gera_acao", "nivel", "cor"],
+    columns: ["sigla", "nome", "gera_acao", "nivel", "cor"],
   },
   catSimples("classificacoes-inspecao", "Classificações de inspeção"),
   catSimples("tipos-inspecao", "Tipos de inspeção"),

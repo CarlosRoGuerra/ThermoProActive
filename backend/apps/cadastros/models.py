@@ -494,14 +494,17 @@ class TipoCriticidade(Catalogo):
 
 class Condicao(Catalogo):
     """
-    Condição operacional do equipamento no momento da inspeção de campo.
+    Condição do equipamento no momento da inspeção — alimenta o campo "Condição"
+    da folha de campo. Cada condição tem uma sigla/tag (ex.: OK, PDP, PDM, IC),
+    a nomenclatura (`nome`) e um descritivo (`descricao`).
 
-    Ex.: "OK", "Parado para manutenção", "Parado para produção" (não geram ação) ou
-    condições que exigem registrar uma análise (`gera_acao=True` → o formulário de
-    campo abre o botão de análise). É distinta do *grau de risco* (essa é a situação
-    do equipamento na coleta; o grau de risco é definido depois, na análise final).
+    Ex.: "OK/Normal", "Parado devido ao processo (PDP)", "Parado devido à manutenção
+    (PDM)" (não geram ação) ou condições que exigem registrar uma análise
+    (`gera_acao=True` → o formulário de campo abre o botão de análise). Não é
+    vinculada a tecnologia (são poucas; aparecem para todas).
     """
 
+    sigla = models.CharField("Sigla", max_length=20, blank=True, help_text="Ex.: OK, PDP, PDM, IC, GR0…")
     gera_acao = models.BooleanField(
         "Gera análise", default=False,
         help_text="Se marcado, selecionar esta condição exige registrar uma análise no campo.",
@@ -512,8 +515,8 @@ class Condicao(Catalogo):
     )
 
     class Meta(Catalogo.Meta):
-        verbose_name = "Condição"
-        verbose_name_plural = "Condições"
+        verbose_name = "Condição do equipamento"
+        verbose_name_plural = "Condições do equipamento"
         ordering = ["nivel", "nome"]
 
 
