@@ -209,7 +209,8 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
         body.visivel_cliente = true;
       }
       await api(`/achados/${achado.id}/`, { method: "PATCH", body });
-      router.push("/inspecoes/final");
+      // Confirmar → cai na visão "Confirmadas" (senão o item some da lista padrão).
+      router.push(confirmar ? "/inspecoes/final?situacao=sim" : "/inspecoes/final");
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Erro ao salvar.");
       setSalvando(false);

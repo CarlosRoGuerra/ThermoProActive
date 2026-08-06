@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Building2, FileCheck2, Search, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -29,9 +29,10 @@ import {
 type TecOpt = { id: number; nome: string };
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
-export default function AnaliseFinalPage() {
+function AnaliseFinalConteudo() {
   const { user } = useAuth();
   const router = useRouter();
+  const params = useSearchParams();
   const podeEditar = !!user?.is_interno;
   const podeExcluir = !!user?.pode_excluir;
   const { clienteAtivo } = useClienteAtivo();
@@ -43,7 +44,11 @@ export default function AnaliseFinalPage() {
 
   const [busca, setBusca] = useState("");
   const [tecFiltro, setTecFiltro] = useState("");
-  const [situacao, setSituacao] = useState<"nao" | "sim" | "todas">("nao");
+  // Ao voltar de "Confirmar e publicar", cai na visão "Confirmadas".
+  const situacaoInicial = params.get("situacao");
+  const [situacao, setSituacao] = useState<"nao" | "sim" | "todas">(
+    situacaoInicial === "sim" || situacaoInicial === "todas" ? situacaoInicial : "nao"
+  );
   const [dataIni, setDataIni] = useState("");
   const [dataFim, setDataFim] = useState("");
 
@@ -236,5 +241,13 @@ export default function AnaliseFinalPage() {
         </Table>
       )}
     </div>
+  );
+}
+
+export default function AnaliseFinalPage() {
+  return (
+    <Suspense fallback={<Card><Spinner /></Card>}>
+      <AnaliseFinalConteudo />
+    </Suspense>
   );
 }
