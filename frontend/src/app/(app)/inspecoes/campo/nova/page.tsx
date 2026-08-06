@@ -82,7 +82,7 @@ export default function CarregarRotaPage() {
     setPickerAberto(true);
     try {
       const d = await api<Paginated<Relatorio>>(
-        `/relatorios/?cliente=${clienteAtivo.id}&tecnologia=${tecnologia}&page_size=1000`
+        `/relatorios-inspecao/?cliente=${clienteAtivo.id}&tecnologia=${tecnologia}&page_size=1000`
       );
       setRelatorios(d.results);
     } catch {
