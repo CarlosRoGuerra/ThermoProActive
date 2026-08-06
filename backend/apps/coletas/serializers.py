@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
@@ -230,12 +231,31 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         # O analista é opcional no POST: assume o usuário autenticado (ver create()).
         extra_kwargs = {"analista": {"required": False}}
 
+    @staticmethod
+    def _proximo_numero(cliente) -> str:
+        """Próximo sequencial do relatório para o cliente no ano (ex.: 0007/2026)."""
+        ano = timezone.localdate().year
+        sufixo = f"/{ano}"
+        maior = 0
+        numeros = Carregamento.objects.filter(
+            cliente=cliente, numero_relatorio__endswith=sufixo
+        ).values_list("numero_relatorio", flat=True)
+        for num in numeros:
+            try:
+                maior = max(maior, int(str(num).split("/")[0]))
+            except (ValueError, IndexError):
+                continue
+        return f"{maior + 1:04d}{sufixo}"
+
     def create(self, validated_data):
         # Analista padrão = usuário logado; ao carregar uma rota, materializa um
         # item por equipamento selecionado nela.
         request = self.context.get("request")
         if request and not validated_data.get("analista"):
             validated_data["analista"] = request.user
+        # "Gerar novo número": número em branco → sequencial automático do cliente.
+        if not validated_data.get("numero_relatorio"):
+            validated_data["numero_relatorio"] = self._proximo_numero(validated_data["cliente"])
         carregamento = super().create(validated_data)
         if carregamento.rota_id:
             # Ordem natural de inspeção: área → setor → tag (não a ordem de cadastro).

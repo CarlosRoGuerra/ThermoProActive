@@ -114,7 +114,7 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
     """Análise de campo: "carregar rota", listar itens e transferir."""
 
     permission_classes = [InternoEditaClienteVisualiza]
-    filterset_fields = ["cliente", "tecnologia", "status", "analista", "rota"]
+    filterset_fields = ["cliente", "tecnologia", "status", "analista", "rota", "numero_relatorio"]
     search_fields = ["numero_relatorio"]
     ordering_fields = ["data", "criado_em"]
 

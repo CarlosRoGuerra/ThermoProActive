@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Search } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
-import type { Carregamento, Paginated, Rota } from "@/lib/types";
+import type { Carregamento, CarregamentoLista, Paginated, Rota } from "@/lib/types";
 import { Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 
 type TecOpt = { id: number; nome: string };
@@ -21,8 +21,13 @@ export default function CarregarRotaPage() {
   const [tecnologia, setTecnologia] = useState("");
   const [rota, setRota] = useState("");
   const [instrumento, setInstrumento] = useState("");
-  const [numeroRelatorio, setNumeroRelatorio] = useState("");
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Número do relatório: gerar novo (automático) ou utilizar outro (informado).
+  const [modoNumero, setModoNumero] = useState<"novo" | "outro">("novo");
+  const [sequencial, setSequencial] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [buscaMsg, setBuscaMsg] = useState<string | null>(null);
 
   const [tecnologias, setTecnologias] = useState<TecOpt[]>([]);
   const [rotas, setRotas] = useState<Rota[]>([]);
@@ -34,6 +39,10 @@ export default function CarregarRotaPage() {
     api<Paginated<TecOpt>>("/tecnologias-analise/?page_size=1000")
       .then((d) => setTecnologias(d.results))
       .catch(() => setTecnologias([]));
+    // Instrumentação: busca a tabela de Dados de sistema (todos os instrumentos).
+    api<Paginated<InstrumentoOpt>>("/instrumentos/?page_size=1000")
+      .then((d) => setInstrumentos(d.results))
+      .catch(() => setInstrumentos([]));
   }, []);
 
   useEffect(() => {
@@ -43,18 +52,6 @@ export default function CarregarRotaPage() {
       .catch(() => setRotas([]));
   }, [clienteAtivo]);
 
-  // Instrumentos oferecidos conforme a tecnologia escolhida.
-  useEffect(() => {
-    if (!tecnologia) {
-      setInstrumentos([]);
-      return;
-    }
-    api<Paginated<InstrumentoOpt>>(`/instrumentos/?tecnologias=${tecnologia}&page_size=1000`)
-      .then((d) => setInstrumentos(d.results))
-      .catch(() => setInstrumentos([]));
-    setInstrumento("");
-  }, [tecnologia]);
-
   // Rotas da tecnologia escolhida (ou sem tecnologia definida).
   const rotasFiltradas = useMemo(() => {
     if (!tecnologia) return rotas;
@@ -62,8 +59,34 @@ export default function CarregarRotaPage() {
     return rotas.filter((r) => r.tecnologia === null || r.tecnologia === tid);
   }, [rotas, tecnologia]);
 
+  async function buscarNumero() {
+    if (!clienteAtivo || sequencial.trim() === "") return;
+    setBuscando(true);
+    setBuscaMsg(null);
+    try {
+      const d = await api<Paginated<CarregamentoLista>>(
+        `/carregamentos/?cliente=${clienteAtivo.id}&numero_relatorio=${encodeURIComponent(
+          sequencial.trim()
+        )}&page_size=1`
+      );
+      setBuscaMsg(
+        d.count > 0
+          ? `Relatório encontrado (${d.count} carregamento(s)). As análises serão somadas a ele.`
+          : "Nenhum relatório com esse número — será criado um novo com este número."
+      );
+    } catch {
+      setBuscaMsg("Não foi possível buscar agora.");
+    } finally {
+      setBuscando(false);
+    }
+  }
+
   async function salvar() {
     if (!clienteAtivo || !tecnologia) return;
+    if (modoNumero === "outro" && sequencial.trim() === "") {
+      setMsg("Informe o sequencial do relatório ou escolha “Gerar novo número”.");
+      return;
+    }
     setSalvando(true);
     setMsg(null);
     try {
@@ -74,7 +97,7 @@ export default function CarregarRotaPage() {
           tecnologia: Number(tecnologia),
           rota: rota === "" ? null : Number(rota),
           instrumento: instrumento === "" ? null : Number(instrumento),
-          numero_relatorio: numeroRelatorio,
+          numero_relatorio: modoNumero === "novo" ? "" : sequencial.trim(),
           data,
         },
       });
@@ -132,8 +155,8 @@ export default function CarregarRotaPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Instrumento">
-            <Select value={instrumento} onChange={(e) => setInstrumento(e.target.value)} disabled={!tecnologia}>
+          <Field label="Instrumentação">
+            <Select value={instrumento} onChange={(e) => setInstrumento(e.target.value)}>
               <option value="">— selecione —</option>
               {instrumentos.map((i) => (
                 <option key={i.id} value={i.id}>
@@ -142,14 +165,6 @@ export default function CarregarRotaPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Número do relatório">
-            <Input
-              value={numeroRelatorio}
-              maxLength={40}
-              placeholder="Deixe em branco para numerar depois"
-              onChange={(e) => setNumeroRelatorio(e.target.value)}
-            />
-          </Field>
           <Field label="Analista">
             <Input value={user?.nome ?? ""} disabled readOnly />
           </Field>
@@ -157,6 +172,59 @@ export default function CarregarRotaPage() {
             <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </Field>
         </div>
+
+        {/* Número do relatório */}
+        <div className="mt-4 rounded-lg border border-border bg-surface-muted/30 p-4">
+          <p className="mb-3 text-sm font-medium text-fg">Sequencial do relatório</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-fg">
+              <input
+                type="radio"
+                name="modoNumero"
+                checked={modoNumero === "novo"}
+                onChange={() => setModoNumero("novo")}
+                className="h-4 w-4"
+                style={{ accentColor: "var(--accent)" }}
+              />
+              Gerar novo número
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-fg">
+              <input
+                type="radio"
+                name="modoNumero"
+                checked={modoNumero === "outro"}
+                onChange={() => setModoNumero("outro")}
+                className="h-4 w-4"
+                style={{ accentColor: "var(--accent)" }}
+              />
+              Utilizar outro número (preencha abaixo)
+            </label>
+          </div>
+
+          {modoNumero === "outro" && (
+            <div className="mt-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={sequencial}
+                  maxLength={40}
+                  placeholder="Sequencial do relatório"
+                  onChange={(e) => setSequencial(e.target.value)}
+                  className="sm:max-w-xs"
+                />
+                <Button variant="secondary" icon={Search} onClick={buscarNumero} loading={buscando}>
+                  Buscar
+                </Button>
+              </div>
+              {buscaMsg && <p className="mt-2 text-xs text-fg-muted">{buscaMsg}</p>}
+            </div>
+          )}
+          {modoNumero === "novo" && (
+            <p className="mt-2 text-xs text-fg-subtle">
+              O sistema gera automaticamente o próximo número deste cliente ao carregar a rota.
+            </p>
+          )}
+        </div>
+
         {msg && <p className="mt-3 text-sm text-danger-fg">{msg}</p>}
       </Card>
 
