@@ -67,8 +67,10 @@ function Imagens({
     setMsg(null);
     try {
       const { w, h } = await medir(file);
-      if (w !== 800 || h !== 600) {
-        setMsg(`A imagem precisa ser 800×600px (esta é ${w}×${h}).`);
+      // 800×600 é o MÁXIMO aceitável (a altura pode ser menor, conforme o monitor
+      // ao exportar o gráfico); rejeita só se ultrapassar.
+      if (w > 800 || h > 600) {
+        setMsg(`A imagem deve ter no máximo 800×600px (esta é ${w}×${h}).`);
         if (inputRef.current) inputRef.current.value = "";
         return;
       }
@@ -126,7 +128,7 @@ function Imagens({
         >
           Anexar imagem
         </Button>
-        <span className="text-xs text-fg-subtle">Padrão 800×600px.</span>
+        <span className="text-xs text-fg-subtle">Máx. 800×600px.</span>
       </div>
       {msg && <p className="text-sm text-danger-fg">{msg}</p>}
 
@@ -196,8 +198,8 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
         body.visivel_cliente = true;
       }
       await api(`/achados/${achado.id}/`, { method: "PATCH", body });
-      // Confirmar → cai na visão "Confirmadas" (senão o item some da lista padrão).
-      router.push(confirmar ? "/inspecoes/final?situacao=sim" : "/inspecoes/final");
+      // Volta sempre para a fila de não confirmadas (para pegar a próxima).
+      router.push("/inspecoes/final");
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Erro ao salvar.");
       setSalvando(false);
