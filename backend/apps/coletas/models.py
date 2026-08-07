@@ -23,7 +23,6 @@ from apps.cadastros.models import (
     TecnologiaAnalise,
     TipoAnomalia,
     TipoComponente,
-    TipoCriticidade,
     TipoRecomendacao,
 )
 from apps.core.models import BaseModel, TimeStampedModel
@@ -559,11 +558,16 @@ class Achado(BaseModel):
     tensao_b = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     tensao_c = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
 
-    # --- Escritório (Análise final) ---
-    grau_risco = models.ForeignKey(
-        TipoCriticidade, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True,
-        verbose_name="Grau de risco",
+    # Condição / grau de risco DESTA análise (puxa da "Condição do Equipamento").
+    # Cada análise do mesmo equipamento pode ter uma condição diferente; nasce
+    # herdando a condição do item e é reclassificável no escritório. É ela que
+    # aparece por análise na lista de equipamentos inspecionados do relatório.
+    condicao = models.ForeignKey(
+        Condicao, on_delete=models.SET_NULL, related_name="achados", null=True, blank=True,
+        verbose_name="Condição / grau de risco",
     )
+
+    # --- Escritório (Análise final) ---
     numero_osp = models.CharField("Número da OSP", max_length=40, blank=True)
     confirmada = models.BooleanField("Confirmada no escritório", default=False)
     visivel_cliente = models.BooleanField("Visível para o cliente", default=False)
@@ -581,6 +585,9 @@ class Achado(BaseModel):
             self.delta_t = self.temperatura_medida - self.temperatura_referencia
         else:
             self.delta_t = None
+        # Herda a condição do item na criação (reclassificável depois, no escritório).
+        if self.condicao_id is None and self.item_id and self.item.condicao_id:
+            self.condicao_id = self.item.condicao_id
         super().save(*args, **kwargs)
 
 

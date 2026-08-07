@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ImagePlus, Save, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Achado, AchadoImagem, Condicao, ItemInspecao, Paginated, TipoImagemAchado } from "@/lib/types";
+import type { Achado, AchadoImagem, TipoImagemAchado } from "@/lib/types";
 import {
   type AchadoForm, formDeAchado, payloadDeForm, tecnologiaTipo,
 } from "@/lib/inspecoes";
@@ -160,11 +160,8 @@ function Imagens({
 export function AnaliseFinal({ achadoId }: { achadoId: number }) {
   const router = useRouter();
   const [achado, setAchado] = useState<Achado | null>(null);
-  const [item, setItem] = useState<ItemInspecao | null>(null);
-  const [condicoes, setCondicoes] = useState<Condicao[]>([]);
   const [form, setForm] = useState<AchadoForm | null>(null);
   const [numeroOsp, setNumeroOsp] = useState("");
-  const [condicao, setCondicao] = useState("");
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -174,21 +171,17 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     setAchado(a);
     setForm(formDeAchado(a));
     setNumeroOsp(a.numero_osp ?? "");
-    const it = await api<ItemInspecao>(`/itens-inspecao/${a.item}/`);
-    setItem(it);
-    setCondicao(it.condicao != null ? String(it.condicao) : "");
   }, [achadoId]);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([carregar(), api<Paginated<Condicao>>("/condicoes/?page_size=1000")])
-      .then(([, cond]) => setCondicoes(cond.results))
+    carregar()
       .catch(() => setMsg("Não foi possível carregar a análise."))
       .finally(() => setLoading(false));
   }, [carregar]);
 
   async function salvar(confirmar: boolean) {
-    if (!form || !achado || !item) return;
+    if (!form || !achado) return;
     if (confirmar && achado.imagens.length === 0) {
       setMsg("Anexe ao menos uma imagem (800×600) antes de confirmar e publicar.");
       return;
@@ -196,13 +189,7 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     setSalvando(true);
     setMsg(null);
     try {
-      // Condição pertence ao item (pode ser corrigida aqui).
-      if (condicao !== (item.condicao != null ? String(item.condicao) : "")) {
-        await api(`/itens-inspecao/${item.id}/`, {
-          method: "PATCH",
-          body: { condicao: condicao === "" ? null : Number(condicao) },
-        });
-      }
+      // A condição/grau de risco desta análise vai no próprio achado (AchadoCampos).
       const body: Record<string, unknown> = { ...payloadDeForm(form), numero_osp: numeroOsp };
       if (confirmar) {
         body.confirmada = true;
@@ -265,25 +252,17 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
             </div>
           ))}
         </dl>
-        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2">
+        <div className="mt-4 max-w-xs border-t border-border pt-4">
           <Field label="Número da OSP">
             <Input value={numeroOsp} maxLength={40} onChange={(e) => setNumeroOsp(e.target.value)} />
-          </Field>
-          <Field label="Condição">
-            <Select value={condicao} onChange={(e) => setCondicao(e.target.value)}>
-              <option value="">— condição —</option>
-              {condicoes.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
-              ))}
-            </Select>
           </Field>
         </div>
       </Card>
 
-      {/* Campos editáveis da análise */}
+      {/* Campos editáveis da análise (inclui a Condição / grau de risco no topo) */}
       <Card>
         <h2 className="mb-4 text-sm font-semibold text-fg">Análise</h2>
-        <AchadoCampos form={form} setForm={setForm} tipo={tipo} tecnologiaId={achado.tecnologia} mostrarGrauRisco />
+        <AchadoCampos form={form} setForm={setForm} tipo={tipo} tecnologiaId={achado.tecnologia} />
       </Card>
 
       {/* Imagens */}

@@ -34,7 +34,7 @@ export type AchadoForm = {
   tensao_a: string;
   tensao_b: string;
   tensao_c: string;
-  grau_risco: string;
+  condicao: string;
 };
 
 const CAMPOS_NUMERICOS: (keyof AchadoForm)[] = [
@@ -43,7 +43,7 @@ const CAMPOS_NUMERICOS: (keyof AchadoForm)[] = [
   "tensao_nominal", "tensao_a", "tensao_b", "tensao_c",
 ];
 
-const CAMPOS_FK: (keyof AchadoForm)[] = ["tipo_componente", "tipo_anomalia", "recomendacao", "grau_risco"];
+const CAMPOS_FK: (keyof AchadoForm)[] = ["tipo_componente", "tipo_anomalia", "recomendacao", "condicao"];
 
 export function formVazio(): AchadoForm {
   return {
@@ -52,7 +52,7 @@ export function formVazio(): AchadoForm {
     aceleracao_global: "", velocidade_global: "", temperatura_medida: "",
     temperatura_referencia: "", carga_percentual: "", corrente_nominal: "",
     corrente_a: "", corrente_b: "", corrente_c: "", tensao_nominal: "",
-    tensao_a: "", tensao_b: "", tensao_c: "", grau_risco: "",
+    tensao_a: "", tensao_b: "", tensao_c: "", condicao: "",
   };
 }
 
@@ -81,7 +81,7 @@ export function formDeAchado(a: Achado): AchadoForm {
     tensao_a: s(a.tensao_a),
     tensao_b: s(a.tensao_b),
     tensao_c: s(a.tensao_c),
-    grau_risco: s(a.grau_risco),
+    condicao: s(a.condicao),
   };
 }
 

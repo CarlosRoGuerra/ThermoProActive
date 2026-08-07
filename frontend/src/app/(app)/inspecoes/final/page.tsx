@@ -188,6 +188,7 @@ function AnaliseFinalConteudo() {
             <TH>Data</TH>
             <TH>Equipamento</TH>
             <TH>Componente</TH>
+            <TH>Condição</TH>
             <TH>Tecnologia</TH>
             <TH>Situação</TH>
             {podeEditar && <TH />}
@@ -203,6 +204,13 @@ function AnaliseFinalConteudo() {
                   <span className="text-fg-muted">{a.equipamento_nome}</span>
                 </TD>
                 <TD>{a.tipo_componente_nome || a.componente_texto || "—"}</TD>
+                <TD>
+                  {a.condicao_sigla || a.condicao_nome ? (
+                    <Badge tone="warning">{a.condicao_sigla || a.condicao_nome}</Badge>
+                  ) : (
+                    "—"
+                  )}
+                </TD>
                 <TD>{a.tecnologia_nome}</TD>
                 <TD>
                   {a.confirmada ? (

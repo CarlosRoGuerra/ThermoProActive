@@ -219,7 +219,7 @@ class AchadoViewSet(viewsets.ModelViewSet):
             .select_related(
                 "item__equipamento__setor__area", "item__carregamento__tecnologia",
                 "item__carregamento__relatorio", "item__carregamento__analista",
-                "tipo_componente", "tipo_anomalia", "recomendacao", "grau_risco",
+                "tipo_componente", "tipo_anomalia", "recomendacao", "condicao",
             )
             .prefetch_related("imagens")
         )

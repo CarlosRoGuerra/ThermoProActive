@@ -181,9 +181,11 @@ export interface Achado {
   tensao_a: string | null;
   tensao_b: string | null;
   tensao_c: string | null;
+  // Condição / grau de risco desta análise (reclassificável no escritório)
+  condicao: number | null;
+  condicao_nome: string | null;
+  condicao_sigla: string | null;
   // Escritório
-  grau_risco: number | null;
-  grau_risco_nome: string | null;
   numero_osp: string;
   numero_relatorio: string | null;
   confirmada: boolean;

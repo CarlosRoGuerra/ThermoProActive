@@ -11,7 +11,7 @@ type CatOpt = {
   nome: string;
   tecnologias_display?: { id: number; nome: string }[];
 };
-type GrauOpt = { id: number; nome: string; cor?: string };
+type CondOpt = { id: number; nome: string; sigla?: string };
 
 /** Mantém itens sem tecnologia (universais) ou vinculados à tecnologia atual. */
 function filtrarPorTecnologia(itens: CatOpt[], tecnologiaId: number): CatOpt[] {
@@ -30,18 +30,16 @@ export function AchadoCampos({
   setForm,
   tipo,
   tecnologiaId,
-  mostrarGrauRisco = false,
 }: {
   form: AchadoForm;
   setForm: (f: AchadoForm) => void;
   tipo: TecnologiaTipo;
   tecnologiaId: number;
-  mostrarGrauRisco?: boolean;
 }) {
   const [componentes, setComponentes] = useState<CatOpt[]>([]);
   const [anomalias, setAnomalias] = useState<CatOpt[]>([]);
   const [recomendacoes, setRecomendacoes] = useState<CatOpt[]>([]);
-  const [graus, setGraus] = useState<GrauOpt[]>([]);
+  const [condicoes, setCondicoes] = useState<CondOpt[]>([]);
 
   useEffect(() => {
     api<Paginated<CatOpt>>("/tipos-componente/?page_size=1000")
@@ -53,12 +51,10 @@ export function AchadoCampos({
     api<Paginated<CatOpt>>("/tipos-recomendacao/?page_size=1000")
       .then((d) => setRecomendacoes(d.results))
       .catch(() => setRecomendacoes([]));
-    if (mostrarGrauRisco) {
-      api<Paginated<GrauOpt>>("/tipos-criticidade/?page_size=1000")
-        .then((d) => setGraus(d.results))
-        .catch(() => setGraus([]));
-    }
-  }, [mostrarGrauRisco]);
+    api<Paginated<CondOpt>>("/condicoes/?page_size=1000")
+      .then((d) => setCondicoes(d.results))
+      .catch(() => setCondicoes([]));
+  }, []);
 
   const compFiltrados = useMemo(() => filtrarPorTecnologia(componentes, tecnologiaId), [componentes, tecnologiaId]);
   const anomFiltradas = useMemo(() => filtrarPorTecnologia(anomalias, tecnologiaId), [anomalias, tecnologiaId]);
@@ -69,6 +65,20 @@ export function AchadoCampos({
 
   return (
     <div className="space-y-5">
+      {/* Condição / grau de risco DESTA análise (por análise; reclassificável). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Condição / Grau de risco">
+          <Select value={form.condicao} onChange={(e) => set("condicao", e.target.value)}>
+            <option value="">— selecione —</option>
+            {condicoes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.sigla ? `${c.sigla} — ${c.nome}` : c.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
       {/* --- Comum a todas as tecnologias --- */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Tipo de componente">
@@ -226,20 +236,6 @@ export function AchadoCampos({
               </Field>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* --- Escritório: grau de risco --- */}
-      {mostrarGrauRisco && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Grau de risco">
-            <Select value={form.grau_risco} onChange={(e) => set("grau_risco", e.target.value)}>
-              <option value="">— selecione —</option>
-              {graus.map((g) => (
-                <option key={g.id} value={g.id}>{g.nome}</option>
-              ))}
-            </Select>
-          </Field>
         </div>
       )}
     </div>

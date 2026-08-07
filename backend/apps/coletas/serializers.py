@@ -168,7 +168,8 @@ class AchadoSerializer(serializers.ModelSerializer):
     tipo_componente_nome = serializers.CharField(source="tipo_componente.nome", read_only=True, default=None)
     tipo_anomalia_nome = serializers.CharField(source="tipo_anomalia.nome", read_only=True, default=None)
     recomendacao_nome = serializers.CharField(source="recomendacao.nome", read_only=True, default=None)
-    grau_risco_nome = serializers.CharField(source="grau_risco.nome", read_only=True, default=None)
+    condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
+    condicao_sigla = serializers.CharField(source="condicao.sigla", read_only=True, default=None)
     imagens = AchadoImagemSerializer(many=True, read_only=True)
 
     class Meta:

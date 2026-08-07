@@ -27,7 +27,12 @@ function AnaliseModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<AchadoForm>(achado ? formDeAchado(achado) : formVazio());
+  // Nova análise herda a condição do item (reclassificável no escritório).
+  const [form, setForm] = useState<AchadoForm>(
+    achado
+      ? formDeAchado(achado)
+      : { ...formVazio(), condicao: item.condicao != null ? String(item.condicao) : "" }
+  );
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -289,13 +294,18 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                       key={a.id}
                       className="flex items-center justify-between gap-3 rounded-lg bg-surface-muted/50 px-3 py-2"
                     >
-                      <div className="min-w-0 text-sm">
-                        <span className="font-medium text-fg">
-                          {a.tipo_componente_nome || a.componente_texto || "Análise"}
-                        </span>
-                        {(a.tipo_anomalia_nome || a.anomalia_texto) && (
-                          <span className="text-fg-muted"> — {a.tipo_anomalia_nome || a.anomalia_texto}</span>
+                      <div className="flex min-w-0 items-center gap-2 text-sm">
+                        {(a.condicao_sigla || a.condicao_nome) && (
+                          <Badge tone="warning">{a.condicao_sigla || a.condicao_nome}</Badge>
                         )}
+                        <span className="truncate">
+                          <span className="font-medium text-fg">
+                            {a.tipo_componente_nome || a.componente_texto || "Análise"}
+                          </span>
+                          {(a.tipo_anomalia_nome || a.anomalia_texto) && (
+                            <span className="text-fg-muted"> — {a.tipo_anomalia_nome || a.anomalia_texto}</span>
+                          )}
+                        </span>
                       </div>
                       {!transferida && (
                         <div className="flex shrink-0 items-center gap-1">
