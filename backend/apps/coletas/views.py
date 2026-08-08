@@ -127,6 +127,57 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         )
         return escopo_cliente(qs, self.request.user)
 
+    @action(detail=True, methods=["get"], url_path="secao-c")
+    def secao_c(self, request, pk=None):
+        """
+        Seção C do relatório — Relação de Equipamentos Contemplados.
+        Uma linha por análise (com o GR de cada), agrupada por Área → Setor;
+        equipamentos sem análise entram com a condição do item (OK/PDP/PDM…).
+        """
+        relatorio = self.get_object()
+        itens = (
+            ItemInspecao.objects.filter(carregamento__relatorio=relatorio)
+            .select_related("equipamento__setor__area", "condicao")
+            .prefetch_related("achados__condicao", "achados__tipo_componente")
+            .order_by(
+                "equipamento__setor__area__nome", "equipamento__setor__nome",
+                "equipamento__tag", "ordem",
+            )
+        )
+
+        def rotulo(cond):
+            if not cond:
+                return "—"
+            return cond.sigla or cond.nome
+
+        grupos: dict = {}
+        total = 0
+        for item in itens:
+            eq = item.equipamento
+            setor = eq.setor
+            area = setor.area if setor else None
+            chave = (area.nome if area else "—", setor.nome if setor else "—")
+            linhas = grupos.setdefault(chave, [])
+            achados = list(item.achados.all())
+            if achados:
+                for a in achados:
+                    comp = a.tipo_componente.nome if a.tipo_componente_id else a.componente_texto
+                    nome = f"{eq.nome} - {comp}" if comp else eq.nome
+                    linhas.append({"tag": eq.tag, "equipamento": nome, "condicao": rotulo(a.condicao)})
+                    total += 1
+            else:
+                linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": rotulo(item.condicao)})
+                total += 1
+
+        return Response({
+            "empresa": relatorio.cliente.nome,
+            "numero": relatorio.numero,
+            "data_inicio": relatorio.data_inicio,
+            "data_termino": relatorio.data_termino,
+            "total": total,
+            "grupos": [{"area": a, "setor": s, "linhas": linhas} for (a, s), linhas in grupos.items()],
+        })
+
 
 class CarregamentoViewSet(viewsets.ModelViewSet):
     """Análise de campo: "carregar rota", listar itens e transferir."""

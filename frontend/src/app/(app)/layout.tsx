@@ -67,6 +67,7 @@ const ESTRUTURA_CLIENTE: { href: string; label: string }[] = [
 const INSPECOES_SUBMENU: { href: string; label: string }[] = [
   { href: "/inspecoes/campo", label: "Análise de campo" },
   { href: "/inspecoes/final", label: "Análise final" },
+  { href: "/relatorios-inspecao", label: "Relatório técnico" },
 ];
 
 // Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há
@@ -132,8 +133,8 @@ function SidebarContent({
   const { clienteAtivo, limpar: limparCliente } = useClienteAtivo();
   const [submenus, setSubmenus] = useState<Record<string, boolean>>(() => ({
     "/cadastros": pathname.startsWith("/cadastros"),
-    // Inspeções fica aberto em qualquer subrota (campo ou final).
-    "/inspecoes/campo": pathname.startsWith("/inspecoes"),
+    // Inspeções fica aberto em qualquer subrota (campo, final ou relatório).
+    "/inspecoes/campo": pathname.startsWith("/inspecoes") || pathname.startsWith("/relatorios-inspecao"),
   }));
 
   return (
