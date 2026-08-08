@@ -170,11 +170,24 @@ class AchadoSerializer(serializers.ModelSerializer):
     recomendacao_nome = serializers.CharField(source="recomendacao.nome", read_only=True, default=None)
     condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
     condicao_sigla = serializers.CharField(source="condicao.sigla", read_only=True, default=None)
+    # OSP gerada ao confirmar (1 por análise): sequencial por cliente | código global.
+    osp_sequencial = serializers.IntegerField(source="osp.sequencial_cliente", read_only=True, default=None)
+    osp_codigo = serializers.IntegerField(source="osp.id", read_only=True, default=None)
     imagens = AchadoImagemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Achado
         exclude = ["ativo"]
+
+    def update(self, instance, validated_data):
+        # Ao CONFIRMAR (0→1), gera a OSP da análise (1 por análise).
+        gerar_osp = validated_data.get("confirmada") and not instance.confirmada
+        achado = super().update(instance, validated_data)
+        if gerar_osp:
+            from apps.osp.models import OrdemServico  # tardio: evita ciclo coletas↔osp
+            OrdemServico.gerar_de_achado(achado)
+            achado.refresh_from_db()
+        return achado
 
 
 class ItemInspecaoSerializer(serializers.ModelSerializer):

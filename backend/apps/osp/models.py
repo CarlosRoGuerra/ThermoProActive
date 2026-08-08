@@ -113,6 +113,15 @@ class OrdemServico(TimeStampedModel):
     inspecao = models.ForeignKey(
         Inspecao, on_delete=models.SET_NULL, null=True, blank=True, related_name="osps"
     )
+    # Vínculo com a análise (novo fluxo) — 1 OSP por achado, gerada ao confirmar.
+    achado = models.OneToOneField(
+        "coletas.Achado", on_delete=models.SET_NULL, null=True, blank=True, related_name="osp"
+    )
+    # Número da OSP no relatório: sequencial POR CLIENTE (tomador de serviço).
+    # O "código" que o acompanha é o id global desta tabela ("OSP | Código").
+    sequencial_cliente = models.PositiveIntegerField(
+        "Sequencial da OSP (por cliente)", null=True, blank=True, editable=False
+    )
 
     titulo = models.CharField("Título", max_length=200)
     descricao = models.TextField("Descrição", blank=True)
@@ -228,6 +237,56 @@ class OrdemServico(TimeStampedModel):
         )
         seq = int(ultimo.split("-")[-1]) + 1 if ultimo else 1
         return f"{prefixo}{seq:04d}"
+
+    @staticmethod
+    def proximo_sequencial_cliente(cliente) -> int:
+        """Sequencial da OSP dentro do cliente (tomador de serviço)."""
+        maior = OrdemServico.objects.filter(cliente=cliente).aggregate(
+            m=models.Max("sequencial_cliente")
+        )["m"]
+        return (maior or 0) + 1
+
+    @classmethod
+    def gerar_de_achado(cls, achado):
+        """
+        Cria a OSP de uma análise confirmada — 1 por análise (idempotente).
+        Copia os dados técnicos do achado; a parte de execução/custo fica p/ depois.
+        """
+        existente = getattr(achado, "osp", None)
+        if existente:
+            return existente
+        item = achado.item
+        cliente = item.carregamento.cliente
+        cond = achado.condicao
+        sigla = (cond.sigla or "").strip().upper() if cond else ""
+        grau = sigla if sigla in GrauRisco.values else ""
+        titulo = (
+            (achado.tipo_componente.nome if achado.tipo_componente_id else "")
+            or achado.componente_texto
+            or "Análise preditiva"
+        )
+        seq = cls.proximo_sequencial_cliente(cliente)
+        osp = cls.objects.create(
+            cliente=cliente,
+            equipamento=item.equipamento,
+            achado=achado,
+            sequencial_cliente=seq,
+            titulo=titulo[:200],
+            tipo_anomalia=achado.tipo_anomalia,
+            tipo_componente=achado.tipo_componente,
+            componente=achado.componente_texto,
+            anomalia=achado.anomalia_texto,
+            recomendacao=achado.recomendacao_texto,
+            observacao=achado.observacoes,
+            grau_risco=grau,
+            amplitude_velocidade=achado.velocidade_global,
+            amplitude_aceleracao=achado.aceleracao_global,
+            gerada_automaticamente=True,
+        )
+        # "OSP | Código" = sequencial do cliente | id global da tabela.
+        achado.numero_osp = f"{seq:04d} | {osp.id}"
+        achado.save(update_fields=["numero_osp"])
+        return osp
 
     @property
     def sla_vencido(self) -> bool:

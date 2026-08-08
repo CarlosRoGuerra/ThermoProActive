@@ -192,7 +192,8 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     setMsg(null);
     try {
       // A condição/grau de risco desta análise vai no próprio achado (AchadoCampos).
-      const body: Record<string, unknown> = { ...payloadDeForm(form), numero_osp: numeroOsp };
+      // numero_osp é gerado automaticamente ao confirmar (não editável).
+      const body: Record<string, unknown> = { ...payloadDeForm(form) };
       if (confirmar) {
         body.confirmada = true;
         body.visivel_cliente = true;
@@ -255,8 +256,8 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
           ))}
         </dl>
         <div className="mt-4 max-w-xs border-t border-border pt-4">
-          <Field label="Número da OSP">
-            <Input value={numeroOsp} maxLength={40} onChange={(e) => setNumeroOsp(e.target.value)} />
+          <Field label="OSP | Código">
+            <Input value={numeroOsp} disabled readOnly placeholder="Gerado ao confirmar" />
           </Field>
         </div>
       </Card>

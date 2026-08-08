@@ -187,6 +187,8 @@ export interface Achado {
   condicao_sigla: string | null;
   // Escritório
   numero_osp: string;
+  osp_sequencial: number | null;
+  osp_codigo: number | null;
   numero_relatorio: string | null;
   confirmada: boolean;
   visivel_cliente: boolean;
