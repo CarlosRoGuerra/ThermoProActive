@@ -178,6 +178,157 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             "grupos": [{"area": a, "setor": s, "linhas": linhas} for (a, s), linhas in grupos.items()],
         })
 
+    @action(detail=True, methods=["get"])
+    def dossie(self, request, pk=None):
+        """Relatório técnico completo — Capa + Seções A, B, C e D (folhas de OSP)."""
+        from apps.cadastros.models import Norma
+        from apps.osp.models import DESCRICAO_GR, OrdemServico
+
+        rel = self.get_object()
+        cliente = rel.cliente
+        carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
+        analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
+
+        # Instrumentação (distinta) usada nas rotas do relatório.
+        instrumentos, vistos = [], set()
+        for c in carregs:
+            ins = c.instrumento
+            if ins and ins.id not in vistos:
+                vistos.add(ins.id)
+                instrumentos.append({
+                    "tipo": ins.tipo, "marca": ins.marca, "modelo": ins.modelo,
+                    "numero_serie": ins.numero_serie,
+                    "entidade_calibracao": ins.entidade_calibracao,
+                    "software_analise": ins.software_analise,
+                })
+
+        # Normas ligadas à tecnologia do relatório.
+        normas = [
+            {"codigo": n.codigo, "nome": n.nome, "orgao": n.orgao}
+            for n in Norma.objects.ativos().filter(tecnologias=rel.tecnologia).order_by("codigo")
+        ]
+
+        # --- Seção C + apuração das condições (Seção B) ---
+        itens = (
+            ItemInspecao.objects.filter(carregamento__relatorio=rel)
+            .select_related("equipamento__setor__area", "condicao")
+            .prefetch_related("achados__condicao", "achados__tipo_componente", "achados__tipo_anomalia")
+            .order_by("equipamento__setor__area__nome", "equipamento__setor__nome",
+                      "equipamento__tag", "ordem")
+        )
+
+        def rotulo(cond):
+            return (cond.sigla or cond.nome) if cond else "—"
+
+        grupos, cond_tally, equipamentos_ids = {}, {}, set()
+        total_linhas = 0
+        for item in itens:
+            eq = item.equipamento
+            equipamentos_ids.add(eq.id)
+            setor = eq.setor
+            area = setor.area if setor else None
+            chave = (area.nome if area else "—", setor.nome if setor else "—")
+            linhas = grupos.setdefault(chave, [])
+            achados = list(item.achados.all())
+            if achados:
+                for a in achados:
+                    comp = a.tipo_componente.nome if a.tipo_componente_id else a.componente_texto
+                    nome = f"{eq.nome} - {comp}" if comp else eq.nome
+                    r = rotulo(a.condicao)
+                    linhas.append({"tag": eq.tag, "equipamento": nome, "condicao": r})
+                    cond_tally[r] = cond_tally.get(r, 0) + 1
+                    total_linhas += 1
+            else:
+                r = rotulo(item.condicao)
+                linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": r})
+                cond_tally[r] = cond_tally.get(r, 0) + 1
+                total_linhas += 1
+
+        # --- Seção B: componentes / anomalias / OSPs ---
+        achados_qs = (
+            Achado.objects.filter(item__carregamento__relatorio=rel)
+            .select_related("tipo_componente", "tipo_anomalia")
+        )
+        comp_tally, anom_tally = {}, {}
+        for a in achados_qs:
+            comp = a.tipo_componente.nome if a.tipo_componente_id else (a.componente_texto or "Outros")
+            anom = a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "Outros")
+            comp_tally[comp] = comp_tally.get(comp, 0) + 1
+            anom_tally[anom] = anom_tally.get(anom, 0) + 1
+
+        def distribuicao(tally):
+            return [{"rotulo": k, "total": v} for k, v in sorted(tally.items(), key=lambda x: -x[1])]
+
+        # --- Seção D: uma folha por OSP ---
+        osps = (
+            OrdemServico.objects.filter(achado__item__carregamento__relatorio=rel)
+            .select_related(
+                "equipamento__setor__area", "achado__item__carregamento__analista",
+                "tipo_componente",
+            )
+            .prefetch_related("achado__imagens")
+            .order_by("equipamento__setor__area__nome", "equipamento__setor__nome", "sequencial_cliente")
+        )
+        secao_d = []
+        for o in osps:
+            eq = o.equipamento
+            setor = eq.setor if eq else None
+            area = setor.area if setor else None
+            achado = o.achado
+            imagens = [
+                {"tipo": img.get_tipo_display(), "arquivo": request.build_absolute_uri(img.arquivo.url),
+                 "legenda": img.legenda}
+                for img in (achado.imagens.all() if achado else [])
+            ]
+            secao_d.append({
+                "osp": f"{o.sequencial_cliente:04d} | {o.id}" if o.sequencial_cliente else o.numero,
+                "area": area.nome if area else "—",
+                "setor": setor.nome if setor else "—",
+                "tag": eq.tag if eq else "",
+                "equipamento": eq.nome if eq else "",
+                "componente": (o.tipo_componente.nome if o.tipo_componente_id else o.componente),
+                "anomalia": o.anomalia,
+                "recomendacao": o.recomendacao,
+                "observacao": o.observacao,
+                # "GR4" → "GR-4" para exibição na folha.
+                "grau_risco": f"GR-{o.grau_risco[2:]}" if o.grau_risco.startswith("GR") else o.grau_risco,
+                "grau_risco_descricao": DESCRICAO_GR.get(o.grau_risco, ""),
+                "amplitude_velocidade": o.amplitude_velocidade,
+                "amplitude_aceleracao": o.amplitude_aceleracao,
+                "analista": achado.item.carregamento.analista.nome if achado else "",
+                "imagens": imagens,
+            })
+
+        return Response({
+            "cabecalho": {
+                "empresa": cliente.nome,
+                "cnpj": cliente.cnpj,
+                "endereco": cliente.endereco_formatado,
+                "cidade_uf": cliente.cidade_uf,
+                "contato": cliente.contato_gestor,
+                "logomarca": request.build_absolute_uri(cliente.logomarca.url) if cliente.logomarca else None,
+                "numero": rel.numero,
+                "tecnologia": rel.tecnologia.nome,
+                "analistas": analistas,
+                "data_inicio": rel.data_inicio,
+                "data_termino": rel.data_termino,
+                "instrumentos": instrumentos,
+                "normas": normas,
+            },
+            "secao_b": {
+                "condicoes": distribuicao(cond_tally),
+                "componentes": distribuicao(comp_tally),
+                "anomalias": distribuicao(anom_tally),
+                "equip_monitorados": len(equipamentos_ids),
+                "anomalias_diagnosticadas": achados_qs.count(),
+            },
+            "secao_c": {
+                "total": total_linhas,
+                "grupos": [{"area": a, "setor": s, "linhas": linhas} for (a, s), linhas in grupos.items()],
+            },
+            "secao_d": secao_d,
+        })
+
 
 class CarregamentoViewSet(viewsets.ModelViewSet):
     """Análise de campo: "carregar rota", listar itens e transferir."""

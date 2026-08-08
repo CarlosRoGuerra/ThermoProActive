@@ -258,7 +258,8 @@ class OrdemServico(TimeStampedModel):
         item = achado.item
         cliente = item.carregamento.cliente
         cond = achado.condicao
-        sigla = (cond.sigla or "").strip().upper() if cond else ""
+        # Normaliza a sigla da condição ("GR-4" → "GR4") para casar com GrauRisco.
+        sigla = (cond.sigla or "").strip().upper().replace("-", "").replace(" ", "") if cond else ""
         grau = sigla if sigla in GrauRisco.values else ""
         titulo = (
             (achado.tipo_componente.nome if achado.tipo_componente_id else "")
