@@ -15,7 +15,6 @@ import {
   EmptyState,
   Field,
   PageHeader,
-  PriorityBadge,
   Select,
   StatusBadge,
   Table,
@@ -50,6 +49,14 @@ const STATUS_LABEL: Record<string, string> = {
   FINALIZADA: "Finalizada",
   CANCELADA: "Cancelada",
 };
+
+const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
+// "OSP | Código" para as geradas do fluxo novo; número antigo para as demais.
+function ospCodigo(o: OrdemServico): string {
+  return o.sequencial_cliente != null
+    ? `${String(o.sequencial_cliente).padStart(4, "0")} | ${o.id}`
+    : o.numero;
+}
 
 export default function OspsPage() {
   const { user } = useAuth();
@@ -116,30 +123,31 @@ export default function OspsPage() {
       </Card>
 
       {loading ? (
-        <TableSkeleton rows={5} cols={6} />
+        <TableSkeleton rows={5} cols={7} />
       ) : osps.length === 0 ? (
         <Card>
           <EmptyState
             icon={Wrench}
             title="Nenhuma OSP registrada"
-            description="Ordens de serviço são abertas automaticamente quando uma medição é classificada como crítica."
+            description="As OSPs são geradas automaticamente ao confirmar uma análise na Análise final (uma por análise)."
           />
         </Card>
       ) : (
         <Table>
           <THead>
-            <TH>Número</TH>
+            <TH>OSP | Código</TH>
             <TH>Equipamento</TH>
-            <TH>Prioridade</TH>
+            <TH>GR</TH>
+            <TH>Relatório</TH>
+            <TH>Data</TH>
             <TH>SLA</TH>
-            <TH>Origem</TH>
             <TH>Status</TH>
           </THead>
           <TBody>
             {osps.map((o) => (
               <TR key={o.id}>
                 <TD>
-                  <span className="font-mono font-medium text-fg">{o.numero}</span>
+                  <span className="font-mono font-medium text-fg">{ospCodigo(o)}</span>
                   {o.gerada_automaticamente && (
                     <Badge tone="accent" className="ml-2 px-1.5 py-0 text-[10px]">
                       AUTO
@@ -147,9 +155,9 @@ export default function OspsPage() {
                   )}
                 </TD>
                 <TD className="text-fg">{o.equipamento_tag}</TD>
-                <TD>
-                  <PriorityBadge value={o.prioridade} label={o.prioridade_display} />
-                </TD>
+                <TD>{o.grau_risco ? <Badge tone="warning">{o.grau_risco}</Badge> : "—"}</TD>
+                <TD className="font-mono text-xs text-fg-muted">{o.numero_relatorio || "—"}</TD>
+                <TD className="tabular-nums">{ddmmaaaa(o.data_auditoria)}</TD>
                 <TD>
                   {o.sla_vencido ? (
                     <span className="inline-flex items-center gap-1 font-medium text-danger-fg">
@@ -159,7 +167,6 @@ export default function OspsPage() {
                     o.sla_data ?? "—"
                   )}
                 </TD>
-                <TD className="text-xs">{o.criticidade_origem || "—"}</TD>
                 <TD>
                   {user?.is_interno ? (
                     <Select

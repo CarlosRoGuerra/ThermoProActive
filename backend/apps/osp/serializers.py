@@ -21,11 +21,21 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     planejado_por_nome = serializers.CharField(source="planejado_por.nome", read_only=True, default=None)
     executado_por_nome = serializers.CharField(source="executado_por.nome", read_only=True, default=None)
     finalizado_por_nome = serializers.CharField(source="finalizado_por.nome", read_only=True, default=None)
+    # Fluxo novo: OSP gerada de uma análise. "OSP | Código" = sequencial_cliente | id.
+    # A data de referência/auditoria vem do relatório (data de término).
+    data_auditoria = serializers.DateField(
+        source="achado.item.carregamento.relatorio.data_termino", read_only=True, default=None
+    )
+    numero_relatorio = serializers.CharField(
+        source="achado.item.carregamento.relatorio.numero", read_only=True, default=None
+    )
 
     class Meta:
         model = OrdemServico
         fields = [
-            "id", "numero", "cliente", "cliente_nome", "equipamento", "equipamento_tag",
+            "id", "numero", "sequencial_cliente", "achado",
+            "data_auditoria", "numero_relatorio",
+            "cliente", "cliente_nome", "equipamento", "equipamento_tag",
             "inspecao", "titulo", "descricao", "prioridade", "prioridade_display",
             "status", "status_display", "criticidade_origem", "gerada_automaticamente",
             "responsavel", "responsavel_nome", "sla_data", "sla_vencido",

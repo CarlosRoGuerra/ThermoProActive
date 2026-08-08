@@ -17,7 +17,10 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["criado_em", "sla_data", "prioridade"]
 
     def get_queryset(self):
-        qs = OrdemServico.objects.select_related("cliente", "equipamento", "responsavel")
+        qs = OrdemServico.objects.select_related(
+            "cliente", "equipamento", "responsavel",
+            "achado__item__carregamento__relatorio",
+        )
         return escopo_cliente(qs, self.request.user)
 
     @action(detail=True, methods=["patch"])

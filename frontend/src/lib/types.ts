@@ -389,6 +389,13 @@ export interface Inspecao {
 export interface OrdemServico {
   id: number;
   numero: string;
+  // Fluxo novo: OSP gerada de uma análise. "OSP | Código" = sequencial_cliente | id.
+  sequencial_cliente: number | null;
+  achado: number | null;
+  data_auditoria: string | null;
+  numero_relatorio: string | null;
+  grau_risco: string;
+  grau_risco_display: string;
   cliente: number;
   cliente_nome: string;
   equipamento: number;
