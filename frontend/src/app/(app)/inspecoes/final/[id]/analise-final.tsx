@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ImagePlus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ImagePlus, Save, Trash2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Achado, AchadoImagem, TipoImagemAchado } from "@/lib/types";
 import {
@@ -45,6 +45,7 @@ function Imagens({
   const [legenda, setLegenda] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [ampliada, setAmpliada] = useState<AchadoImagem | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function medir(file: File): Promise<{ w: number; h: number }> {
@@ -137,7 +138,13 @@ function Imagens({
           {achado.imagens.map((img) => (
             <div key={img.id} className="overflow-hidden rounded-lg border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.arquivo} alt={img.tipo_display} className="aspect-[4/3] w-full object-cover" />
+              <img
+                src={img.arquivo}
+                alt={img.tipo_display}
+                onClick={() => setAmpliada(img)}
+                title="Clique para ampliar"
+                className="aspect-[4/3] w-full cursor-zoom-in object-cover transition-opacity hover:opacity-90"
+              />
               <div className="flex items-center justify-between gap-2 px-2 py-1.5">
                 <span className="truncate text-xs text-fg-muted" title={img.legenda || img.tipo_display}>
                   {img.tipo_display}
@@ -152,6 +159,34 @@ function Imagens({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Lightbox: imagem ampliada ao clicar */}
+      {ampliada && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setAmpliada(null)}
+        >
+          <button
+            onClick={() => setAmpliada(null)}
+            className="absolute right-4 top-4 rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Fechar"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={ampliada.arquivo}
+            alt={ampliada.tipo_display}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain shadow-2xl"
+          />
+          {ampliada.legenda && (
+            <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-black/60 px-3 py-1 text-sm text-white">
+              {ampliada.legenda}
+            </span>
+          )}
         </div>
       )}
     </div>
