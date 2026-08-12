@@ -182,14 +182,13 @@ class RelatorioViewSet(viewsets.ModelViewSet):
     def dossie(self, request, pk=None):
         """Relatório técnico completo — Capa + Seções A, B, C e D (folhas de OSP)."""
         from apps.cadastros.models import Norma
-        from apps.osp.models import DESCRICAO_GR, OrdemServico
 
         rel = self.get_object()
         cliente = rel.cliente
         carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
         analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
 
-        # Instrumentação (distinta) usada nas rotas do relatório.
+        # Instrumentação com dados de calibração (atrelados ao ID do instrumento).
         instrumentos, vistos = [], set()
         for c in carregs:
             ins = c.instrumento
@@ -198,6 +197,9 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 instrumentos.append({
                     "tipo": ins.tipo, "marca": ins.marca, "modelo": ins.modelo,
                     "numero_serie": ins.numero_serie,
+                    "data_ultima_calibracao": ins.data_ultima_calibracao,
+                    "proxima_calibracao": ins.proxima_calibracao,
+                    "periodicidade": ins.get_periodicidade_calibracao_display(),
                     "entidade_calibracao": ins.entidade_calibracao,
                     "software_analise": ins.software_analise,
                 })
@@ -208,18 +210,23 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             for n in Norma.objects.ativos().filter(tecnologias=rel.tecnologia).order_by("codigo")
         ]
 
-        # --- Seção C + apuração das condições (Seção B) ---
-        itens = (
-            ItemInspecao.objects.filter(carregamento__relatorio=rel)
-            .select_related("equipamento__setor__area", "condicao")
-            .prefetch_related("achados__condicao", "achados__tipo_componente", "achados__tipo_anomalia")
-            .order_by("equipamento__setor__area__nome", "equipamento__setor__nome",
-                      "equipamento__tag", "ordem")
-        )
+        # Concatenação: [valor do dropdown] + " " + [texto livre]  (regra do cliente).
+        def concat(categoria, texto):
+            return " ".join(p for p in [(categoria or "").strip(), (texto or "").strip()] if p)
 
         def rotulo(cond):
             return (cond.sigla or cond.nome) if cond else "—"
 
+        condicoes_usadas = {}  # id -> Condicao, para o glossário dinâmico
+
+        # --- Seção C (por área/setor) + apuração das condições (Seção B) ---
+        itens = (
+            ItemInspecao.objects.filter(carregamento__relatorio=rel)
+            .select_related("equipamento__setor__area", "condicao")
+            .prefetch_related("achados__condicao", "achados__tipo_componente")
+            .order_by("equipamento__setor__area__nome", "equipamento__setor__nome",
+                      "equipamento__tag", "ordem")
+        )
         grupos, cond_tally, equipamentos_ids = {}, {}, set()
         total_linhas = 0
         for item in itens:
@@ -232,72 +239,91 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             achados = list(item.achados.all())
             if achados:
                 for a in achados:
-                    comp = a.tipo_componente.nome if a.tipo_componente_id else a.componente_texto
+                    cat = a.tipo_componente.nome if a.tipo_componente_id else ""
+                    comp = concat(cat, a.componente_texto)
                     nome = f"{eq.nome} - {comp}" if comp else eq.nome
                     r = rotulo(a.condicao)
                     linhas.append({"tag": eq.tag, "equipamento": nome, "condicao": r})
                     cond_tally[r] = cond_tally.get(r, 0) + 1
                     total_linhas += 1
+                    if a.condicao_id:
+                        condicoes_usadas[a.condicao_id] = a.condicao
             else:
                 r = rotulo(item.condicao)
                 linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": r})
                 cond_tally[r] = cond_tally.get(r, 0) + 1
                 total_linhas += 1
+                if item.condicao_id:
+                    condicoes_usadas[item.condicao_id] = item.condicao
 
-        # --- Seção B: componentes / anomalias / OSPs ---
+        # --- Achados: apuração (Seção B) E folhas (Seção D) da MESMA lista —
+        #     itera TODOS os achados, garantindo que a contagem bata com as folhas.
         achados_qs = (
             Achado.objects.filter(item__carregamento__relatorio=rel)
-            .select_related("tipo_componente", "tipo_anomalia")
+            .select_related(
+                "tipo_componente", "tipo_anomalia", "recomendacao", "condicao",
+                "item__equipamento__setor__area", "item__carregamento__analista", "osp",
+            )
+            .prefetch_related("imagens")
+            .order_by("item__equipamento__setor__area__nome", "item__equipamento__setor__nome",
+                      "item__equipamento__tag", "id")
         )
         comp_tally, anom_tally = {}, {}
+        secao_d = []
         for a in achados_qs:
-            comp = a.tipo_componente.nome if a.tipo_componente_id else (a.componente_texto or "Outros")
-            anom = a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "Outros")
-            comp_tally[comp] = comp_tally.get(comp, 0) + 1
-            anom_tally[anom] = anom_tally.get(anom, 0) + 1
+            comp_cat = a.tipo_componente.nome if a.tipo_componente_id else (a.componente_texto or "Outros")
+            anom_cat = a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "Outros")
+            comp_tally[comp_cat] = comp_tally.get(comp_cat, 0) + 1
+            anom_tally[anom_cat] = anom_tally.get(anom_cat, 0) + 1
+
+            eq = a.item.equipamento
+            setor = eq.setor
+            area = setor.area if setor else None
+            osp = getattr(a, "osp", None)
+            osp_num = (
+                f"{osp.sequencial_cliente:04d} | {osp.id}"
+                if osp and osp.sequencial_cliente else (a.numero_osp or "—")
+            )
+            imagens = [
+                {"tipo": img.get_tipo_display(), "arquivo": request.build_absolute_uri(img.arquivo.url),
+                 "legenda": img.legenda}
+                for img in a.imagens.all()
+            ]
+            secao_d.append({
+                "osp": osp_num,
+                "area": area.nome if area else "—",
+                "setor": setor.nome if setor else "—",
+                "tag": eq.tag,
+                "equipamento": eq.nome,
+                "componente": concat(a.tipo_componente.nome if a.tipo_componente_id else "", a.componente_texto),
+                "anomalia": concat(a.tipo_anomalia.nome if a.tipo_anomalia_id else "", a.anomalia_texto),
+                "recomendacao": concat(a.recomendacao.nome if a.recomendacao_id else "", a.recomendacao_texto),
+                "observacao": a.observacoes,
+                "grau_risco": rotulo(a.condicao),
+                "grau_risco_descricao": a.condicao.nome if a.condicao_id else "",
+                # Bloco de vibração
+                "amplitude_velocidade": a.velocidade_global,
+                "amplitude_aceleracao": a.aceleracao_global,
+                # Bloco de termografia
+                "temperatura_medida": a.temperatura_medida,
+                "temperatura_referencia": a.temperatura_referencia,
+                "delta_t": a.delta_t,
+                "carga_percentual": a.carga_percentual,
+                "corrente": [a.corrente_nominal, a.corrente_a, a.corrente_b, a.corrente_c],
+                "tensao": [a.tensao_nominal, a.tensao_a, a.tensao_b, a.tensao_c],
+                "analista": a.item.carregamento.analista.nome if a.item.carregamento.analista_id else "",
+                "imagens": imagens,
+            })
 
         def distribuicao(tally):
             return [{"rotulo": k, "total": v} for k, v in sorted(tally.items(), key=lambda x: -x[1])]
 
-        # --- Seção D: uma folha por OSP ---
-        osps = (
-            OrdemServico.objects.filter(achado__item__carregamento__relatorio=rel)
-            .select_related(
-                "equipamento__setor__area", "achado__item__carregamento__analista",
-                "tipo_componente",
-            )
-            .prefetch_related("achado__imagens")
-            .order_by("equipamento__setor__area__nome", "equipamento__setor__nome", "sequencial_cliente")
-        )
-        secao_d = []
-        for o in osps:
-            eq = o.equipamento
-            setor = eq.setor if eq else None
-            area = setor.area if setor else None
-            achado = o.achado
-            imagens = [
-                {"tipo": img.get_tipo_display(), "arquivo": request.build_absolute_uri(img.arquivo.url),
-                 "legenda": img.legenda}
-                for img in (achado.imagens.all() if achado else [])
-            ]
-            secao_d.append({
-                "osp": f"{o.sequencial_cliente:04d} | {o.id}" if o.sequencial_cliente else o.numero,
-                "area": area.nome if area else "—",
-                "setor": setor.nome if setor else "—",
-                "tag": eq.tag if eq else "",
-                "equipamento": eq.nome if eq else "",
-                "componente": (o.tipo_componente.nome if o.tipo_componente_id else o.componente),
-                "anomalia": o.anomalia,
-                "recomendacao": o.recomendacao,
-                "observacao": o.observacao,
-                # "GR4" → "GR-4" para exibição na folha.
-                "grau_risco": f"GR-{o.grau_risco[2:]}" if o.grau_risco.startswith("GR") else o.grau_risco,
-                "grau_risco_descricao": DESCRICAO_GR.get(o.grau_risco, ""),
-                "amplitude_velocidade": o.amplitude_velocidade,
-                "amplitude_aceleracao": o.amplitude_aceleracao,
-                "analista": achado.item.carregamento.analista.nome if achado else "",
-                "imagens": imagens,
-            })
+        # Glossário dinâmico: só os termos (condições) presentes no relatório, com a
+        # descrição vinda do cadastro "Condição do Equipamento".
+        glossario = [
+            {"sigla": c.sigla or c.nome, "termo": c.nome, "descricao": c.descricao or c.nome}
+            for c in sorted(condicoes_usadas.values(), key=lambda x: (x.nivel, x.nome))
+        ]
 
         return Response({
             "cabecalho": {
@@ -306,21 +332,26 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "endereco": cliente.endereco_formatado,
                 "cidade_uf": cliente.cidade_uf,
                 "contato": cliente.contato_gestor,
+                "departamento": cliente.departamento,
                 "logomarca": request.build_absolute_uri(cliente.logomarca.url) if cliente.logomarca else None,
                 "numero": rel.numero,
                 "tecnologia": rel.tecnologia.nome,
                 "analistas": analistas,
                 "data_inicio": rel.data_inicio,
                 "data_termino": rel.data_termino,
+                "data_finalizacao": rel.data_finalizacao,
                 "instrumentos": instrumentos,
                 "normas": normas,
+                "glossario": glossario,
+                "consideracoes_finais": rel.consideracoes_finais,
             },
             "secao_b": {
                 "condicoes": distribuicao(cond_tally),
                 "componentes": distribuicao(comp_tally),
                 "anomalias": distribuicao(anom_tally),
                 "equip_monitorados": len(equipamentos_ids),
-                "anomalias_diagnosticadas": achados_qs.count(),
+                # Bate exatamente com o nº de folhas da Seção D.
+                "anomalias_diagnosticadas": len(secao_d),
             },
             "secao_c": {
                 "total": total_linhas,

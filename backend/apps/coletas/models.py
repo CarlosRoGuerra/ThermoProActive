@@ -373,6 +373,10 @@ class Relatorio(BaseModel):
     numero = models.CharField("Número do relatório", max_length=40)
     data_inicio = models.DateField("Data de início", null=True, blank=True)
     data_termino = models.DateField("Data de término (auditoria)")
+    # Data em que o relatório completo foi finalizado/entregue (Seção A da carta).
+    data_finalizacao = models.DateField("Data de finalização do relatório", null=True, blank=True)
+    # Considerações finais / conclusões (texto livre) impressas ao fim do relatório.
+    consideracoes_finais = models.TextField("Considerações finais", blank=True)
 
     class Meta(BaseModel.Meta):
         verbose_name = "Relatório"
