@@ -27,6 +27,8 @@ type Dist = { rotulo: string; total: number };
 type SecaoB = { condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[]; equip_monitorados: number; anomalias_diagnosticadas: number };
 type LinhaC = { tag: string; equipamento: string; condicao: string };
 type GrupoC = { area: string; setor: string; linhas: LinhaC[] };
+type AvalLinha = { rotulo: string; pred_q: string | null; pred_v: string | null; emerg_q: string | null; emerg_v: string | null };
+type Avaliacao = { linhas: AvalLinha[]; total_preditiva: string; total_emergencial: string; retorno: string };
 type OspD = {
   osp: string; area: string; setor: string; tag: string; equipamento: string; componente: string;
   anomalia: string; recomendacao: string; observacao: string; grau_risco: string; grau_risco_descricao: string;
@@ -34,7 +36,12 @@ type OspD = {
   temperatura_medida: string | null; temperatura_referencia: string | null; delta_t: string | null; carga_percentual: string | null;
   corrente: (string | null)[]; tensao: (string | null)[]; analista: string;
   imagens: { tipo: string; arquivo: string; legenda: string }[];
+  avaliacao: Avaliacao | null;
 };
+
+const num = (v: string | null) => (v == null || v === "" ? 0 : Number(v));
+const moeda = (v: string | number | null) => (v == null || v === "" ? "—" : num(String(v)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const qtd = (v: string | null) => (v == null || v === "" ? "—" : String(num(v)));
 type Dossie = { cabecalho: Cabecalho; secao_b: SecaoB; secao_c: { total: number; grupos: GrupoC[] }; secao_d: OspD[] };
 
 /* ------------------------------- Cores GR --------------------------------- */
@@ -88,6 +95,54 @@ function BlocoMedicao({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
     );
   }
   return null;
+}
+
+/* Avaliação de Resultados (ROI) — preditiva × emergencial. */
+function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <p className="rounded-t bg-emerald-600 px-2 py-1 text-center text-xs font-bold text-white">Avaliação de Resultados</p>
+      <table className="w-full border-collapse text-xs">
+        <thead className="text-slate-500">
+          <tr className="border-b border-slate-300">
+            <th className="py-1 text-left" />
+            <th colSpan={2} className="py-1 text-center">Manut. Orientada Preditiva</th>
+            <th colSpan={2} className="py-1 text-center">Manut. Emergencial</th>
+            <th className="py-1 text-center">Retorno</th>
+          </tr>
+          <tr className="border-b border-slate-200 text-[10px]">
+            <th />
+            <th className="py-0.5 text-right">Qtde</th><th className="py-0.5 text-right">Valor</th>
+            <th className="py-0.5 text-right">Qtde</th><th className="py-0.5 text-right">Valor</th>
+            <th className="py-0.5 text-right">Resultado</th>
+          </tr>
+        </thead>
+        <tbody className="text-slate-700">
+          {aval.linhas.map((l) => {
+            const ret = num(l.emerg_v) - num(l.pred_v);
+            return (
+              <tr key={l.rotulo} className="border-b border-slate-100">
+                <td className="py-1 font-medium">{l.rotulo}</td>
+                <td className="py-1 text-right">{qtd(l.pred_q)}</td>
+                <td className="py-1 text-right">{moeda(l.pred_v)}</td>
+                <td className="py-1 text-right">{qtd(l.emerg_q)}</td>
+                <td className="py-1 text-right">{moeda(l.emerg_v)}</td>
+                <td className="py-1 text-right">{ret ? moeda(ret) : "—"}</td>
+              </tr>
+            );
+          })}
+          <tr className="border-t border-slate-300 font-semibold">
+            <td className="py-1">Total</td>
+            <td />
+            <td className="py-1 text-right">{moeda(aval.total_preditiva)}</td>
+            <td />
+            <td className="py-1 text-right">{moeda(aval.total_emergencial)}</td>
+            <td className="py-1 text-right text-emerald-700">{moeda(aval.retorno)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 /* Bloco de cliente reutilizado na Capa e na Carta (redundância obrigatória). */
@@ -395,6 +450,8 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
                 <p><span className="font-semibold text-slate-700">Observação:</span> <span className="text-slate-600">{o.observacao || "—"}</span></p>
                 <BlocoMedicao o={o} tipo={tipoTec} />
               </div>
+
+              {o.avaliacao && <TabelaAvaliacao aval={o.avaliacao} />}
 
               <table className="mt-4 w-full border-collapse text-xs text-slate-600">
                 <thead>

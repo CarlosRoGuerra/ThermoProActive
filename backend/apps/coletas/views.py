@@ -256,6 +256,29 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 if item.condicao_id:
                     condicoes_usadas[item.condicao_id] = item.condicao
 
+        # Avaliação de Resultados (tabela verde da Seção D) — compara preditiva
+        # × emergencial e o retorno (ROI). Campos já existem na OrdemServico.
+        def avaliacao_osp(o):
+            if o is None:
+                return None
+            return {
+                "linhas": [
+                    {"rotulo": "Mão de obra (h)", "pred_q": o.pred_mao_obra_h, "pred_v": o.pred_mao_obra_valor,
+                     "emerg_q": o.emerg_mao_obra_h, "emerg_v": o.emerg_mao_obra_valor},
+                    {"rotulo": "Serv. terceirizado (h)", "pred_q": o.pred_terceirizado_h, "pred_v": o.pred_terceirizado_valor,
+                     "emerg_q": o.emerg_terceirizado_h, "emerg_v": o.emerg_terceirizado_valor},
+                    {"rotulo": "Material de reparo ($)", "pred_q": None, "pred_v": o.pred_material_valor,
+                     "emerg_q": None, "emerg_v": o.emerg_material_valor},
+                    {"rotulo": "Produção (h/ton)", "pred_q": o.pred_producao_h, "pred_v": o.pred_producao_valor,
+                     "emerg_q": o.emerg_producao_h, "emerg_v": o.emerg_producao_valor},
+                    {"rotulo": "Outros ($)", "pred_q": None, "pred_v": o.pred_outros_valor,
+                     "emerg_q": None, "emerg_v": o.emerg_outros_valor},
+                ],
+                "total_preditiva": o.total_preditiva,
+                "total_emergencial": o.total_emergencial,
+                "retorno": o.retorno_investimento,
+            }
+
         # --- Achados: apuração (Seção B) E folhas (Seção D) da MESMA lista —
         #     itera TODOS os achados, garantindo que a contagem bata com as folhas.
         achados_qs = (
@@ -313,6 +336,7 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "tensao": [a.tensao_nominal, a.tensao_a, a.tensao_b, a.tensao_c],
                 "analista": a.item.carregamento.analista.nome if a.item.carregamento.analista_id else "",
                 "imagens": imagens,
+                "avaliacao": avaliacao_osp(osp),
             })
 
         def distribuicao(tally):
