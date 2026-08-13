@@ -352,6 +352,7 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         return Response({
             "cabecalho": {
                 "empresa": cliente.nome,
+                "nome_fantasia": cliente.nome_fantasia,
                 "cnpj": cliente.cnpj,
                 "endereco": cliente.endereco_formatado,
                 "cidade_uf": cliente.cidade_uf,

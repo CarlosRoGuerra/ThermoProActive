@@ -18,7 +18,7 @@ type Instrumento = {
 type Norma = { codigo: string; nome: string; orgao: string };
 type GlossTerm = { sigla: string; termo: string; descricao: string };
 type Cabecalho = {
-  empresa: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
+  empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
   logomarca: string | null; numero: string; tecnologia: string; analistas: string[];
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
@@ -205,6 +205,22 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
   const tipoTec = tecnologiaTipo(cab.tecnologia);
 
+  // Nome do PDF = número + razão social + nome fantasia (o navegador usa o title).
+  function imprimir() {
+    const nome = [cab.numero, cab.empresa, cab.nome_fantasia]
+      .filter(Boolean)
+      .join("_")
+      .replace(/[\\/:*?"<>|]/g, "-");
+    const original = document.title;
+    document.title = nome;
+    const restaurar = () => {
+      document.title = original;
+      window.removeEventListener("afterprint", restaurar);
+    };
+    window.addEventListener("afterprint", restaurar);
+    window.print();
+  }
+
   return (
     <div className="space-y-4">
       <style>{`
@@ -221,7 +237,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
         </Link>
-        <Button icon={Printer} onClick={() => window.print()}>Imprimir / PDF</Button>
+        <Button icon={Printer} onClick={imprimir}>Imprimir / PDF</Button>
       </div>
 
       {/* Painel de finalização (não sai na impressão) */}
@@ -325,6 +341,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
             Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
           </p>
+          {cab.consideracoes_finais.trim() && (
+            <p className="mt-2 whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
+          )}
           <div className="mt-8 text-center">
             <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
             <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
@@ -471,17 +490,6 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           );
         })}
 
-        {/* ===================== CONSIDERAÇÕES FINAIS ===================== */}
-        {cab.consideracoes_finais.trim() && (
-          <section className="pagina rounded-xl border border-border bg-white p-6">
-            <p className="mb-3 text-right text-sm font-semibold text-rose-700">Considerações Finais</p>
-            <p className="whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
-            <div className="mt-8 text-center">
-              <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
-              <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );
