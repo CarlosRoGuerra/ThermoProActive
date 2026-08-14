@@ -55,6 +55,14 @@ function corCondicao(c: string) {
   return CORES[c.replace(/[^A-Za-z0-9]/g, "").toUpperCase()] ?? { bg: "#94a3b8", fg: "#fff" };
 }
 
+// 6.1 — abreviações fixas do glossário (não vêm de dado).
+const ABREVIACOES: [string, string][] = [
+  ["O.S.P.", "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada."],
+  ["G.R.", "Grau de Risco — determina o prazo de correção das anomalias detectadas."],
+  ["LA", "Lado Acoplado."],
+  ["LOA", "Lado Oposto ao Acoplado."],
+];
+
 /* ------------------------------- Barras ----------------------------------- */
 function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: string) => string; hue?: string }) {
   if (dados.length === 0) return <p className="text-xs text-slate-400">Sem dados.</p>;
@@ -324,8 +332,20 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
 
           <h3 className="text-sm font-bold text-slate-800">6. Glossário Técnico</h3>
+
+          <p className="mt-1 text-sm font-semibold text-slate-700">6.1. Das abreviações</p>
+          <dl className="mb-2 ml-2 text-sm text-slate-600">
+            {ABREVIACOES.map(([sigla, desc], k) => (
+              <div key={k} className="flex gap-2 py-0.5">
+                <dt className="w-20 shrink-0 font-semibold text-slate-700">{sigla}</dt>
+                <dd>{desc}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <p className="mt-1 text-sm font-semibold text-slate-700">6.2. Das condições apropriadas</p>
           {cab.glossario.length ? (
-            <dl className="mb-3 text-sm text-slate-600">
+            <dl className="mb-3 ml-2 text-sm text-slate-600">
               {cab.glossario.map((g, k) => (
                 <div key={k} className="flex gap-2 py-0.5">
                   <dt className="w-20 shrink-0 font-semibold text-slate-700">{g.sigla}</dt>
@@ -333,7 +353,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
                 </div>
               ))}
             </dl>
-          ) : <p className="mb-3 text-sm text-slate-400">Sem termos no escopo deste relatório.</p>}
+          ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
 
           <h3 className="text-sm font-bold text-slate-800">7. Considerações Importantes</h3>
           <p className="text-sm text-slate-600">
