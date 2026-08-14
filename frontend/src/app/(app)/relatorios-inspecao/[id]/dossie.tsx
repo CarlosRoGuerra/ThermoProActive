@@ -361,9 +361,6 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
             Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
           </p>
-          {cab.consideracoes_finais.trim() && (
-            <p className="mt-2 whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
-          )}
           <div className="mt-8 text-center">
             <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
             <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
@@ -510,6 +507,17 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           );
         })}
 
+        {/* ===================== CONSIDERAÇÕES FINAIS (no fim, conforme o modelo) ===================== */}
+        {cab.consideracoes_finais.trim() && (
+          <section className="pagina rounded-xl border border-border bg-white p-6">
+            <p className="mb-3 text-right text-sm font-semibold text-rose-700">Considerações Finais</p>
+            <p className="whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
+            <div className="mt-8 text-center">
+              <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
+              <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
