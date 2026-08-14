@@ -168,6 +168,28 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
   );
 }
 
+/* Contracapa (divisória) de cada seção — marca + imagem da tecnologia + título. */
+function Contracapa({ titulo, subtitulo, imagem, tecnologia }: {
+  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string;
+}) {
+  return (
+    <section className="pagina flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-3xl font-black tracking-tight text-[#1d4ed8]">Thermo<span className="text-[#ea580c]">proactive</span></p>
+          <p className="text-sm text-slate-500">Manutenção Preditiva</p>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {imagem && <img src={imagem} alt={tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
+      </div>
+      <div className="text-right">
+        <p className="text-3xl font-black leading-tight text-[#1d4ed8]">{titulo}</p>
+        {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------- Página ----------------------------------- */
 export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   const [d, setD] = useState<Dossie | null>(null);
@@ -370,6 +392,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           </div>
         </section>
 
+        {/* Contracapa da Seção B */}
+        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
+
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <section className="pagina rounded-xl border border-border bg-white p-6">
           <p className="mb-4 text-right text-sm font-semibold text-rose-700">Seção B — KPI’s Dashboard</p>
@@ -401,6 +426,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             </div>
           </div>
         </section>
+
+        {/* Contracapa da Seção C */}
+        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina rounded-xl border border-border bg-white p-6">
@@ -444,6 +472,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             </div>
           )}
         </section>
+
+        {/* Contracapa da Seção D */}
+        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
         {osps.map((o, i) => {

@@ -338,12 +338,16 @@ class RelatorioViewSet(viewsets.ModelViewSet):
 
         # Glossário: TODAS as condições cadastradas (todos os GRs, OK, PDP…) — é uma
         # referência para o leitor, não só as usadas neste relatório. Descrição vem
-        # do cadastro "Condição do Equipamento".
+        # do cadastro "Condição do Equipamento". Ordem alfabética pela sigla, o que
+        # naturalmente coloca os GRs primeiro (G antes de I, M, N, O, P).
         from apps.cadastros.models import Condicao
-        glossario = [
-            {"sigla": c.sigla or c.nome, "termo": c.nome, "descricao": c.descricao or c.nome}
-            for c in Condicao.objects.ativos().order_by("nivel", "nome")
-        ]
+        glossario = sorted(
+            (
+                {"sigla": c.sigla or c.nome, "termo": c.nome, "descricao": c.descricao or c.nome}
+                for c in Condicao.objects.ativos()
+            ),
+            key=lambda g: g["sigla"].upper(),
+        )
 
         return Response({
             "cabecalho": {
