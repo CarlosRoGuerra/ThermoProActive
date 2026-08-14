@@ -361,6 +361,10 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "logomarca": request.build_absolute_uri(cliente.logomarca.url) if cliente.logomarca else None,
                 "numero": rel.numero,
                 "tecnologia": rel.tecnologia.nome,
+                "tecnologia_imagem": (
+                    request.build_absolute_uri(rel.tecnologia.imagem.url)
+                    if rel.tecnologia.imagem else None
+                ),
                 "analistas": analistas,
                 "data_inicio": rel.data_inicio,
                 "data_termino": rel.data_termino,

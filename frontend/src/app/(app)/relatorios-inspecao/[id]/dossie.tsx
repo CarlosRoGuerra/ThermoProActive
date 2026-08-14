@@ -19,7 +19,7 @@ type Norma = { codigo: string; nome: string; orgao: string };
 type GlossTerm = { sigla: string; termo: string; descricao: string };
 type Cabecalho = {
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
-  logomarca: string | null; numero: string; tecnologia: string; analistas: string[];
+  logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null; analistas: string[];
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
 };
@@ -272,12 +272,15 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
               <p className="text-3xl font-black tracking-tight text-[#1d4ed8]">Thermo<span className="text-[#ea580c]">proactive</span></p>
               <p className="text-sm text-slate-500">Manutenção Preditiva</p>
             </div>
+            {/* Imagem que identifica a tecnologia (topo direito, conforme o modelo). */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="max-h-20 max-w-[160px] object-contain" />}
+            {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
           </div>
           <div className="flex flex-col items-end text-right">
             <p className="text-2xl font-bold text-slate-700">RELATÓRIO TÉCNICO</p>
-            <div className="mt-6"><BlocoCliente cab={cab} /></div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mt-4 max-h-24 max-w-[180px] object-contain" />}
+            <div className="mt-4"><BlocoCliente cab={cab} /></div>
           </div>
         </section>
 

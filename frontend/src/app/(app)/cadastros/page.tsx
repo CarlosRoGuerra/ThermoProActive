@@ -28,7 +28,7 @@ import {
   cn,
 } from "@/components/ui";
 
-type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref" | "boolean";
+type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref" | "boolean" | "image";
 type FieldDef = {
   key: string;
   label: string;
@@ -145,6 +145,7 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
     fields: [
       { key: "nome", label: "Nome", required: true },
       { key: "sigla", label: "Sigla" },
+      { key: "imagem", label: "Imagem/ícone (capa do relatório)", type: "image" },
     ],
     columns: ["nome", "sigla"],
   },
@@ -271,7 +272,7 @@ function pageWindow(current: number, total: number): (number | "…")[] {
 
 type TecOption = { id: number; nome: string; sigla?: string; identificacao?: string };
 type Row = Record<string, unknown> & { id: number };
-type FormValue = string | number[];
+type FormValue = string | number[] | File;
 
 function optionLabel(o: TecOption) {
   return o.sigla?.trim() ? o.sigla : o.nome;
@@ -435,9 +436,13 @@ function CadastrosInner() {
     setMsg(null);
     try {
       const body: Record<string, unknown> = {};
+      const arquivos: [string, File][] = [];
       for (const f of sel.fields) {
         const v = form[f.key];
-        if (f.type === "multiref") {
+        if (f.type === "image") {
+          // só envia se for um arquivo novo; string (URL atual) mantém o existente.
+          if (v instanceof File) arquivos.push([f.key, v]);
+        } else if (f.type === "multiref") {
           body[f.key] = Array.isArray(v) ? v : [];
         } else if (f.type === "boolean") {
           body[f.key] = v === "true";
@@ -458,10 +463,21 @@ function CadastrosInner() {
       if (sel.escopoCliente?.injeta && clienteAtivo && editingId === null) {
         body.cliente = clienteAtivo.id;
       }
+      // Com imagem nova, envia multipart (FormData); senão, JSON.
+      let payload: unknown = body;
+      if (arquivos.length > 0) {
+        const fd = new FormData();
+        for (const [k, val] of Object.entries(body)) {
+          if (Array.isArray(val)) val.forEach((x) => fd.append(k, String(x)));
+          else fd.append(k, val == null ? "" : String(val));
+        }
+        for (const [k, file] of arquivos) fd.append(k, file);
+        payload = fd;
+      }
       if (editingId !== null) {
-        await api(`/${sel.endpoint}/${editingId}/`, { method: "PATCH", body });
+        await api(`/${sel.endpoint}/${editingId}/`, { method: "PATCH", body: payload });
       } else {
-        await api(`/${sel.endpoint}/`, { method: "POST", body });
+        await api(`/${sel.endpoint}/`, { method: "POST", body: payload });
       }
       cancelarEdicao();
       await reload(sel);
@@ -621,6 +637,23 @@ function CadastrosInner() {
                         <option value="false">Não</option>
                         <option value="true">Sim</option>
                       </Select>
+                    ) : f.type === "image" ? (
+                      <div className="flex items-center gap-3">
+                        {form[f.key] instanceof File ? (
+                          <span className="max-w-[8rem] truncate text-xs text-fg-muted">
+                            {(form[f.key] as File).name}
+                          </span>
+                        ) : typeof form[f.key] === "string" && form[f.key] ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={form[f.key] as string} alt="" className="h-10 w-10 rounded object-contain ring-1 ring-border" />
+                        ) : null}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setForm({ ...form, [f.key]: e.target.files?.[0] ?? "" })}
+                          className="text-xs text-fg-muted file:mr-2 file:rounded-md file:border-0 file:bg-surface-muted file:px-2 file:py-1 file:text-xs file:text-fg"
+                        />
+                      </div>
                     ) : f.type === "ref" ? (
                       <Select
                         value={(form[f.key] as string) ?? ""}
