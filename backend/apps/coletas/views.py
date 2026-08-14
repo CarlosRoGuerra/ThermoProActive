@@ -217,8 +217,6 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         def rotulo(cond):
             return (cond.sigla or cond.nome) if cond else "—"
 
-        condicoes_usadas = {}  # id -> Condicao, para o glossário dinâmico
-
         # --- Seção C (por área/setor) + apuração das condições (Seção B) ---
         itens = (
             ItemInspecao.objects.filter(carregamento__relatorio=rel)
@@ -246,15 +244,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     linhas.append({"tag": eq.tag, "equipamento": nome, "condicao": r})
                     cond_tally[r] = cond_tally.get(r, 0) + 1
                     total_linhas += 1
-                    if a.condicao_id:
-                        condicoes_usadas[a.condicao_id] = a.condicao
             else:
                 r = rotulo(item.condicao)
                 linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": r})
                 cond_tally[r] = cond_tally.get(r, 0) + 1
                 total_linhas += 1
-                if item.condicao_id:
-                    condicoes_usadas[item.condicao_id] = item.condicao
 
         # Avaliação de Resultados (tabela verde da Seção D) — compara preditiva
         # × emergencial e o retorno (ROI). Campos já existem na OrdemServico.
@@ -342,11 +336,13 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         def distribuicao(tally):
             return [{"rotulo": k, "total": v} for k, v in sorted(tally.items(), key=lambda x: -x[1])]
 
-        # Glossário dinâmico: só os termos (condições) presentes no relatório, com a
-        # descrição vinda do cadastro "Condição do Equipamento".
+        # Glossário: TODAS as condições cadastradas (todos os GRs, OK, PDP…) — é uma
+        # referência para o leitor, não só as usadas neste relatório. Descrição vem
+        # do cadastro "Condição do Equipamento".
+        from apps.cadastros.models import Condicao
         glossario = [
             {"sigla": c.sigla or c.nome, "termo": c.nome, "descricao": c.descricao or c.nome}
-            for c in sorted(condicoes_usadas.values(), key=lambda x: (x.nivel, x.nome))
+            for c in Condicao.objects.ativos().order_by("nivel", "nome")
         ]
 
         return Response({
