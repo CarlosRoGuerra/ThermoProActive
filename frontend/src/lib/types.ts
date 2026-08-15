@@ -88,6 +88,9 @@ export interface Empresa {
   endereco_formatado: string;
   contato_gestor: string;
   departamento: string;
+  email: string;
+  telefone: string;
+  site: string;
   logomarca: string | null;
 }
 

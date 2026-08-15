@@ -17,7 +17,12 @@ type Instrumento = {
 };
 type Norma = { codigo: string; nome: string; orgao: string };
 type GlossTerm = { sigla: string; termo: string; descricao: string };
+type Prestador = {
+  nome: string; cnpj: string; endereco: string; cidade_uf: string;
+  email: string; telefone: string; site: string; logomarca: string | null;
+};
 type Cabecalho = {
+  prestador: Prestador | null;
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
   logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null; analistas: string[];
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
@@ -254,14 +259,50 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   return (
     <div className="space-y-4">
       <style>{`
+        .cab-impressao, .rodape-impressao { display: none; }
         @media print {
+          @page { margin: 2.4cm 1.3cm; }
           body * { visibility: hidden; }
-          .print-area, .print-area * { visibility: visible; }
+          .print-area, .print-area *,
+          .cab-impressao, .cab-impressao *,
+          .rodape-impressao, .rodape-impressao * { visibility: visible; }
           .print-area { position: absolute; left: 0; top: 0; width: 100%; }
           .no-print { display: none !important; }
           .pagina { break-before: page; }
+          .evitar-quebra { break-inside: avoid; }
+          /* Cabeçalho e rodapé repetidos em cada página impressa. */
+          .cab-impressao {
+            display: flex; position: fixed; top: -1.9cm; left: 0; right: 0;
+            align-items: flex-start; justify-content: space-between;
+            border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;
+          }
+          .rodape-impressao {
+            display: flex; position: fixed; bottom: -1.9cm; left: 0; right: 0;
+            align-items: center; justify-content: center; gap: 12px;
+            border-top: 1px solid #cbd5e1; padding-top: 4px;
+          }
         }
       `}</style>
+
+      {/* Cabeçalho de impressão: logo do prestador (esq.) + dados (dir.) */}
+      {cab.prestador && (
+        <div className="cab-impressao text-[9px] leading-tight text-slate-500">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {cab.prestador.logomarca && <img src={cab.prestador.logomarca} alt="" className="max-h-8 object-contain" />}
+          <div className="text-right">
+            <p className="font-semibold text-slate-700">{cab.prestador.nome}</p>
+            {cab.prestador.cnpj && <p>CNPJ {cab.prestador.cnpj}</p>}
+            {cab.prestador.endereco && <p>{cab.prestador.endereco}</p>}
+            {(cab.prestador.telefone || cab.prestador.email) && (
+              <p>{[cab.prestador.telefone, cab.prestador.email].filter(Boolean).join(" · ")}</p>
+            )}
+          </div>
+        </div>
+      )}
+      {/* Rodapé de impressão: site ao centro. */}
+      <div className="rodape-impressao text-[9px] text-slate-500">
+        <span>{cab.prestador?.site || ""}</span>
+      </div>
 
       <div className="no-print flex items-center justify-between gap-3">
         <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
@@ -480,7 +521,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         {osps.map((o, i) => {
           const cor = corCondicao(o.grau_risco);
           return (
-            <section key={i} className="pagina rounded-xl border border-border bg-white p-6">
+            <section key={i} className="pagina evitar-quebra rounded-xl border border-border bg-white p-6">
               <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
               <div className="flex justify-between gap-4">
                 <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-sm">

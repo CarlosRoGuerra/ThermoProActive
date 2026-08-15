@@ -53,6 +53,10 @@ class Empresa(EnderecoMixin, BaseModel):
     cnpj = models.CharField("CNPJ", max_length=18, unique=True)
     contato_gestor = models.CharField("Contato gestor", max_length=120, blank=True)
     departamento = models.CharField("Departamento", max_length=120, blank=True)
+    # Contato do prestador — usado no cabeçalho/rodapé do relatório.
+    email = models.EmailField("E-mail", blank=True)
+    telefone = models.CharField("Telefone", max_length=40, blank=True)
+    site = models.CharField("Site", max_length=120, blank=True, help_text="Ex.: thermoproactive.com.br")
     logomarca = models.ImageField("Logomarca", upload_to="logos/empresas/", null=True, blank=True)
 
     class Meta(BaseModel.Meta):

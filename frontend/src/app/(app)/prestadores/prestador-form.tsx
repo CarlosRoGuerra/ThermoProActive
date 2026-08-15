@@ -26,12 +26,15 @@ type Form = {
   uf: string;
   contato_gestor: string;
   departamento: string;
+  email: string;
+  telefone: string;
+  site: string;
 };
 
 const FORM_VAZIO: Form = {
   nome: "", cnpj: "",
   cep: "", logradouro: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "",
-  contato_gestor: "", departamento: "",
+  contato_gestor: "", departamento: "", email: "", telefone: "", site: "",
 };
 
 /** 00000000 → 00000-000 */
@@ -122,6 +125,9 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
           uf: c.uf ?? "",
           contato_gestor: c.contato_gestor ?? "",
           departamento: c.departamento ?? "",
+          email: c.email ?? "",
+          telefone: c.telefone ?? "",
+          site: c.site ?? "",
         });
         setLogoAtual(c.logomarca ?? null);
       })
@@ -332,6 +338,20 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
               maxLength={120}
               placeholder="Ex.: PCM"
               onChange={(e) => set("departamento", e.target.value)}
+            />
+          </Field>
+          <Field label="Telefone">
+            <Input value={form.telefone} maxLength={40} onChange={(e) => set("telefone", e.target.value)} />
+          </Field>
+          <Field label="E-mail">
+            <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+          </Field>
+          <Field label="Site (rodapé do relatório)">
+            <Input
+              value={form.site}
+              maxLength={120}
+              placeholder="Ex.: thermoproactive.com.br"
+              onChange={(e) => set("site", e.target.value)}
             />
           </Field>
         </div>

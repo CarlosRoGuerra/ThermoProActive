@@ -181,10 +181,12 @@ class RelatorioViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def dossie(self, request, pk=None):
         """Relatório técnico completo — Capa + Seções A, B, C e D (folhas de OSP)."""
-        from apps.cadastros.models import Norma
+        from apps.cadastros.models import Empresa, Norma
 
         rel = self.get_object()
         cliente = rel.cliente
+        # Prestador de serviço (contratada) — cabeçalho/rodapé do relatório.
+        prestador = Empresa.objects.ativos().order_by("id").first()
         carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
         analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
 
@@ -351,6 +353,16 @@ class RelatorioViewSet(viewsets.ModelViewSet):
 
         return Response({
             "cabecalho": {
+                "prestador": {
+                    "nome": prestador.nome,
+                    "cnpj": prestador.cnpj,
+                    "endereco": prestador.endereco_formatado,
+                    "cidade_uf": prestador.cidade_uf,
+                    "email": prestador.email,
+                    "telefone": prestador.telefone,
+                    "site": prestador.site,
+                    "logomarca": request.build_absolute_uri(prestador.logomarca.url) if prestador.logomarca else None,
+                } if prestador else None,
                 "empresa": cliente.nome,
                 "nome_fantasia": cliente.nome_fantasia,
                 "cnpj": cliente.cnpj,
