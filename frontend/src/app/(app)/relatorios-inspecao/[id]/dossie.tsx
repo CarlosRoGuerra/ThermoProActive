@@ -174,10 +174,10 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
 }
 
 /* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto. */
-function Marca({ url }: { url: string | null }) {
+function Marca({ url, className = "max-h-20 max-w-[440px]" }: { url: string | null; className?: string }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt="Prestador" className="max-h-16 max-w-[300px] object-contain" />;
+    return <img src={url} alt="Prestador" className={`${className} object-contain`} />;
   }
   return (
     <div>
@@ -298,7 +298,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       {cab.prestador && (
         <div className="cab-impressao text-[9px] leading-tight text-slate-500">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {cab.prestador.logomarca && <img src={cab.prestador.logomarca} alt="" className="max-h-8 object-contain" />}
+          {cab.prestador.logomarca && <img src={cab.prestador.logomarca} alt="" className="max-h-11 object-contain" />}
           <div className="text-right">
             <p className="font-semibold text-slate-700">{cab.prestador.nome}</p>
             {cab.prestador.cnpj && <p>CNPJ {cab.prestador.cnpj}</p>}
@@ -360,7 +360,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
           <div className="flex items-start justify-between">
-            <Marca url={cab.prestador?.logomarca ?? null} />
+            <Marca url={cab.prestador?.logomarca ?? null} className="max-h-28 max-w-[560px]" />
             {/* Imagem que identifica a tecnologia (topo direito, conforme o modelo). */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
