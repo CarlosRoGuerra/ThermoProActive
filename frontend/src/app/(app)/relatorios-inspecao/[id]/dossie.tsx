@@ -47,7 +47,7 @@ type OspD = {
 const num = (v: string | null) => (v == null || v === "" ? 0 : Number(v));
 const moeda = (v: string | number | null) => (v == null || v === "" ? "—" : num(String(v)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 const qtd = (v: string | null) => (v == null || v === "" ? "—" : String(num(v)));
-type Dossie = { cabecalho: Cabecalho; secao_b: SecaoB; secao_c: { total: number; grupos: GrupoC[] }; secao_d: OspD[] };
+export type Dossie = { cabecalho: Cabecalho; secao_b: SecaoB; secao_c: { total: number; grupos: GrupoC[] }; secao_d: OspD[] };
 
 /* ------------------------------- Cores GR --------------------------------- */
 const CORES: Record<string, { bg: string; fg: string }> = {
@@ -248,8 +248,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   if (loading) return <Card><Spinner label="Montando relatório…" /></Card>;
   if (!d) return <Card><p className="text-sm text-danger-fg">{erro ?? "Relatório não encontrado."}</p></Card>;
 
-  const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
-  const tipoTec = tecnologiaTipo(cab.tecnologia);
+  const cab = d.cabecalho;
 
   // Nome do PDF = número + razão social + nome fantasia (o navegador usa o title).
   function imprimir() {
@@ -319,7 +318,15 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
         </Link>
-        <Button icon={Printer} onClick={imprimir}>Imprimir / PDF</Button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/imprimir/${relatorioId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+          >
+            <Printer className="h-3.5 w-3.5" /> PDF paginado (nº de página)
+          </Link>
+          <Button icon={Printer} onClick={imprimir}>Imprimir / PDF</Button>
+        </div>
       </div>
 
       {/* Painel de finalização (não sai na impressão) */}
@@ -338,7 +345,18 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </div>
       </Card>
 
-      <div className="print-area space-y-4 text-slate-800">
+      <RelatorioCorpo d={d} />
+    </div>
+  );
+}
+
+/* Corpo do relatório (capa → considerações finais). Exportado para ser reusado
+   pela rota de impressão paginada (/imprimir/[id]) com paged.js. */
+export function RelatorioCorpo({ d }: { d: Dossie }) {
+  const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
+  const tipoTec = tecnologiaTipo(cab.tecnologia);
+  return (
+    <div className="print-area space-y-4 text-slate-800">
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
           <div className="flex items-start justify-between">
@@ -602,6 +620,5 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           </section>
         )}
       </div>
-    </div>
   );
 }
