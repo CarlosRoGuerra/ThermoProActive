@@ -175,7 +175,7 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
 
 /* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto.
    Usa altura FIXA (h-*) para AMPLIAR logos de baixa resolução — max-* só encolhe. */
-function Marca({ url, className = "h-16 w-auto max-w-[380px]" }: { url: string | null; className?: string }) {
+function Marca({ url, className = "h-20 w-auto max-w-[440px]" }: { url: string | null; className?: string }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={url} alt="Prestador" className={`${className} object-contain`} />;
@@ -360,13 +360,12 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
     <div className="print-area space-y-4 text-slate-800">
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
-          <div className="flex items-start justify-between">
-            <Marca url={cab.prestador?.logomarca ?? null} className="h-24 w-auto max-w-[560px]" />
-            {/* Imagem que identifica a tecnologia (topo direito, conforme o modelo). */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
-          </div>
+          {/* Logo do prestador em destaque no topo (largura cheia). */}
+          <Marca url={cab.prestador?.logomarca ?? null} className="h-32 w-auto max-w-full" />
           <div className="flex flex-col items-end text-right">
+            {/* Imagem que identifica a tecnologia (conforme o modelo). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="mb-4 max-h-24 max-w-[180px] object-contain" />}
             <p className="text-2xl font-bold text-slate-700">RELATÓRIO TÉCNICO</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mt-4 max-h-24 max-w-[180px] object-contain" />}
