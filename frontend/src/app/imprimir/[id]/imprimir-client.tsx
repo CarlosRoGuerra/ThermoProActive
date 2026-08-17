@@ -43,6 +43,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
   const [d, setD] = useState<Dossie | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState("Carregando relatório…");
+  const [mostrarFonte, setMostrarFonte] = useState(false);
   const fonteRef = useRef<HTMLDivElement>(null);
   const alvoRef = useRef<HTMLDivElement>(null);
 
@@ -88,7 +89,11 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
         await new Previewer().preview(fonte.innerHTML, [{ "paged.css": PAGED_RULES }], alvo);
         if (!cancelado) setStatus("");
       } catch {
-        if (!cancelado) setStatus('Falha ao paginar — use o botão "Imprimir / PDF" na tela do relatório.');
+        // Fallback: revela o conteúdo sem paginação, para ainda ser possível imprimir.
+        if (!cancelado) {
+          setMostrarFonte(true);
+          setStatus("Não foi possível paginar — mostrando layout simples (sem nº de página).");
+        }
       }
     })();
     return () => {
@@ -111,6 +116,9 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao relatório
         </Link>
+        <span className="hidden text-xs font-semibold text-slate-600 sm:block">
+          PDF com numeração de página (pág. X de Y)
+        </span>
         <div className="flex items-center gap-3">
           {status && <span className="text-xs text-slate-500">{status}</span>}
           <button
@@ -123,8 +131,9 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
         </div>
       </div>
 
-      {/* Fonte oculta consumida pelo paged.js: cabeçalho/rodapé correntes + corpo. */}
-      <div ref={fonteRef} className="paged-source">
+      {/* Fonte consumida pelo paged.js: cabeçalho/rodapé correntes + corpo.
+          Fica oculta enquanto pagina; se o paged.js falhar, é revelada (fallback). */}
+      <div ref={fonteRef} className={mostrarFonte ? "" : "paged-source"}>
         {d && (
           <>
             {prestador?.logomarca && (

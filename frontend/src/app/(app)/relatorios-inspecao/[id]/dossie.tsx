@@ -173,8 +173,9 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
   );
 }
 
-/* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto. */
-function Marca({ url, className = "max-h-20 max-w-[440px]" }: { url: string | null; className?: string }) {
+/* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto.
+   Usa altura FIXA (h-*) para AMPLIAR logos de baixa resolução — max-* só encolhe. */
+function Marca({ url, className = "h-16 w-auto max-w-[380px]" }: { url: string | null; className?: string }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={url} alt="Prestador" className={`${className} object-contain`} />;
@@ -319,13 +320,13 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
         </Link>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
           <Link
             href={`/imprimir/${relatorioId}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg shadow-xs transition-colors hover:bg-accent-hover"
           >
-            <Printer className="h-3.5 w-3.5" /> PDF paginado (nº de página)
+            <Printer className="h-4 w-4" /> Imprimir / PDF (com nº de página)
           </Link>
-          <Button icon={Printer} onClick={imprimir}>Imprimir / PDF</Button>
         </div>
       </div>
 
@@ -360,7 +361,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
           <div className="flex items-start justify-between">
-            <Marca url={cab.prestador?.logomarca ?? null} className="max-h-28 max-w-[560px]" />
+            <Marca url={cab.prestador?.logomarca ?? null} className="h-24 w-auto max-w-[560px]" />
             {/* Imagem que identifica a tecnologia (topo direito, conforme o modelo). */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
