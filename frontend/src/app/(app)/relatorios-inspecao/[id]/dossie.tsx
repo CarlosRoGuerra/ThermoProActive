@@ -173,17 +173,28 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
   );
 }
 
+/* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto. */
+function Marca({ url }: { url: string | null }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="Prestador" className="max-h-16 max-w-[300px] object-contain" />;
+  }
+  return (
+    <div>
+      <p className="text-3xl font-black tracking-tight text-[#1d4ed8]">Thermo<span className="text-[#ea580c]">proactive</span></p>
+      <p className="text-sm text-slate-500">Manutenção Preditiva</p>
+    </div>
+  );
+}
+
 /* Contracapa (divisória) de cada seção — marca + imagem da tecnologia + título. */
-function Contracapa({ titulo, subtitulo, imagem, tecnologia }: {
-  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string;
+function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
+  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
 }) {
   return (
     <section className="pagina flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-3xl font-black tracking-tight text-[#1d4ed8]">Thermo<span className="text-[#ea580c]">proactive</span></p>
-          <p className="text-sm text-slate-500">Manutenção Preditiva</p>
-        </div>
+        <Marca url={marca} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {imagem && <img src={imagem} alt={tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
       </div>
@@ -331,10 +342,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-3xl font-black tracking-tight text-[#1d4ed8]">Thermo<span className="text-[#ea580c]">proactive</span></p>
-              <p className="text-sm text-slate-500">Manutenção Preditiva</p>
-            </div>
+            <Marca url={cab.prestador?.logomarca ?? null} />
             {/* Imagem que identifica a tecnologia (topo direito, conforme o modelo). */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[180px] object-contain" />}
@@ -434,7 +442,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </section>
 
         {/* Contracapa da Seção B */}
-        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
+        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <section className="pagina rounded-xl border border-border bg-white p-6">
@@ -469,7 +477,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </section>
 
         {/* Contracapa da Seção C */}
-        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
+        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina rounded-xl border border-border bg-white p-6">
@@ -515,7 +523,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </section>
 
         {/* Contracapa da Seção D */}
-        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} />
+        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
         {osps.map((o, i) => {
