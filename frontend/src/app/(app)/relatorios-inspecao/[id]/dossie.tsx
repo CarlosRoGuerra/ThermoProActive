@@ -175,7 +175,7 @@ function BlocoCliente({ cab }: { cab: Cabecalho }) {
 
 /* Marca do prestador — logomarca cadastrada ou, na falta, o nome em texto.
    Usa altura FIXA (h-*) para AMPLIAR logos de baixa resolução — max-* só encolhe. */
-function Marca({ url, className = "h-20 w-auto max-w-[440px]" }: { url: string | null; className?: string }) {
+function Marca({ url, className = "w-[360px] max-w-full h-auto" }: { url: string | null; className?: string }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={url} alt="Prestador" className={`${className} object-contain`} />;
@@ -321,7 +321,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: logo-XL-v4
+            build: logo-XL-v5
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -365,8 +365,9 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
     <div className="print-area space-y-4 text-slate-800">
         {/* ============================= CAPA ============================= */}
         <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
-          {/* Logo do prestador em destaque no topo (largura cheia da página). */}
-          <Marca url={cab.prestador?.logomarca ?? null} className="w-full h-auto max-h-44" />
+          {/* Logo do prestador em destaque no topo. Largura EXPLÍCITA (640px):
+              no paged.js, w-auto/w-full como item de flex encolhia a imagem. */}
+          <Marca url={cab.prestador?.logomarca ?? null} className="w-[640px] max-w-full h-auto" />
           <div className="flex flex-col items-end text-right">
             {/* Imagem que identifica a tecnologia (conforme o modelo). */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
