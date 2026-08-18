@@ -204,11 +204,11 @@ function LogoVertical({ marca }: { marca: string | null }) {
 }
 
 /* Contracapa (divisória) de cada seção */
-function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca, prestador }: {
-  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null; prestador?: Prestador | null;
+function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
+  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
 }) {
   return (
-    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
+    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
       <LogoVertical marca={marca} />
       <div className="flex flex-1 flex-col">
         <div className="flex justify-end">
@@ -220,13 +220,6 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca, prestador }:
           {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
         </div>
       </div>
-      
-      {/* Rodapé Padrão da Capa/Contracapa */}
-      {prestador && (
-        <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
-          <p>São Paulo/Brasil | {prestador.telefone} | {prestador.email}</p>
-        </div>
-      )}
     </section>
   );
 }
@@ -360,7 +353,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: ajuste-final-v15</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: rodape-corrente-v16</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -415,12 +408,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               <p className="mt-1 font-mono text-5xl font-black tracking-tight text-[#1d4ed8]">{cab.numero}</p>
             </div>
           </div>
-          {/* Rodapé Específico da Capa */}
-          {cab.prestador && (
-            <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
-              <p>São Paulo/Brasil | {cab.prestador.telefone} | {cab.prestador.email}</p>
-            </div>
-          )}
         </section>
 
         {/* ===================== CAPA CLIENTE (pág. 2) ===================== */}
@@ -433,12 +420,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               <BlocoCliente cab={cab} semNumero />
             </div>
           </div>
-          {/* Rodapé Específico da Capa */}
-          {cab.prestador && (
-            <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
-              <p>São Paulo/Brasil | {cab.prestador.telefone} | {cab.prestador.email}</p>
-            </div>
-          )}
         </section>
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
@@ -539,14 +520,14 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
           )}
           <div className="mt-10 text-right">
-            <p className="text-sm text-slate-600">At.,</p>
+            <p className="text-sm text-slate-600">At.te,</p>
             <p className="ml-auto mt-8 w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
             <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
           </div>
         </section>
 
         {/* Contracapa da Seção B */}
-        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
+        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <section className="pagina bg-white p-6">
@@ -581,7 +562,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* Contracapa da Seção C */}
-        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
+        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina bg-white p-6">
@@ -627,7 +608,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* Contracapa da Seção D */}
-        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
+        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
         {osps.map((o, i) => {
