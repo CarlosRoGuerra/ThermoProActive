@@ -178,6 +178,12 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Uploads: o padrão do Django (2,5MB) recusa logomarcas/fotos em alta resolução.
+# Elevado para permitir subir imagens nítidas (capa/cabeçalho do relatório).
+# Obs.: se houver Nginx na frente, ajustar também `client_max_body_size`.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Segurança em produção ----------------------------------------------------
