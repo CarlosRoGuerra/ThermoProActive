@@ -405,15 +405,36 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           .cab-impressao {
             display: flex;
             position: fixed;
-            z-index: 1;
-            top: -8mm;
+            z-index: 10;
+            top: 0;
             left: 0;
             right: 0;
+            height: 13mm;
+            box-sizing: border-box;
             align-items: flex-start;
             justify-content: space-between;
-            border-bottom: 1px solid #cbd5e1;
-            padding-bottom: 2mm;
+            padding: 0 2mm 1.5mm 0;
+            border-bottom: 0.3mm solid #cbd5e1;
             background: #fff;
+            overflow: visible;
+          }
+          /* Logo Thermoproactive no cabeçalho */
+          .cab-impressao > img {
+            width: 58mm !important;
+            max-width: 58mm !important;
+            max-height: 11mm !important;
+            object-fit: contain !important;
+            object-position: left top;
+          }
+          /* Dados da empresa (lado direito) */
+          .cab-impressao > div {
+            padding-left: 5mm !important;
+            padding-right: 1mm !important;
+            line-height: 1.15 !important;
+          }
+          /* Cabeçalho fica dentro da folha (top:0), então o conteúdo interno desce. */
+          .pagina:not(.pagina-capa) {
+            padding-top: 17mm !important;
           }
           .rodape-impressao {
             display: flex;
@@ -440,11 +461,11 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <img src={cab.prestador.logomarca} alt="" className="w-[300px] shrink-0 object-contain" />
           )}
           <div className="pl-4 text-right">
-            <p className="text-[11px] font-semibold text-slate-500">{cab.prestador.nome}</p>
+            <p className="text-[9px] font-semibold leading-tight text-slate-500">{cab.prestador.nome}</p>
             {cab.prestador.cnpj && (
-              <p className="text-[9px] text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
+              <p className="text-[7px] leading-tight text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
             )}
-            <div className="mt-1 text-[9px] text-slate-400">
+            <div className="mt-0.5 text-[7px] leading-tight text-slate-400">
               {cab.prestador.endereco_linha1 && <p>{cab.prestador.endereco_linha1}</p>}
               {cab.prestador.endereco_linha2 && <p>{cab.prestador.endereco_linha2}</p>}
               {/* Telefone e e-mail combinados para não extrapolar a altura */}
@@ -466,7 +487,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-8mm-v23</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-top0-v24</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
