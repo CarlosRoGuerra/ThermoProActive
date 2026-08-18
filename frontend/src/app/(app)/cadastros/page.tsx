@@ -20,6 +20,7 @@ import {
   Select,
   Spinner,
   Table,
+  Textarea,
   TBody,
   TD,
   TH,
@@ -28,7 +29,7 @@ import {
   cn,
 } from "@/components/ui";
 
-type FieldType = "text" | "number" | "color" | "multiref" | "date" | "escolha" | "ref" | "boolean" | "image";
+type FieldType = "text" | "textarea" | "number" | "color" | "multiref" | "date" | "escolha" | "ref" | "boolean" | "image";
 type FieldDef = {
   key: string;
   label: string;
@@ -146,6 +147,8 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
       { key: "nome", label: "Nome", required: true },
       { key: "sigla", label: "Sigla" },
       { key: "imagem", label: "Imagem/ícone (capa do relatório)", type: "image" },
+      { key: "definicao_tecnica", label: "Definição da técnica (item 7 da carta)", type: "textarea" },
+      { key: "imagem_pontos_medicao", label: "Imagem dos pontos de medição", type: "image" },
     ],
     columns: ["nome", "sigla"],
   },
@@ -666,6 +669,12 @@ function CadastrosInner() {
                           </option>
                         ))}
                       </Select>
+                    ) : f.type === "textarea" ? (
+                      <Textarea
+                        rows={5}
+                        value={(form[f.key] as string) ?? ""}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      />
                     ) : (
                       <Input
                         type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}

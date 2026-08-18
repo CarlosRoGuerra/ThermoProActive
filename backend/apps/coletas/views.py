@@ -395,6 +395,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     request.build_absolute_uri(rel.tecnologia.imagem.url)
                     if rel.tecnologia.imagem else None
                 ),
+                "definicao_tecnica": rel.tecnologia.definicao_tecnica,
+                "pontos_medicao_imagem": (
+                    request.build_absolute_uri(rel.tecnologia.imagem_pontos_medicao.url)
+                    if rel.tecnologia.imagem_pontos_medicao else None
+                ),
                 "analistas": analistas,
                 "data_inicio": rel.data_inicio,
                 "data_termino": rel.data_termino,

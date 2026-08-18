@@ -167,8 +167,10 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
                 </div>
               </div>
             )}
-            <div className="run-rodape-site" style={{ fontSize: 9, color: "#64748b" }}>
-              {prestador?.site || ""}
+            <div className="run-rodape-site" style={{ fontSize: 9, color: "#64748b", textAlign: "center", lineHeight: 1.3 }}>
+              {[prestador?.cidade_uf, prestador?.telefone, prestador?.email]
+                .filter(Boolean)
+                .map((x, i) => <div key={i}>{x}</div>)}
             </div>
             <RelatorioCorpo d={d} />
           </>

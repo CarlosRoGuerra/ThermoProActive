@@ -384,6 +384,11 @@ class TecnologiaAnalise(Catalogo):
     sigla = models.CharField("Sigla", max_length=20, blank=True)
     # Imagem/ícone que identifica a tecnologia (aparece na capa do relatório).
     imagem = models.ImageField("Imagem/ícone", upload_to="tecnologias/", null=True, blank=True)
+    # "Definição da Técnica" (item 7 da carta) — texto + fluxo de trabalho por tecnologia.
+    definicao_tecnica = models.TextField("Definição da técnica", blank=True,
+                                         help_text="Texto/fluxo de trabalho que sai no item 7 da carta.")
+    imagem_pontos_medicao = models.ImageField("Imagem dos pontos de medição", upload_to="tecnologias/pontos/",
+                                              null=True, blank=True)
 
     class Meta(Catalogo.Meta):
         verbose_name = "Tecnologia/Tipo de análise"
