@@ -17,9 +17,16 @@ const PAGED_RULES = `
     @bottom-center { content: element(runRodapeSite); }
     @bottom-right  { content: "pág. " counter(page) " de " counter(pages); font-size: 9px; color: #64748b; }
   }
-  /* Capa e contracapas: página nomeada SEM cabeçalho e SEM nº de página
-     (o papel timbrado só vale nas páginas internas). */
-  .pagina-capa { page: capa; }
+  /* A 1ª capa usa a página NORMAL (é a 1ª do documento): assim não há troca de
+     página nomeada logo no início, o que gerava uma página em branco antes dela.
+     O @page:first tira o cabeçalho e o nº de página só dessa 1ª folha. */
+  @page :first {
+    @top-left     { content: none; }
+    @top-right    { content: none; }
+    @bottom-right { content: none; }
+  }
+  /* Demais capas e contracapas: página nomeada SEM cabeçalho e SEM nº de página. */
+  .pagina-capa:not(:first-child) { page: capa; }
   @page capa {
     @top-left     { content: none; }
     @top-right    { content: none; }
