@@ -402,39 +402,47 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           /* Papel timbrado somente das páginas internas.
              Nas capas ele continua tecnicamente fixo, porém fica atrás do fundo branco
              da página nomeada 'capa', evitando as sobreposições vistas no PDF. */
+          /* Cabeçalho posicionado nas mesmas medidas físicas das margens
+             (15mm esq. / 5mm dir.), 3mm do topo — não fica colado na borda. */
           .cab-impressao {
             display: flex;
             position: fixed;
-            z-index: 10;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 13mm;
+            z-index: 20;
+            top: 3mm;
+            left: 15mm;
+            right: 5mm;
             box-sizing: border-box;
+            height: 12mm;
             align-items: flex-start;
             justify-content: space-between;
-            padding: 0 2mm 1.5mm 0;
-            border-bottom: 0.3mm solid #cbd5e1;
+            padding: 0;
+            margin: 0;
             background: #fff;
             overflow: visible;
           }
           /* Logo Thermoproactive no cabeçalho */
           .cab-impressao > img {
-            width: 58mm !important;
-            max-width: 58mm !important;
+            width: 56mm !important;
+            max-width: 56mm !important;
+            height: 11mm !important;
             max-height: 11mm !important;
             object-fit: contain !important;
-            object-position: left top;
+            object-position: left top !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           /* Dados da empresa (lado direito) */
           .cab-impressao > div {
-            padding-left: 5mm !important;
-            padding-right: 1mm !important;
-            line-height: 1.15 !important;
+            width: 70mm;
+            max-width: 70mm;
+            padding: 0 !important;
+            margin: 0 !important;
+            text-align: right;
+            line-height: 1.05 !important;
           }
-          /* Cabeçalho fica dentro da folha (top:0), então o conteúdo interno desce. */
+          /* Conteúdo interno desce abaixo do timbrado. */
           .pagina:not(.pagina-capa) {
-            padding-top: 17mm !important;
+            padding-top: 13mm !important;
           }
           .rodape-impressao {
             display: flex;
@@ -460,12 +468,12 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           {cab.prestador.logomarca && (
             <img src={cab.prestador.logomarca} alt="" className="w-[300px] shrink-0 object-contain" />
           )}
-          <div className="pl-4 text-right">
-            <p className="text-[9px] font-semibold leading-tight text-slate-500">{cab.prestador.nome}</p>
+          <div className="text-right">
+            <p className="text-[8px] font-semibold leading-none text-slate-500">{cab.prestador.nome}</p>
             {cab.prestador.cnpj && (
-              <p className="text-[7px] leading-tight text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
+              <p className="mt-[1px] text-[6.5px] leading-none text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
             )}
-            <div className="mt-0.5 text-[7px] leading-tight text-slate-400">
+            <div className="mt-[2px] text-[6.5px] leading-[1.1] text-slate-400">
               {cab.prestador.endereco_linha1 && <p>{cab.prestador.endereco_linha1}</p>}
               {cab.prestador.endereco_linha2 && <p>{cab.prestador.endereco_linha2}</p>}
               {/* Telefone e e-mail combinados para não extrapolar a altura */}
@@ -487,7 +495,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-top0-v24</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-fisico-v25</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
