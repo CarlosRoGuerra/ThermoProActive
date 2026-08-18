@@ -180,36 +180,42 @@ function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: 
   );
 }
 
+/* Logomarca vertical (rotacionada) da capa/contracapa — ALTURA FIXA para não
+   estourar a página no paged.js (min-height cheio fragmentava a capa). */
+function LogoVertical({ marca }: { marca: string | null }) {
+  if (!marca) return <div className="w-[150px] shrink-0" />;
+  return (
+    <div className="relative h-[660px] w-[150px] shrink-0 overflow-hidden">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={marca}
+        alt=""
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          width: 640,
+          maxWidth: "none",
+          transform: "translate(-50%, -50%) rotate(-90deg)",
+        }}
+      />
+    </div>
+  );
+}
+
 /* Contracapa (divisória) de cada seção — logo vertical + imagem da tecnologia + título. */
 function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
   titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
 }) {
   return (
-    <section className="pagina pagina-capa evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
-      {/* Faixa esquerda: logomarca vertical, como no modelo. */}
-      <div className="relative w-[160px] shrink-0 overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {marca && (
-          <img
-            src={marca}
-            alt=""
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              width: 820,
-              maxWidth: "none",
-              transform: "translate(-50%, -50%) rotate(-90deg)",
-            }}
-          />
-        )}
-      </div>
-      <div className="flex flex-1 flex-col justify-between">
+    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+      <LogoVertical marca={marca} />
+      <div className="flex flex-1 flex-col">
         <div className="flex justify-end">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {imagem && <img src={imagem} alt={tecnologia} className="max-h-24 max-w-[160px] object-contain" />}
+          {imagem && <img src={imagem} alt={tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
         </div>
-        <div className="text-right">
+        <div className="mt-auto text-right">
           <p className="text-4xl font-black leading-tight text-[#1d4ed8]">{titulo}</p>
           {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
         </div>
@@ -338,7 +344,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: paged-timbrado-v12
+            build: capa-2paginas-v13
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -380,45 +386,31 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   const tipoTec = tecnologiaTipo(cab.tecnologia);
   return (
     <div className="print-area space-y-4 text-slate-800">
-        {/* ============================= CAPA ============================= */}
-        <section className="pagina-capa evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
-          {/* Faixa esquerda: logomarca vertical gigante, como no modelo. */}
-          <div className="relative w-[160px] shrink-0 overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {cab.prestador?.logomarca && (
-              <img
-                src={cab.prestador.logomarca}
-                alt={cab.prestador.nome}
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  width: 820,
-                  maxWidth: "none",
-                  transform: "translate(-50%, -50%) rotate(-90deg)",
-                }}
-              />
-            )}
-          </div>
-          {/* Conteúdo à direita: tecnologia, título, cliente e contato. */}
-          <div className="flex flex-1 flex-col justify-between">
+        {/* ===================== CAPA (pág. 1): logo + título ===================== */}
+        <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+          <LogoVertical marca={cab.prestador?.logomarca ?? null} />
+          <div className="flex flex-1 flex-col">
             <div className="flex justify-end">
               {/* Imagem que representa a tecnologia (fonte 250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
             </div>
+            <div className="mt-auto text-right">
+              <p className="text-2xl font-semibold tracking-tight text-slate-600">RELATÓRIO TÉCNICO</p>
+              <p className="font-mono text-4xl font-bold text-[#1d4ed8]">{cab.numero}</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ===================== CAPA (pág. 2): cliente ===================== */}
+        <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+          <LogoVertical marca={cab.prestador?.logomarca ?? null} />
+          <div className="flex flex-1 flex-col justify-center">
             <div className="text-right">
-              <p className="text-xl font-semibold tracking-tight text-slate-600">RELATÓRIO TÉCNICO</p>
-              <p className="font-mono text-3xl font-bold text-[#1d4ed8]">{cab.numero}</p>
               {/* Logomarca do cliente (250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mt-6 ml-auto max-h-32 max-w-[220px] object-contain" />}
-              <div className="mt-4"><BlocoCliente cab={cab} semNumero /></div>
-            </div>
-            <div className="text-right text-xs text-slate-500">
-              {cab.prestador?.cidade_uf && <p>{cab.prestador.cidade_uf}</p>}
-              {cab.prestador?.telefone && <p>{cab.prestador.telefone}</p>}
-              {cab.prestador?.email && <p>{cab.prestador.email}</p>}
+              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mb-4 ml-auto max-h-32 max-w-[220px] object-contain" />}
+              <BlocoCliente cab={cab} semNumero />
             </div>
           </div>
         </section>
