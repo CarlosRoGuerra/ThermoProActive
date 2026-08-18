@@ -25,6 +25,7 @@ type Prestador = {
 type Cabecalho = {
   prestador: Prestador | null;
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
+  endereco_linha1: string; endereco_linha2: string;
   logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null; analistas: string[];
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
@@ -160,16 +161,21 @@ function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
 }
 
 /* Bloco de cliente reutilizado na Capa e na Carta (redundância obrigatória). */
-function BlocoCliente({ cab }: { cab: Cabecalho }) {
+function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: boolean }) {
   return (
     <div className="text-sm font-semibold text-slate-700">
-      <p className="font-mono text-[#1d4ed8]">{cab.numero}</p>
-      <p className="mt-1">{cab.empresa}</p>
+      {!semNumero && <p className="font-mono text-[#1d4ed8]">{cab.numero}</p>}
+      <p className={semNumero ? "" : "mt-1"}>{cab.empresa}</p>
+      {cab.nome_fantasia && <p className="font-normal text-slate-600">{cab.nome_fantasia}</p>}
       {cab.cnpj && <p className="font-normal">CNPJ {cab.cnpj}</p>}
-      {cab.endereco && <p className="font-normal">{cab.endereco}</p>}
-      {(cab.contato || cab.departamento) && (
-        <p className="mt-1">A/C.: {[cab.contato, cab.departamento].filter(Boolean).join(" — ")}</p>
-      )}
+      {cab.endereco_linha1 ? (
+        <>
+          <p className="font-normal">{cab.endereco_linha1}</p>
+          {cab.endereco_linha2 && <p className="font-normal">{cab.endereco_linha2}</p>}
+        </>
+      ) : cab.endereco && <p className="font-normal">{cab.endereco}</p>}
+      {cab.contato && <p className="mt-1">A/C.: {cab.contato}</p>}
+      {cab.departamento && <p className="font-normal text-slate-600">{cab.departamento}</p>}
     </div>
   );
 }
@@ -332,7 +338,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: logo-header-v10
+            build: capa-cliente-v11
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -397,14 +403,17 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           {/* Conteúdo à direita: tecnologia, título, cliente e contato. */}
           <div className="flex flex-1 flex-col justify-between">
             <div className="flex justify-end">
+              {/* Imagem que representa a tecnologia (fonte 250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-24 max-w-[160px] object-contain" />}
+              {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
             </div>
             <div className="text-right">
-              <p className="text-3xl font-bold tracking-tight text-slate-700">RELATÓRIO TÉCNICO</p>
+              <p className="text-xl font-semibold tracking-tight text-slate-600">RELATÓRIO TÉCNICO</p>
+              <p className="font-mono text-3xl font-bold text-[#1d4ed8]">{cab.numero}</p>
+              {/* Logomarca do cliente (250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mt-6 ml-auto max-h-28 max-w-[200px] object-contain" />}
-              <div className="mt-4"><BlocoCliente cab={cab} /></div>
+              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mt-6 ml-auto max-h-32 max-w-[220px] object-contain" />}
+              <div className="mt-4"><BlocoCliente cab={cab} semNumero /></div>
             </div>
             <div className="text-right text-xs text-slate-500">
               {cab.prestador?.cidade_uf && <p>{cab.prestador.cidade_uf}</p>}
@@ -423,7 +432,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           </div>
 
           <h3 className="text-sm font-bold text-slate-800">1. Objetivo do Relatório</h3>
-          <p className="mb-3 text-sm text-slate-600">Apresentar os resultados das análises técnicas de: <em>{cab.tecnologia}</em>.</p>
+          <p className="mb-3 text-justify text-sm text-slate-600">Apresentar os resultados das análises técnicas de: <em>{cab.tecnologia}</em>.</p>
 
           <h3 className="text-sm font-bold text-slate-800">2. Datas da Execução</h3>
           <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
@@ -489,13 +498,17 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
 
           <h3 className="text-sm font-bold text-slate-800">7. Considerações Importantes</h3>
-          <p className="text-sm text-slate-600">
+          <p className="text-justify text-sm text-slate-600">
             Os critérios das análises são técnicos, associados à experiência do analista. Cada equipamento tem
             seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
             Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
           </p>
-          <div className="mt-8 text-center">
-            <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
+          {cab.consideracoes_finais.trim() && (
+            <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
+          )}
+          <div className="mt-10 text-right">
+            <p className="text-sm text-slate-600">At.,</p>
+            <p className="ml-auto mt-8 w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
             <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
           </div>
         </section>
@@ -543,7 +556,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção C — Equipamentos Inspecionados</p>
           <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
             <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
-            <p className="text-xs text-slate-600">Total de análises: {c.total}</p>
+            <p className="text-xs text-slate-600">Total de equipamentos: {b.equip_monitorados}</p>
           </div>
           {c.grupos.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Nenhum equipamento inspecionado.</p>
@@ -555,9 +568,9 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                   <table className="mt-1 w-full border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-slate-300 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="w-24 py-1.5 pr-2 font-semibold">Tag</th>
-                        <th className="py-1.5 pr-2 font-semibold">Equipamento</th>
-                        <th className="w-24 py-1.5 text-right font-semibold">{ddmmaaaa(cab.data_termino)}</th>
+                        <th className="w-24 py-1 pr-2 font-semibold">Tag</th>
+                        <th className="py-1 pr-2 font-semibold">Equipamento</th>
+                        <th className="w-24 py-1 text-right font-semibold">{ddmmaaaa(cab.data_termino)}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -565,9 +578,9 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                         const cor = corCondicao(l.condicao);
                         return (
                           <tr key={li} className={li % 2 ? "bg-slate-50" : ""}>
-                            <td className="py-1.5 pr-2 font-mono text-xs text-slate-600">{l.tag || "—"}</td>
-                            <td className="py-1.5 pr-2 text-slate-800">{l.equipamento}</td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-0.5 pr-2 font-mono text-xs text-slate-600">{l.tag || "—"}</td>
+                            <td className="py-0.5 pr-2 text-slate-800">{l.equipamento}</td>
+                            <td className="py-0.5 text-right">
                               <span className="inline-block rounded px-2 py-0.5 text-xs font-semibold" style={{ background: cor.bg, color: cor.fg }}>{l.condicao}</span>
                             </td>
                           </tr>
@@ -617,7 +630,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                     <figure key={k} className="overflow-hidden rounded-lg border border-slate-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={img.arquivo} alt={img.tipo} className="mx-auto max-h-40 w-full object-contain" />
-                      <figcaption className="px-2 py-1 text-center text-xs text-slate-500">{img.legenda || img.tipo}</figcaption>
+                      {img.legenda && <figcaption className="px-2 py-1 text-center text-xs text-slate-500">{img.legenda}</figcaption>}
                     </figure>
                   ))}
                 </div>
@@ -649,17 +662,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           );
         })}
 
-        {/* ===================== CONSIDERAÇÕES FINAIS (no fim, conforme o modelo) ===================== */}
-        {cab.consideracoes_finais.trim() && (
-          <section className="pagina bg-white p-6">
-            <p className="mb-3 text-right text-sm font-semibold text-rose-700">Considerações Finais</p>
-            <p className="whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
-            <div className="mt-8 text-center">
-              <p className="mx-auto w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
-              <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
-            </div>
-          </section>
-        )}
       </div>
   );
 }

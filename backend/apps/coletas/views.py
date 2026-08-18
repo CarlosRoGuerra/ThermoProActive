@@ -194,6 +194,12 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 prestador.bairro,
             ] if p)
             _end_l2 = " – ".join(p for p in [prestador.cep, prestador.cidade_uf] if p)
+        # Endereço do cliente em 2 linhas (capa): logradouro/nº – bairro | CEP – cidade/UF.
+        _cli_l1 = " – ".join(p for p in [
+            ", ".join(x for x in [cliente.logradouro, cliente.numero] if x),
+            cliente.bairro,
+        ] if p)
+        _cli_l2 = " – ".join(p for p in [cliente.cep, cliente.cidade_uf] if p)
         carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
         analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
 
@@ -377,6 +383,8 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "nome_fantasia": cliente.nome_fantasia,
                 "cnpj": cliente.cnpj,
                 "endereco": cliente.endereco_formatado,
+                "endereco_linha1": _cli_l1,
+                "endereco_linha2": _cli_l2,
                 "cidade_uf": cliente.cidade_uf,
                 "contato": cliente.contato_gestor,
                 "departamento": cliente.departamento,
