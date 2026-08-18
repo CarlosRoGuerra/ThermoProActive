@@ -466,7 +466,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: margens-10mm-v21</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: margens-15-5-10-v22</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
