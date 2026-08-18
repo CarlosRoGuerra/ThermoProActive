@@ -193,7 +193,7 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
   titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
 }) {
   return (
-    <section className="pagina flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
+    <section className="pagina flex min-h-[55vh] flex-col justify-between bg-white p-8">
       <div className="flex items-start justify-between">
         <Marca url={marca} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -324,7 +324,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: topo-modelo-v6
+            build: modelo-v7
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   return (
     <div className="print-area space-y-4 text-slate-800">
         {/* ============================= CAPA ============================= */}
-        <section className="flex min-h-[55vh] flex-col justify-between rounded-xl border border-border bg-white p-8">
+        <section className="flex min-h-[55vh] flex-col justify-between bg-white p-8">
           {/* Logo do prestador em destaque no topo. Largura EXPLÍCITA (640px):
               no paged.js, w-auto/w-full como item de flex encolhia a imagem. */}
           <Marca url={cab.prestador?.logomarca ?? null} className="w-[640px] max-w-full h-auto" />
@@ -383,7 +383,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
-        <section className="pagina rounded-xl border border-border bg-white p-6">
+        <section className="pagina bg-white p-6">
           <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
             <p className="text-sm font-semibold text-rose-700">Seção A — Carta ao Cliente</p>
             {/* Redundância: número + cliente também aqui. */}
@@ -472,7 +472,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
-        <section className="pagina rounded-xl border border-border bg-white p-6">
+        <section className="pagina bg-white p-6">
           <p className="mb-4 text-right text-sm font-semibold text-rose-700">Seção B — KPI’s Dashboard</p>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
@@ -507,7 +507,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
-        <section className="pagina rounded-xl border border-border bg-white p-6">
+        <section className="pagina bg-white p-6">
           <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção C — Equipamentos Inspecionados</p>
           <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
             <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
@@ -556,7 +556,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         {osps.map((o, i) => {
           const cor = corCondicao(o.grau_risco);
           return (
-            <section key={i} className="pagina evitar-quebra rounded-xl border border-border bg-white p-6">
+            <section key={i} className="pagina evitar-quebra bg-white p-6">
               <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
               <div className="flex justify-between gap-4">
                 <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-sm">
@@ -571,11 +571,11 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                     </div>
                   ))}
                 </dl>
-                <div className="shrink-0 text-center">
+                <div className="shrink-0 pl-6 text-center" style={{ borderLeft: "1px solid #e2e8f0" }}>
                   <p className="font-mono text-sm text-slate-500">O.S.P nº: {o.osp}</p>
-                  <p className="mt-1 text-xs text-slate-500">Grau de risco</p>
-                  <div className="mx-auto mt-1 rounded-lg px-4 py-1.5 text-3xl font-black" style={{ background: cor.bg, color: cor.fg }}>{o.grau_risco || "—"}</div>
-                  <p className="mt-1 text-xs font-medium text-slate-600">{o.grau_risco_descricao}</p>
+                  <p className="mt-2 text-sm text-slate-500">Grau de risco</p>
+                  <div className="text-7xl font-black leading-none tracking-tight" style={{ color: cor.bg }}>{o.grau_risco || "—"}</div>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{o.grau_risco_descricao}</p>
                 </div>
               </div>
 
@@ -619,7 +619,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ===================== CONSIDERAÇÕES FINAIS (no fim, conforme o modelo) ===================== */}
         {cab.consideracoes_finais.trim() && (
-          <section className="pagina rounded-xl border border-border bg-white p-6">
+          <section className="pagina bg-white p-6">
             <p className="mb-3 text-right text-sm font-semibold text-rose-700">Considerações Finais</p>
             <p className="whitespace-pre-line text-sm text-slate-700">{cab.consideracoes_finais}</p>
             <div className="mt-8 text-center">
