@@ -63,7 +63,7 @@ function corCondicao(c: string) {
   return CORES[c.replace(/[^A-Za-z0-9]/g, "").toUpperCase()] ?? { bg: "#94a3b8", fg: "#fff" };
 }
 
-// 6.1 — abreviações fixas do glossário (não vêm de dado).
+// 6.1 — abreviações fixas do glossário
 const ABREVIACOES: [string, string][] = [
   ["O.S.P.", "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada."],
   ["G.R.", "Grau de Risco — determina o prazo de correção das anomalias detectadas."],
@@ -90,7 +90,7 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
   );
 }
 
-/* Bloco de medição específico por tecnologia (base do template dinâmico). */
+/* Bloco de medição específico por tecnologia */
 function BlocoMedicao({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
   if (tipo === "vibracao") {
     return (
@@ -113,7 +113,7 @@ function BlocoMedicao({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
   return null;
 }
 
-/* Avaliação de Resultados (ROI) — preditiva × emergencial. */
+/* Avaliação de Resultados (ROI) */
 function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
   return (
     <div className="mt-4 overflow-x-auto">
@@ -161,7 +161,7 @@ function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
   );
 }
 
-/* Bloco de cliente reutilizado na Capa e na Carta (redundância obrigatória). */
+/* Bloco de cliente reutilizado na Capa e na Carta */
 function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: boolean }) {
   return (
     <div className="text-sm font-semibold text-slate-700">
@@ -181,8 +181,7 @@ function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: 
   );
 }
 
-/* Logomarca vertical (rotacionada) da capa/contracapa — ALTURA FIXA para não
-   estourar a página no paged.js (min-height cheio fragmentava a capa). */
+/* Logomarca vertical (rotacionada) da capa/contracapa */
 function LogoVertical({ marca }: { marca: string | null }) {
   if (!marca) return <div className="w-[150px] shrink-0" />;
   return (
@@ -204,12 +203,12 @@ function LogoVertical({ marca }: { marca: string | null }) {
   );
 }
 
-/* Contracapa (divisória) de cada seção — logo vertical + imagem da tecnologia + título. */
-function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
-  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
+/* Contracapa (divisória) de cada seção */
+function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca, prestador }: {
+  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null; prestador?: Prestador | null;
 }) {
   return (
-    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
       <LogoVertical marca={marca} />
       <div className="flex flex-1 flex-col">
         <div className="flex justify-end">
@@ -221,6 +220,13 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
           {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
         </div>
       </div>
+      
+      {/* Rodapé Padrão da Capa/Contracapa */}
+      {prestador && (
+        <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
+          <p>São Paulo/Brasil | {prestador.telefone} | {prestador.email}</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -230,7 +236,6 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   const [d, setD] = useState<Dossie | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  // Painel de finalização (edição).
   const [dataFim, setDataFim] = useState("");
   const [consideracoes, setConsideracoes] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -269,18 +274,11 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
 
   const cab = d.cabecalho;
 
-  // Nome do PDF = número + razão social + nome fantasia (o navegador usa o title).
   function imprimir() {
-    const nome = [cab.numero, cab.empresa, cab.nome_fantasia]
-      .filter(Boolean)
-      .join("_")
-      .replace(/[\\/:*?"<>|]/g, "-");
+    const nome = [cab.numero, cab.empresa, cab.nome_fantasia].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g, "-");
     const original = document.title;
     document.title = nome;
-    const restaurar = () => {
-      document.title = original;
-      window.removeEventListener("afterprint", restaurar);
-    };
+    const restaurar = () => { document.title = original; window.removeEventListener("afterprint", restaurar); };
     window.addEventListener("afterprint", restaurar);
     window.print();
   }
@@ -290,18 +288,33 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       <style>{`
         .cab-impressao, .rodape-impressao { display: none; }
         @media print {
-          @page { margin: 2.4cm 1.3cm; }
+          /* Aumentando a margem superior para caber telefone/email sem cortar */
+          @page { margin: 3.2cm 1.3cm 2.4cm 1.3cm; }
+          /* Zerando margens na capa para sumir com cabeçalhos/rodapés fixos via Paged.js */
+          @page capa { margin-top: 0; margin-bottom: 0; }
+          
           body * { visibility: hidden; }
           .print-area, .print-area *,
           .cab-impressao, .cab-impressao *,
           .rodape-impressao, .rodape-impressao * { visibility: visible; }
+          
           .print-area { position: absolute; left: 0; top: 0; width: 100%; }
           .no-print { display: none !important; }
           .pagina { break-before: page; }
           .evitar-quebra { break-inside: avoid; }
-          /* Cabeçalho e rodapé repetidos em cada página impressa. */
+          
+          /* Aplica a página nomeada e sobrepõe eventuais bugs de overflow */
+          .pagina-capa { 
+            page: capa; 
+            position: relative; 
+            z-index: 50; 
+            background-color: white; 
+            min-height: 100vh; 
+          }
+          
+          /* Cabeçalho do Papel Timbrado - Descemos o top para compensar o limite da página */
           .cab-impressao {
-            display: flex; position: fixed; top: -1.9cm; left: 0; right: 0;
+            display: flex; position: fixed; top: -2.6cm; left: 0; right: 0;
             align-items: flex-start; justify-content: space-between;
             border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;
           }
@@ -313,9 +326,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         }
       `}</style>
 
-      {/* Cabeçalho de impressão (papel timbrado): logo à esquerda + dados à direita. */}
+      {/* Cabeçalho de impressão (papel timbrado interno) */}
       {cab.prestador && (
-        <div className="cab-impressao leading-snug">
+        <div className="cab-impressao leading-snug bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {cab.prestador.logomarca && (
             <img src={cab.prestador.logomarca} alt="" className="w-[300px] shrink-0 object-contain" />
@@ -328,14 +341,17 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <div className="mt-1 text-[9px] text-slate-400">
               {cab.prestador.endereco_linha1 && <p>{cab.prestador.endereco_linha1}</p>}
               {cab.prestador.endereco_linha2 && <p>{cab.prestador.endereco_linha2}</p>}
-              {cab.prestador.telefone && <p>{cab.prestador.telefone}</p>}
-              {cab.prestador.email && <p>{cab.prestador.email}</p>}
+              {/* Telefone e e-mail combinados para não extrapolar a altura */}
+              {(cab.prestador.telefone || cab.prestador.email) && (
+                <p>{[cab.prestador.telefone, cab.prestador.email].filter(Boolean).join(" | ")}</p>
+              )}
             </div>
           </div>
         </div>
       )}
-      {/* Rodapé de impressão: site ao centro. */}
-      <div className="rodape-impressao text-[9px] text-slate-500">
+      
+      {/* Rodapé de impressão Interno */}
+      <div className="rodape-impressao text-[9px] text-slate-500 bg-white">
         <span>{cab.prestador?.site || ""}</span>
       </div>
 
@@ -344,9 +360,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: def-tecnica-v14
-          </span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: ajuste-final-v15</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -359,7 +373,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </div>
       </div>
 
-      {/* Painel de finalização (não sai na impressão) */}
+      {/* Painel de finalização */}
       <Card className="no-print">
         <h2 className="mb-3 text-sm font-semibold text-fg">Finalização do relatório</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -380,48 +394,57 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   );
 }
 
-/* Corpo do relatório (capa → considerações finais). Exportado para ser reusado
-   pela rota de impressão paginada (/imprimir/[id]) com paged.js. */
 export function RelatorioCorpo({ d }: { d: Dossie }) {
   const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
   const tipoTec = tecnologiaTipo(cab.tecnologia);
   const temDef = !!(cab.definicao_tecnica?.trim() || cab.pontos_medicao_imagem);
+  
   return (
     <div className="print-area space-y-4 text-slate-800">
-        {/* ===================== CAPA (pág. 1): logo + título ===================== */}
-        <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+        {/* ===================== CAPA PRINCIPAL (pág. 1) ===================== */}
+        <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
           <LogoVertical marca={cab.prestador?.logomarca ?? null} />
           <div className="flex flex-1 flex-col">
             <div className="flex justify-end">
-              {/* Imagem que representa a tecnologia (fonte 250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
             </div>
             <div className="mt-auto text-right">
-              <p className="text-2xl font-semibold tracking-tight text-slate-600">RELATÓRIO TÉCNICO</p>
-              <p className="font-mono text-4xl font-bold text-[#1d4ed8]">{cab.numero}</p>
+              {/* Texto "Relatório Técnico" menor e "Número" Maior, conforme exigido */}
+              <p className="text-xl font-semibold tracking-widest text-slate-500 uppercase">Relatório Técnico</p>
+              <p className="mt-1 font-mono text-5xl font-black tracking-tight text-[#1d4ed8]">{cab.numero}</p>
             </div>
           </div>
+          {/* Rodapé Específico da Capa */}
+          {cab.prestador && (
+            <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
+              <p>São Paulo/Brasil | {cab.prestador.telefone} | {cab.prestador.email}</p>
+            </div>
+          )}
         </section>
 
-        {/* ===================== CAPA (pág. 2): cliente ===================== */}
-        <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+        {/* ===================== CAPA CLIENTE (pág. 2) ===================== */}
+        <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
           <LogoVertical marca={cab.prestador?.logomarca ?? null} />
           <div className="flex flex-1 flex-col justify-center">
             <div className="text-right">
-              {/* Logomarca do cliente (250×250). */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mb-4 ml-auto max-h-32 max-w-[220px] object-contain" />}
               <BlocoCliente cab={cab} semNumero />
             </div>
           </div>
+          {/* Rodapé Específico da Capa */}
+          {cab.prestador && (
+            <div className="absolute bottom-8 left-0 right-0 text-center text-[11px] font-semibold text-slate-500">
+              <p>São Paulo/Brasil | {cab.prestador.telefone} | {cab.prestador.email}</p>
+            </div>
+          )}
         </section>
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
         <section className="pagina bg-white p-6">
           <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
             <p className="text-sm font-semibold text-rose-700">Seção A — Carta ao Cliente</p>
-            {/* Redundância: número + cliente também aqui. */}
             <BlocoCliente cab={cab} />
           </div>
 
@@ -468,7 +491,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
 
           <h3 className="text-sm font-bold text-slate-800">6. Glossário Técnico</h3>
-
           <p className="mt-1 text-sm font-semibold text-slate-700">6.1. Das abreviações</p>
           <dl className="mb-2 ml-2 text-sm text-slate-600">
             {ABREVIACOES.map(([sigla, desc], k) => (
@@ -494,7 +516,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           {temDef && (
             <>
               <h3 className="text-sm font-bold text-slate-800">7. Definição da Técnica</h3>
-              {cab.definicao_tecnica.trim() && (
+              {cab.definicao_tecnica?.trim() && (
                 <p className="mb-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.definicao_tecnica}</p>
               )}
               {cab.pontos_medicao_imagem && (
@@ -524,7 +546,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* Contracapa da Seção B */}
-        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <section className="pagina bg-white p-6">
@@ -559,7 +581,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* Contracapa da Seção C */}
-        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina bg-white p-6">
@@ -605,7 +627,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* Contracapa da Seção D */}
-        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} prestador={cab.prestador} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
         {osps.map((o, i) => {
