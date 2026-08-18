@@ -345,7 +345,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         @media print {
           @page {
             size: A4;
-            margin: 3.2cm 1.3cm 2.4cm 1.3cm;
+            margin: 10mm 5mm 10mm 15mm;
           }
           @page capa {
             size: A4;
@@ -406,27 +406,27 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             display: flex;
             position: fixed;
             z-index: 1;
-            top: -2.6cm;
+            top: -8mm;
             left: 0;
             right: 0;
             align-items: flex-start;
             justify-content: space-between;
             border-bottom: 1px solid #cbd5e1;
-            padding-bottom: 4px;
+            padding-bottom: 2mm;
             background: #fff;
           }
           .rodape-impressao {
             display: flex;
             position: fixed;
             z-index: 1;
-            bottom: -1.9cm;
+            bottom: -8mm;
             left: 0;
             right: 0;
             align-items: center;
             justify-content: center;
             gap: 12px;
             border-top: 1px solid #cbd5e1;
-            padding-top: 4px;
+            padding-top: 2mm;
             background: #fff;
           }
         }
@@ -466,7 +466,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: margens-15-5-10-v22</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-8mm-v23</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
