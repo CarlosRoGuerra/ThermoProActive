@@ -19,6 +19,7 @@ type Norma = { codigo: string; nome: string; orgao: string };
 type GlossTerm = { sigla: string; termo: string; descricao: string };
 type Prestador = {
   nome: string; cnpj: string; inscricao_estadual: string; endereco: string; cidade_uf: string;
+  endereco_linha1: string; endereco_linha2: string;
   email: string; telefone: string; site: string; logomarca: string | null;
 };
 type Cabecalho = {
@@ -301,19 +302,22 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
 
       {/* Cabeçalho de impressão (papel timbrado): logo à esquerda + dados à direita. */}
       {cab.prestador && (
-        <div className="cab-impressao text-[8.5px] leading-snug text-slate-500">
+        <div className="cab-impressao leading-snug">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {cab.prestador.logomarca && (
             <img src={cab.prestador.logomarca} alt="" className="w-[220px] max-w-[48%] shrink-0 object-contain" />
           )}
           <div className="pl-4 text-right">
-            <p className="text-[11px] font-semibold text-slate-700">{cab.prestador.nome}</p>
+            <p className="text-[11px] font-semibold text-slate-500">{cab.prestador.nome}</p>
             {cab.prestador.cnpj && (
-              <p>CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
+              <p className="text-[9px] text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
             )}
-            {cab.prestador.endereco && <p>{cab.prestador.endereco}</p>}
-            {cab.prestador.telefone && <p>{cab.prestador.telefone}</p>}
-            {cab.prestador.email && <p>{cab.prestador.email}</p>}
+            <div className="mt-1 text-[9px] text-slate-400">
+              {cab.prestador.endereco_linha1 && <p>{cab.prestador.endereco_linha1}</p>}
+              {cab.prestador.endereco_linha2 && <p>{cab.prestador.endereco_linha2}</p>}
+              {cab.prestador.telefone && <p>{cab.prestador.telefone}</p>}
+              {cab.prestador.email && <p>{cab.prestador.email}</p>}
+            </div>
           </div>
         </div>
       )}
@@ -328,7 +332,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: capa-vertical-v8
+            build: cabecalho-v9
           </span>
         </div>
         <div className="flex items-center gap-2">

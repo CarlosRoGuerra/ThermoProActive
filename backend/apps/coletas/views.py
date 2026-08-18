@@ -187,6 +187,13 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         cliente = rel.cliente
         # Prestador de serviço (contratada) — cabeçalho/rodapé do relatório.
         prestador = Empresa.objects.ativos().order_by("id").first()
+        # Endereço do prestador em 2 linhas (papel timbrado): logradouro/nº – bairro | CEP – cidade/UF.
+        if prestador:
+            _end_l1 = " – ".join(p for p in [
+                ", ".join(x for x in [prestador.logradouro, prestador.numero] if x),
+                prestador.bairro,
+            ] if p)
+            _end_l2 = " – ".join(p for p in [prestador.cep, prestador.cidade_uf] if p)
         carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
         analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
 
@@ -358,6 +365,8 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     "cnpj": prestador.cnpj,
                     "inscricao_estadual": prestador.inscricao_estadual,
                     "endereco": prestador.endereco_formatado,
+                    "endereco_linha1": _end_l1,
+                    "endereco_linha2": _end_l2,
                     "cidade_uf": prestador.cidade_uf,
                     "email": prestador.email,
                     "telefone": prestador.telefone,

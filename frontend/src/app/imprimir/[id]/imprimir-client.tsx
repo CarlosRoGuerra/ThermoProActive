@@ -147,13 +147,16 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
             )}
             {prestador && (
               <div className="run-cab-dados" style={{ textAlign: "right", fontSize: 9, lineHeight: 1.25, color: "#64748b" }}>
-                <div style={{ fontWeight: 600, color: "#334155" }}>{prestador.nome}</div>
+                <div style={{ fontWeight: 600, color: "#64748b" }}>{prestador.nome}</div>
                 {prestador.cnpj && (
-                  <div>CNPJ {prestador.cnpj}{prestador.inscricao_estadual ? ` | IE ${prestador.inscricao_estadual}` : ""}</div>
+                  <div style={{ color: "#94a3b8" }}>CNPJ {prestador.cnpj}{prestador.inscricao_estadual ? ` | IE ${prestador.inscricao_estadual}` : ""}</div>
                 )}
-                {prestador.endereco && <div>{prestador.endereco}</div>}
-                {prestador.telefone && <div>{prestador.telefone}</div>}
-                {prestador.email && <div>{prestador.email}</div>}
+                <div style={{ marginTop: 2, color: "#94a3b8" }}>
+                  {prestador.endereco_linha1 && <div>{prestador.endereco_linha1}</div>}
+                  {prestador.endereco_linha2 && <div>{prestador.endereco_linha2}</div>}
+                  {prestador.telefone && <div>{prestador.telefone}</div>}
+                  {prestador.email && <div>{prestador.email}</div>}
+                </div>
               </div>
             )}
             <div className="run-rodape-site" style={{ fontSize: 9, color: "#64748b" }}>
