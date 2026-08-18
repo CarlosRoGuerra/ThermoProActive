@@ -185,7 +185,7 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
   titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
 }) {
   return (
-    <section className="pagina evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
+    <section className="pagina pagina-capa evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
       {/* Faixa esquerda: logomarca vertical, como no modelo. */}
       <div className="relative w-[160px] shrink-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -338,17 +338,17 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: capa-cliente-v11
+            build: paged-timbrado-v12
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
           <Link
             href={`/imprimir/${relatorioId}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg shadow-xs transition-colors hover:bg-accent-hover"
           >
-            <Printer className="h-3.5 w-3.5" /> PDF paginado (nº de página)
+            <Printer className="h-4 w-4" /> Imprimir / PDF (com nº de página)
           </Link>
-          <Button icon={Printer} onClick={imprimir}>Imprimir / PDF</Button>
         </div>
       </div>
 
@@ -381,7 +381,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   return (
     <div className="print-area space-y-4 text-slate-800">
         {/* ============================= CAPA ============================= */}
-        <section className="evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
+        <section className="pagina-capa evitar-quebra flex min-h-[92vh] gap-6 bg-white p-8">
           {/* Faixa esquerda: logomarca vertical gigante, como no modelo. */}
           <div className="relative w-[160px] shrink-0 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}

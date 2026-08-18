@@ -17,6 +17,14 @@ const PAGED_RULES = `
     @bottom-center { content: element(runRodapeSite); }
     @bottom-right  { content: "pág. " counter(page) " de " counter(pages); font-size: 9px; color: #64748b; }
   }
+  /* Capa e contracapas: página nomeada SEM cabeçalho e SEM nº de página
+     (o papel timbrado só vale nas páginas internas). */
+  .pagina-capa { page: capa; }
+  @page capa {
+    @top-left     { content: none; }
+    @top-right    { content: none; }
+    @bottom-right { content: none; }
+  }
   .run-cab-logo    { position: running(runCabLogo); }
   .run-cab-dados   { position: running(runCabDados); }
   .run-rodape-site { position: running(runRodapeSite); }
