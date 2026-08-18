@@ -144,9 +144,8 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
       <div ref={fonteRef} className={mostrarFonte ? "" : "paged-source"}>
         {d && (
           <>
-            {/* Corpo PRIMEIRO: a capa (página nomeada) precisa ser o 1º elemento,
-                senão o paged.js abre uma página default em branco antes dela. */}
-            <RelatorioCorpo d={d} />
+            {/* Elementos correntes (cabeçalho/rodapé) ANTES do corpo — o paged.js
+                só aplica o running header às páginas a partir de onde ele aparece. */}
             {prestador?.logomarca && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -175,6 +174,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
                 .filter(Boolean)
                 .map((x, i) => <div key={i}>{x}</div>)}
             </div>
+            <RelatorioCorpo d={d} />
           </>
         )}
       </div>
