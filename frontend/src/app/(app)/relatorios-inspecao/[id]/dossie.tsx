@@ -52,6 +52,48 @@ const moeda = (v: string | number | null) => (v == null || v === "" ? "—" : nu
 const qtd = (v: string | null) => (v == null || v === "" ? "—" : String(num(v)));
 export type Dossie = { cabecalho: Cabecalho; secao_b: SecaoB; secao_c: { total: number; grupos: GrupoC[] }; secao_d: OspD[] };
 
+/* -------------------------- Normalizações de saída ------------------------- */
+const temTexto = (v: string | null | undefined) => !!v?.trim();
+
+/**
+ * O backend deve idealmente devolver somente o número público da OSP.
+ * Enquanto isso, evita expor IDs internos em valores como "0006 | 10".
+ */
+const numeroOspPublico = (v: string) => (v || "—").split("|")[0].trim() || "—";
+
+/** Evita gerar uma folha inteira para registros sem conteúdo técnico. */
+function temConteudoOsp(o: OspD) {
+  const campos = [
+    o.componente, o.anomalia, o.recomendacao, o.observacao,
+    o.amplitude_velocidade, o.amplitude_aceleracao,
+    o.temperatura_medida, o.temperatura_referencia, o.delta_t, o.carga_percentual,
+  ];
+  return (
+    campos.some(temTexto) ||
+    o.imagens.some((img) => temTexto(img.arquivo)) ||
+    o.corrente.some(temTexto) ||
+    o.tensao.some(temTexto)
+  );
+}
+
+/** Remove fotos duplicadas pelo arquivo/URL sem alterar a ordem. */
+function imagensUnicas(imagens: OspD["imagens"]) {
+  const vistos = new Set<string>();
+  return imagens.filter((img) => {
+    const chave = img.arquivo?.trim();
+    if (!chave || vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  });
+}
+
+function tamanhoNumeroRelatorio(numero: string) {
+  if (numero.length >= 28) return 28;
+  if (numero.length >= 24) return 30;
+  if (numero.length >= 20) return 34;
+  return 38;
+}
+
 /* ------------------------------- Cores GR --------------------------------- */
 const CORES: Record<string, { bg: string; fg: string }> = {
   GR0: { bg: "#16a34a", fg: "#fff" }, GR1: { bg: "#dc2626", fg: "#fff" },
@@ -79,7 +121,7 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
     <div className="space-y-1.5">
       {dados.map((d) => (
         <div key={d.rotulo} className="flex items-center gap-2 text-xs">
-          <span className="w-40 shrink-0 truncate text-slate-600" title={d.rotulo}>{d.rotulo}</span>
+          <span className="w-44 shrink-0 whitespace-normal break-words leading-snug text-slate-600" title={d.rotulo}>{d.rotulo}</span>
           <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100">
             <div className="h-4 rounded" style={{ width: `${(d.total / max) * 100}%`, background: corFn?.(d.rotulo) ?? hue }} />
           </div>
@@ -224,6 +266,25 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
   );
 }
 
+/* Contracapa final do relatório — sem cabeçalho/rodapé interno. */
+function ContracapaFinal({ prestador }: { prestador: Prestador | null }) {
+  return (
+    <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8">
+      <LogoVertical marca={prestador?.logomarca ?? null} />
+      <div className="flex flex-1 flex-col justify-end text-right text-slate-600">
+        {prestador?.nome && <p className="text-base font-semibold text-slate-800">{prestador.nome}</p>}
+        {prestador?.cnpj && <p className="mt-1 text-xs">CNPJ {prestador.cnpj}</p>}
+        {prestador?.endereco_linha1 && <p className="mt-2 text-xs">{prestador.endereco_linha1}</p>}
+        {prestador?.endereco_linha2 && <p className="text-xs">{prestador.endereco_linha2}</p>}
+        {(prestador?.telefone || prestador?.email) && (
+          <p className="mt-2 text-xs">{[prestador.telefone, prestador.email].filter(Boolean).join(" · ")}</p>
+        )}
+        {prestador?.site && <p className="mt-1 text-xs font-medium">{prestador.site}</p>}
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------- Página ----------------------------------- */
 export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   const [d, setD] = useState<Dossie | null>(null);
@@ -280,41 +341,93 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
     <div className="space-y-4">
       <style>{`
         .cab-impressao, .rodape-impressao { display: none; }
+
         @media print {
-          /* Aumentando a margem superior para caber telefone/email sem cortar */
-          @page { margin: 3.2cm 1.3cm 2.4cm 1.3cm; }
-          /* Zerando margens na capa para sumir com cabeçalhos/rodapés fixos via Paged.js */
-          @page capa { margin-top: 0; margin-bottom: 0; }
-          
+          @page {
+            size: A4;
+            margin: 3.2cm 1.3cm 2.4cm 1.3cm;
+          }
+          @page capa {
+            size: A4;
+            margin: 0;
+          }
+
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+
           body * { visibility: hidden; }
           .print-area, .print-area *,
           .cab-impressao, .cab-impressao *,
           .rodape-impressao, .rodape-impressao * { visibility: visible; }
-          
-          .print-area { position: absolute; left: 0; top: 0; width: 100%; }
-          .no-print { display: none !important; }
-          .pagina { break-before: page; }
-          .evitar-quebra { break-inside: avoid; }
-          
-          /* Aplica a página nomeada e sobrepõe eventuais bugs de overflow */
-          .pagina-capa { 
-            page: capa; 
-            position: relative; 
-            z-index: 50; 
-            background-color: white; 
-            min-height: 100vh; 
+
+          .print-area {
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
           }
-          
-          /* Cabeçalho do Papel Timbrado - Descemos o top para compensar o limite da página */
+
+          /* Remove o space-y do Tailwind na impressão, evitando deslocamentos. */
+          .print-area > * { margin-top: 0 !important; }
+          .no-print { display: none !important; }
+
+          /* Usar break-after evita a página branca que pode surgir com break-before. */
+          .print-area > section {
+            break-after: page;
+            page-break-after: always;
+          }
+          .print-area > section:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .evitar-quebra {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          /* Capa e divisórias ocupam a folha inteira e ficam acima do timbrado fixo. */
+          .pagina-capa {
+            page: capa;
+            position: relative;
+            z-index: 100;
+            box-sizing: border-box;
+            width: 210mm;
+            min-height: 297mm;
+            background: #fff !important;
+            isolation: isolate;
+          }
+
+          /* Papel timbrado somente das páginas internas.
+             Nas capas ele continua tecnicamente fixo, porém fica atrás do fundo branco
+             da página nomeada 'capa', evitando as sobreposições vistas no PDF. */
           .cab-impressao {
-            display: flex; position: fixed; top: -2.6cm; left: 0; right: 0;
-            align-items: flex-start; justify-content: space-between;
-            border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;
+            display: flex;
+            position: fixed;
+            z-index: 1;
+            top: -2.6cm;
+            left: 0;
+            right: 0;
+            align-items: flex-start;
+            justify-content: space-between;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 4px;
+            background: #fff;
           }
           .rodape-impressao {
-            display: flex; position: fixed; bottom: -1.9cm; left: 0; right: 0;
-            align-items: center; justify-content: center; gap: 12px;
-            border-top: 1px solid #cbd5e1; padding-top: 4px;
+            display: flex;
+            position: fixed;
+            z-index: 1;
+            bottom: -1.9cm;
+            left: 0;
+            right: 0;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            border-top: 1px solid #cbd5e1;
+            padding-top: 4px;
+            background: #fff;
           }
         }
       `}</style>
@@ -353,7 +466,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: rodape-corrente-v16</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: ajustes-osp-v17</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -391,6 +504,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
   const tipoTec = tecnologiaTipo(cab.tecnologia);
   const temDef = !!(cab.definicao_tecnica?.trim() || cab.pontos_medicao_imagem);
+  const ospsValidas = osps.filter(temConteudoOsp);
   
   return (
     <div className="print-area space-y-4 text-slate-800">
@@ -404,8 +518,13 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             </div>
             <div className="mt-auto text-right">
               {/* Texto "Relatório Técnico" menor e "Número" Maior, conforme exigido */}
-              <p className="text-xl font-semibold tracking-widest text-slate-500 uppercase">Relatório Técnico</p>
-              <p className="mt-1 font-mono text-5xl font-black tracking-tight text-[#1d4ed8]">{cab.numero}</p>
+              <p className="text-lg font-semibold uppercase tracking-widest text-slate-500">Relatório Técnico</p>
+              <p
+                className="mt-2 font-mono font-black leading-none text-[#1d4ed8]"
+                style={{ fontSize: tamanhoNumeroRelatorio(cab.numero), whiteSpace: "nowrap", letterSpacing: "-0.04em" }}
+              >
+                {cab.numero}
+              </p>
             </div>
           </div>
         </section>
@@ -416,7 +535,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           <div className="flex flex-1 flex-col justify-center">
             <div className="text-right">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mb-4 ml-auto max-h-32 max-w-[220px] object-contain" />}
+              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mb-6 ml-auto max-h-40 max-w-[280px] object-contain" />}
               <BlocoCliente cab={cab} semNumero />
             </div>
           </div>
@@ -520,9 +639,15 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
           )}
           <div className="mt-10 text-right">
-            <p className="text-sm text-slate-600">At.te,</p>
-            <p className="ml-auto mt-8 w-56 border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{cab.analistas.join(", ") || "Analista"}</p>
-            <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
+            <p className="text-sm text-slate-600">Atenciosamente,</p>
+            <div className="mt-8 flex flex-wrap justify-end gap-8">
+              {(cab.analistas.length ? cab.analistas : ["Analista"]).map((analista) => (
+                <div key={analista} className="w-56 border-t border-slate-400 pt-1">
+                  <p className="text-sm font-semibold text-slate-800">{analista}</p>
+                  <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -532,7 +657,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <section className="pagina bg-white p-6">
           <p className="mb-4 text-right text-sm font-semibold text-rose-700">Seção B — KPI’s Dashboard</p>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
             <div>
               <h3 className="mb-2 text-sm font-bold text-slate-800">Status das Condições</h3>
               <Barras dados={b.condicoes} corFn={(r) => corCondicao(r).bg} />
@@ -566,10 +691,10 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina bg-white p-6">
-          <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção C — Equipamentos Inspecionados</p>
+          <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção C — Relação de Equipamentos Contemplados</p>
           <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
             <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
-            <p className="text-xs text-slate-600">Total de equipamentos: {b.equip_monitorados}</p>
+            <p className="text-xs text-slate-600">Total de equipamentos: {c.total}</p>
           </div>
           {c.grupos.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Nenhum equipamento inspecionado.</p>
@@ -611,8 +736,9 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
-        {osps.map((o, i) => {
+        {ospsValidas.map((o, i) => {
           const cor = corCondicao(o.grau_risco);
+          const imgs = imagensUnicas(o.imagens);
           return (
             <section key={i} className="pagina evitar-quebra bg-white p-6">
               <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
@@ -630,19 +756,23 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                   ))}
                 </dl>
                 <div className="shrink-0 pl-6 text-center" style={{ borderLeft: "1px solid #e2e8f0" }}>
-                  <p className="font-mono text-sm text-slate-500">O.S.P nº: {o.osp}</p>
+                  <p className="font-mono text-sm text-slate-500">O.S.P nº: {numeroOspPublico(o.osp)}</p>
                   <p className="mt-2 text-sm text-slate-500">Grau de risco</p>
                   <div className="text-7xl font-black leading-none tracking-tight" style={{ color: cor.bg }}>{o.grau_risco || "—"}</div>
                   <p className="mt-1 text-sm font-semibold text-slate-600">{o.grau_risco_descricao}</p>
                 </div>
               </div>
 
-              {o.imagens.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {o.imagens.map((img, k) => (
-                    <figure key={k} className="overflow-hidden rounded-lg border border-slate-200">
+              {imgs.length > 0 && (
+                <div className={`mt-4 grid gap-3 ${imgs.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                  {imgs.map((img) => (
+                    <figure key={img.arquivo} className="overflow-hidden rounded-lg border border-slate-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.arquivo} alt={img.tipo} className="mx-auto max-h-40 w-full object-contain" />
+                      <img
+                        src={img.arquivo}
+                        alt={img.tipo}
+                        className={imgs.length === 1 ? "mx-auto max-h-64 w-auto max-w-full object-contain" : "mx-auto max-h-40 w-full object-contain"}
+                      />
                       {img.legenda && <figcaption className="px-2 py-1 text-center text-xs text-slate-500">{img.legenda}</figcaption>}
                     </figure>
                   ))}
@@ -674,6 +804,15 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             </section>
           );
         })}
+
+        {ospsValidas.length === 0 && (
+          <section className="pagina bg-white p-6">
+            <p className="py-12 text-center text-sm text-slate-500">Nenhuma Ordem de Serviço Preditiva aplicável foi gerada para este relatório.</p>
+          </section>
+        )}
+
+        {/* Contracapa final */}
+        <ContracapaFinal prestador={cab.prestador} />
 
       </div>
   );
