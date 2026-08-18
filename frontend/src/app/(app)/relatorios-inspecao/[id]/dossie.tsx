@@ -158,8 +158,8 @@ function BlocoMedicao({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
 /* Avaliação de Resultados (ROI) */
 function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
   return (
-    <div className="mt-4 overflow-x-auto">
-      <p className="rounded-t bg-emerald-600 px-2 py-1 text-center text-xs font-bold text-white">Avaliação de Resultados</p>
+    <div className="mt-3 overflow-x-auto">
+      <p className="rounded-t bg-emerald-600 px-2 py-0.5 text-center text-xs font-bold text-white">Avaliação de Resultados</p>
       <table className="w-full border-collapse text-xs">
         <thead className="text-slate-500">
           <tr className="border-b border-slate-300">
@@ -180,22 +180,22 @@ function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
             const ret = num(l.emerg_v) - num(l.pred_v);
             return (
               <tr key={l.rotulo} className="border-b border-slate-100">
-                <td className="py-1 font-medium">{l.rotulo}</td>
-                <td className="py-1 text-right">{qtd(l.pred_q)}</td>
-                <td className="py-1 text-right">{moeda(l.pred_v)}</td>
-                <td className="py-1 text-right">{qtd(l.emerg_q)}</td>
-                <td className="py-1 text-right">{moeda(l.emerg_v)}</td>
-                <td className="py-1 text-right">{ret ? moeda(ret) : "—"}</td>
+                <td className="py-0.5 font-medium">{l.rotulo}</td>
+                <td className="py-0.5 text-right">{qtd(l.pred_q)}</td>
+                <td className="py-0.5 text-right">{moeda(l.pred_v)}</td>
+                <td className="py-0.5 text-right">{qtd(l.emerg_q)}</td>
+                <td className="py-0.5 text-right">{moeda(l.emerg_v)}</td>
+                <td className="py-0.5 text-right">{ret ? moeda(ret) : "—"}</td>
               </tr>
             );
           })}
           <tr className="border-t border-slate-300 font-semibold">
-            <td className="py-1">Total</td>
+            <td className="py-0.5">Total</td>
             <td />
-            <td className="py-1 text-right">{moeda(aval.total_preditiva)}</td>
+            <td className="py-0.5 text-right">{moeda(aval.total_preditiva)}</td>
             <td />
-            <td className="py-1 text-right">{moeda(aval.total_emergencial)}</td>
-            <td className="py-1 text-right text-emerald-700">{moeda(aval.retorno)}</td>
+            <td className="py-0.5 text-right">{moeda(aval.total_emergencial)}</td>
+            <td className="py-0.5 text-right text-emerald-700">{moeda(aval.retorno)}</td>
           </tr>
         </tbody>
       </table>
@@ -466,7 +466,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: ajustes-osp-v17</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-1pagina-v18</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -740,8 +740,8 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
           return (
-            <section key={i} className="pagina evitar-quebra bg-white p-6">
-              <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
+            <section key={i} className="pagina evitar-quebra bg-white p-5">
+              <p className="mb-2 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
               <div className="flex justify-between gap-4">
                 <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-sm">
                   {[
@@ -757,29 +757,29 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </dl>
                 <div className="shrink-0 pl-6 text-center" style={{ borderLeft: "1px solid #e2e8f0" }}>
                   <p className="font-mono text-sm text-slate-500">O.S.P nº: {numeroOspPublico(o.osp)}</p>
-                  <p className="mt-2 text-sm text-slate-500">Grau de risco</p>
-                  <div className="text-7xl font-black leading-none tracking-tight" style={{ color: cor.bg }}>{o.grau_risco || "—"}</div>
+                  <p className="mt-1 text-sm text-slate-500">Grau de risco</p>
+                  <div className="text-6xl font-black leading-none tracking-tight" style={{ color: cor.bg }}>{o.grau_risco || "—"}</div>
                   <p className="mt-1 text-sm font-semibold text-slate-600">{o.grau_risco_descricao}</p>
                 </div>
               </div>
 
               {imgs.length > 0 && (
-                <div className={`mt-4 grid gap-3 ${imgs.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                <div className={`mt-3 grid gap-3 ${imgs.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                   {imgs.map((img) => (
                     <figure key={img.arquivo} className="overflow-hidden rounded-lg border border-slate-200">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={img.arquivo}
                         alt={img.tipo}
-                        className={imgs.length === 1 ? "mx-auto max-h-64 w-auto max-w-full object-contain" : "mx-auto max-h-40 w-full object-contain"}
+                        className={imgs.length === 1 ? "mx-auto max-h-44 w-auto max-w-full object-contain" : "mx-auto max-h-36 w-full object-contain"}
                       />
-                      {img.legenda && <figcaption className="px-2 py-1 text-center text-xs text-slate-500">{img.legenda}</figcaption>}
+                      {img.legenda && <figcaption className="px-2 py-0.5 text-center text-xs text-slate-500">{img.legenda}</figcaption>}
                     </figure>
                   ))}
                 </div>
               )}
 
-              <div className="mt-4 space-y-1 text-sm">
+              <div className="mt-3 space-y-0.5 text-sm">
                 <p><span className="font-semibold text-slate-700">Recomendação:</span> <span className="text-slate-600">{o.recomendacao || "—"}</span></p>
                 <p><span className="font-semibold text-slate-700">Observação:</span> <span className="text-slate-600">{o.observacao || "—"}</span></p>
                 <BlocoMedicao o={o} tipo={tipoTec} />
@@ -787,16 +787,16 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
               {o.avaliacao && <TabelaAvaliacao aval={o.avaliacao} />}
 
-              <table className="mt-4 w-full border-collapse text-xs text-slate-600">
+              <table className="mt-3 w-full border-collapse text-xs text-slate-600">
                 <thead>
                   <tr className="border-b border-slate-300 text-left">
-                    <th className="py-1 font-semibold" /><th className="py-1 font-semibold">Data</th><th className="py-1 font-semibold">Responsável</th>
+                    <th className="py-0.5 font-semibold" /><th className="py-0.5 font-semibold">Data</th><th className="py-0.5 font-semibold">Responsável</th>
                   </tr>
                 </thead>
                 <tbody>
                   {["Planejamento", "Corretiva", "Finalização"].map((e) => (
                     <tr key={e} className="border-b border-slate-100">
-                      <td className="py-2 font-medium text-slate-700">{e}</td><td className="py-2" /><td className="py-2" />
+                      <td className="py-1 font-medium text-slate-700">{e}</td><td className="py-1" /><td className="py-1" />
                     </tr>
                   ))}
                 </tbody>
