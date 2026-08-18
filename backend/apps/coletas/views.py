@@ -356,6 +356,7 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "prestador": {
                     "nome": prestador.nome,
                     "cnpj": prestador.cnpj,
+                    "inscricao_estadual": prestador.inscricao_estadual,
                     "endereco": prestador.endereco_formatado,
                     "cidade_uf": prestador.cidade_uf,
                     "email": prestador.email,

@@ -51,6 +51,7 @@ class Empresa(EnderecoMixin, BaseModel):
 
     nome = models.CharField("Nome da empresa", max_length=160)
     cnpj = models.CharField("CNPJ", max_length=18, unique=True)
+    inscricao_estadual = models.CharField("Inscrição estadual", max_length=30, blank=True, help_text="Ex.: Isenta")
     contato_gestor = models.CharField("Contato gestor", max_length=120, blank=True)
     departamento = models.CharField("Departamento", max_length=120, blank=True)
     # Contato do prestador — usado no cabeçalho/rodapé do relatório.

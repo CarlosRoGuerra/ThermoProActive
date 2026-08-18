@@ -17,6 +17,7 @@ const UFS = [
 type Form = {
   nome: string;
   cnpj: string;
+  inscricao_estadual: string;
   cep: string;
   logradouro: string;
   numero: string;
@@ -32,7 +33,7 @@ type Form = {
 };
 
 const FORM_VAZIO: Form = {
-  nome: "", cnpj: "",
+  nome: "", cnpj: "", inscricao_estadual: "",
   cep: "", logradouro: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "",
   contato_gestor: "", departamento: "", email: "", telefone: "", site: "",
 };
@@ -116,6 +117,7 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
         setForm({
           nome: c.nome ?? "",
           cnpj: c.cnpj ?? "",
+          inscricao_estadual: c.inscricao_estadual ?? "",
           cep: c.cep ?? "",
           logradouro: c.logradouro ?? "",
           numero: c.numero ?? "",
@@ -237,6 +239,14 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
               inputMode="numeric"
               placeholder="00.000.000/0000-00"
               onChange={(e) => set("cnpj", formatarCnpj(e.target.value))}
+            />
+          </Field>
+          <Field label="Inscrição estadual">
+            <Input
+              value={form.inscricao_estadual}
+              maxLength={30}
+              placeholder="Ex.: Isenta"
+              onChange={(e) => set("inscricao_estadual", e.target.value)}
             />
           </Field>
         </div>

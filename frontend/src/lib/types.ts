@@ -86,6 +86,7 @@ export interface Empresa {
   uf: string;
   cidade_uf: string;
   endereco_formatado: string;
+  inscricao_estadual: string;
   contato_gestor: string;
   departamento: string;
   email: string;

@@ -148,11 +148,12 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
             {prestador && (
               <div className="run-cab-dados" style={{ textAlign: "right", fontSize: 9, lineHeight: 1.25, color: "#64748b" }}>
                 <div style={{ fontWeight: 600, color: "#334155" }}>{prestador.nome}</div>
-                {prestador.cnpj && <div>CNPJ {prestador.cnpj}</div>}
-                {prestador.endereco && <div>{prestador.endereco}</div>}
-                {(prestador.telefone || prestador.email) && (
-                  <div>{[prestador.telefone, prestador.email].filter(Boolean).join(" · ")}</div>
+                {prestador.cnpj && (
+                  <div>CNPJ {prestador.cnpj}{prestador.inscricao_estadual ? ` | IE ${prestador.inscricao_estadual}` : ""}</div>
                 )}
+                {prestador.endereco && <div>{prestador.endereco}</div>}
+                {prestador.telefone && <div>{prestador.telefone}</div>}
+                {prestador.email && <div>{prestador.email}</div>}
               </div>
             )}
             <div className="run-rodape-site" style={{ fontSize: 9, color: "#64748b" }}>
