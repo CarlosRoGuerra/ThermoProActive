@@ -11,7 +11,9 @@ import { RelatorioCorpo, type Dossie } from "@/app/(app)/relatorios-inspecao/[id
 const PAGED_RULES = `
   @page {
     size: A4;
-    margin: 2.6cm 1.3cm 2.2cm;
+    /* Laterais em 10mm (pedido). Topo/rodapé maiores para caber o papel
+       timbrado (logo + dados) e o rodapé — 10mm ali cortaria o cabeçalho. */
+    margin: 2.6cm 1cm 2.2cm;
     @top-left      { content: element(runCabLogo); }
     @top-right     { content: element(runCabDados); }
     @bottom-center { content: element(runRodapeSite); }
