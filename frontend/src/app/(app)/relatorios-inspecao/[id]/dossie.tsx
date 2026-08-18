@@ -305,7 +305,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         <div className="cab-impressao leading-snug">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {cab.prestador.logomarca && (
-            <img src={cab.prestador.logomarca} alt="" className="w-[220px] max-w-[48%] shrink-0 object-contain" />
+            <img src={cab.prestador.logomarca} alt="" className="w-[300px] shrink-0 object-contain" />
           )}
           <div className="pl-4 text-right">
             <p className="text-[11px] font-semibold text-slate-500">{cab.prestador.nome}</p>
@@ -332,7 +332,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
           <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500" title="Versão do build do frontend">
-            build: cabecalho-v9
+            build: logo-header-v10
           </span>
         </div>
         <div className="flex items-center gap-2">

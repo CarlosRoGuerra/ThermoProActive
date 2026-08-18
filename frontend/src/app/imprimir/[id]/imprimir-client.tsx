@@ -142,7 +142,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
                 className="run-cab-logo"
                 src={prestador.logomarca}
                 alt=""
-                style={{ maxHeight: 46, objectFit: "contain" }}
+                style={{ width: 260, maxWidth: "none", objectFit: "contain" }}
               />
             )}
             {prestador && (
