@@ -430,7 +430,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-1folha-v29</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: lista-modelo-v30</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -655,43 +655,44 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ========================= SEÇÃO C ========================= */}
         <PaginaInterna cab={cab}>
-          <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
-            <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
-            <p className="text-xs text-slate-600">Total de equipamentos: {c.total}</p>
-          </div>
+          <p style={{ fontSize: "9pt" }}><span style={{ fontWeight: 700 }}>Empresa:</span> {cab.empresa}</p>
           {c.grupos.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">Nenhum equipamento inspecionado.</p>
+            <p style={{ fontSize: "9pt", textAlign: "center", padding: "12mm 0", color: "#64748b" }}>Nenhum equipamento inspecionado.</p>
           ) : (
-            <div className="space-y-4">
-              {c.grupos.map((g, gi) => (
-                <div key={gi}>
-                  <p className="text-sm font-semibold text-slate-800">Área: {g.area} · Setor: {g.setor}</p>
-                  <table className="mt-1 w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-300 text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="w-24 py-1 pr-2 font-semibold">Tag</th>
-                        <th className="py-1 pr-2 font-semibold">Equipamento</th>
-                        <th className="w-24 py-1 text-right font-semibold">{ddmmaaaa(cab.data_termino)}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.linhas.map((l, li) => {
-                        const cor = corCondicao(l.condicao);
-                        return (
-                          <tr key={li} className={li % 2 ? "bg-slate-50" : ""}>
-                            <td className="py-0.5 pr-2 font-mono text-xs text-slate-600">{l.tag || "—"}</td>
-                            <td className="py-0.5 pr-2 text-slate-800">{l.equipamento}</td>
-                            <td className="py-0.5 text-right">
-                              <span className="inline-block rounded px-2 py-0.5 text-xs font-semibold" style={{ background: cor.bg, color: cor.fg }}>{l.condicao}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+            c.grupos.map((g, gi) => (
+              <div key={gi} style={{ marginTop: "4mm", fontSize: "9pt" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <p><span style={{ fontWeight: 700 }}>Área:</span> {g.area}</p>
+                    <p><span style={{ fontWeight: 700 }}>Setor:</span> {g.setor}</p>
+                  </div>
+                  {gi === 0 && <p><span style={{ fontWeight: 700 }}>Total de equipamentos:</span> {b.equip_monitorados}</p>}
                 </div>
-              ))}
-            </div>
+                <table style={{ width: "190mm", borderCollapse: "collapse", marginTop: "2mm", fontSize: "9pt", tableLayout: "fixed" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "0.3mm solid #94a3b8", textAlign: "left" }}>
+                      <th style={{ width: "30mm", fontWeight: 700, paddingBottom: "1mm" }}>TAG</th>
+                      <th style={{ fontWeight: 700, paddingBottom: "1mm" }}>Equipamento</th>
+                      <th style={{ width: "22mm", fontWeight: 700, textAlign: "right", paddingBottom: "1mm" }}>Condição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.linhas.map((l, li) => {
+                      const cor = corCondicao(l.condicao);
+                      return (
+                        <tr key={li} style={{ background: li % 2 ? "#eff6ff" : "#fff" }}>
+                          <td style={{ fontFamily: "monospace", padding: "0.6mm 0" }}>{l.tag || "—"}</td>
+                          <td style={{ padding: "0.6mm 0" }}>{l.equipamento}</td>
+                          <td style={{ textAlign: "right", padding: "0.6mm 0" }}>
+                            <span style={{ display: "inline-block", borderRadius: "1mm", padding: "0 2mm", fontWeight: 700, background: cor.bg, color: cor.fg }}>{l.condicao}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))
           )}
         </PaginaInterna>
 
