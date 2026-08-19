@@ -132,74 +132,86 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
   );
 }
 
-/* Bloco de medição específico por tecnologia */
-function BlocoMedicao({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
-  if (tipo === "vibracao") {
-    return (
-      <div className="flex flex-wrap gap-x-8 gap-y-1 pt-1">
-        <p><span className="font-semibold text-slate-700">Amplitude Velocidade Global [mm/s]:</span> {o.amplitude_velocidade ?? "—"}</p>
-        <p><span className="font-semibold text-slate-700">Amplitude Aceleração Global [g]:</span> {o.amplitude_aceleracao ?? "—"}</p>
-      </div>
-    );
-  }
+/* Fonte do modelo do cliente (OSP). */
+const FONTE_OSP = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
+
+/* Amplitudes/medições da OSP por tecnologia (modelo do cliente). */
+function AmplitudesOSP({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
   if (tipo === "termografia") {
     return (
-      <div className="flex flex-wrap gap-x-8 gap-y-1 pt-1">
-        <p><span className="font-semibold text-slate-700">Temp. medida [°C]:</span> {o.temperatura_medida ?? "—"}</p>
-        <p><span className="font-semibold text-slate-700">Temp. referência [°C]:</span> {o.temperatura_referencia ?? "—"}</p>
-        <p><span className="font-semibold text-slate-700">ΔT [°C]:</span> {o.delta_t ?? "—"}</p>
-        <p><span className="font-semibold text-slate-700">Carga [%]:</span> {o.carga_percentual ?? "—"}</p>
-      </div>
+      <>
+        <p style={{ fontWeight: 700 }}>Medições</p>
+        <p><span style={{ fontWeight: 700 }}>Temp. medida [°C]:</span> {o.temperatura_medida ?? "—"}</p>
+        <p><span style={{ fontWeight: 700 }}>Temp. referência [°C]:</span> {o.temperatura_referencia ?? "—"}</p>
+        <p><span style={{ fontWeight: 700 }}>ΔT [°C]:</span> {o.delta_t ?? "—"}</p>
+        <p><span style={{ fontWeight: 700 }}>Carga [%]:</span> {o.carga_percentual ?? "—"}</p>
+      </>
     );
   }
-  return null;
+  return (
+    <>
+      <p style={{ fontWeight: 700 }}>Amplitudes [valor global]</p>
+      <p><span style={{ fontWeight: 700 }}>Aceleração [g&rsquo;s]:</span> {o.amplitude_aceleracao ?? "—"}</p>
+      <p><span style={{ fontWeight: 700 }}>Velocidade [mm/s]:</span> {o.amplitude_velocidade ?? "—"}</p>
+    </>
+  );
 }
 
-/* Avaliação de Resultados (ROI) */
-function TabelaAvaliacao({ aval }: { aval: Avaliacao }) {
+/* Slot de imagem da OSP (Foto do Eqpto / Tendência / Espectro): 80×60mm, imagem
+   sem borda; caixa leve com rótulo quando não há imagem daquele tipo. */
+function SlotImagem({ img, label }: { img?: OspD["imagens"][number]; label: string }) {
   return (
-    <div className="mt-3 overflow-x-auto">
-      <p className="rounded-t bg-emerald-600 px-2 py-0.5 text-center text-xs font-bold text-white">Avaliação de Resultados</p>
-      <table className="w-full border-collapse text-xs">
-        <thead className="text-slate-500">
-          <tr className="border-b border-slate-300">
-            <th className="py-1 text-left" />
-            <th colSpan={2} className="py-1 text-center">Manut. Orientada Preditiva</th>
-            <th colSpan={2} className="py-1 text-center">Manut. Emergencial</th>
-            <th className="py-1 text-center">Retorno</th>
-          </tr>
-          <tr className="border-b border-slate-200 text-[10px]">
-            <th />
-            <th className="py-0.5 text-right">Qtde</th><th className="py-0.5 text-right">Valor</th>
-            <th className="py-0.5 text-right">Qtde</th><th className="py-0.5 text-right">Valor</th>
-            <th className="py-0.5 text-right">Resultado</th>
-          </tr>
-        </thead>
-        <tbody className="text-slate-700">
-          {aval.linhas.map((l) => {
-            const ret = num(l.emerg_v) - num(l.pred_v);
-            return (
-              <tr key={l.rotulo} className="border-b border-slate-100">
-                <td className="py-0.5 font-medium">{l.rotulo}</td>
-                <td className="py-0.5 text-right">{qtd(l.pred_q)}</td>
-                <td className="py-0.5 text-right">{moeda(l.pred_v)}</td>
-                <td className="py-0.5 text-right">{qtd(l.emerg_q)}</td>
-                <td className="py-0.5 text-right">{moeda(l.emerg_v)}</td>
-                <td className="py-0.5 text-right">{ret ? moeda(ret) : "—"}</td>
-              </tr>
-            );
-          })}
-          <tr className="border-t border-slate-300 font-semibold">
-            <td className="py-0.5">Total</td>
-            <td />
-            <td className="py-0.5 text-right">{moeda(aval.total_preditiva)}</td>
-            <td />
-            <td className="py-0.5 text-right">{moeda(aval.total_emergencial)}</td>
-            <td className="py-0.5 text-right text-emerald-700">{moeda(aval.retorno)}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div style={{ width: "80mm", height: "60mm", overflow: "hidden" }}>
+      {img ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img.arquivo} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      ) : (
+        <div style={{ width: "100%", height: "100%", border: "0.25mm solid #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "12pt" }}>
+          {label}
+        </div>
+      )}
     </div>
+  );
+}
+
+/* Tabela "Retorno de Informação" (OSP), conforme modelo do cliente. */
+function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
+  return (
+    <table style={{ width: "190mm", borderCollapse: "collapse", fontSize: "9pt", marginTop: "5mm" }}>
+      <thead>
+        <tr>
+          <th colSpan={7} style={{ background: "#16a34a", color: "#fff", fontSize: "12pt", fontWeight: 700, textAlign: "center", padding: "1mm" }}>Retorno de Informação</th>
+        </tr>
+        <tr>
+          <th style={{ width: "40mm" }} />
+          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Manutenção Preditiva</th>
+          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Manutenção Emergencial</th>
+          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Retorno de Investimento</th>
+        </tr>
+        <tr>
+          <th />
+          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(aval?.linhas ?? []).map((l) => {
+          const ret = num(l.emerg_v) - num(l.pred_v);
+          return (
+            <tr key={l.rotulo} style={{ borderBottom: "0.2mm solid #e2e8f0" }}>
+              <td style={{ fontWeight: 700, padding: "0.5mm 1mm" }}>{l.rotulo}:</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{qtd(l.pred_q)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{moeda(l.pred_v)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{qtd(l.emerg_q)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{moeda(l.emerg_v)}</td>
+              <td style={{ padding: "0.5mm 1mm" }} />
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{ret ? moeda(ret) : "—"}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -495,7 +507,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: timbrado-fisico-v25</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-modelo-v26</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -769,67 +781,63 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
           return (
-            <section key={i} className="pagina evitar-quebra bg-white p-5">
-              <p className="mb-2 text-right text-sm font-semibold text-rose-700">Seção D — Ordem de Serviço</p>
-              <div className="flex justify-between gap-4">
-                <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-sm">
+            <section key={i} className="pagina evitar-quebra bg-white" style={{ fontFamily: FONTE_OSP, fontSize: "9pt", color: "#1f2937" }}>
+              <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "1mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
+
+              {/* Dados (esq.) + Grau de Risco (dir.) */}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "9mm" }}>
+                <div style={{ width: "130.75mm", lineHeight: 1.3 }}>
                   {[
                     ["Empresa", cab.empresa], ["Data", ddmmaaaa(cab.data_termino)], ["Analista", o.analista],
-                    ["Área", o.area], ["Setor", o.setor], ["Tag", o.tag],
-                    ["Equipamento", o.equipamento], ["Componente", o.componente], ["Anomalia", o.anomalia],
+                    ["Área", o.area], ["Setor", o.setor], ["TAG", o.tag], ["Equipamento", o.equipamento],
+                    ["Componente", o.componente], ["Diagnóstico", o.anomalia], ["Observação", o.observacao],
+                    ["Recomendação", o.recomendacao],
                   ].map(([k, v]) => (
-                    <div key={k} className="contents">
-                      <dt className="font-semibold text-slate-700">{k}:</dt>
-                      <dd className="text-slate-600">{v || "—"}</dd>
-                    </div>
+                    <p key={k}><span style={{ fontWeight: 700 }}>{k}:</span> {v || "—"}</p>
                   ))}
-                </dl>
-                <div className="shrink-0 pl-6 text-center" style={{ borderLeft: "1px solid #e2e8f0" }}>
-                  <p className="font-mono text-sm text-slate-500">O.S.P nº: {numeroOspPublico(o.osp)}</p>
-                  <p className="mt-1 text-sm text-slate-500">Grau de risco</p>
-                  <div className="text-6xl font-black leading-none tracking-tight" style={{ color: cor.bg }}>{o.grau_risco || "—"}</div>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">{o.grau_risco_descricao}</p>
+                </div>
+                <div style={{ width: "50.5mm", flexShrink: 0, alignSelf: "flex-start", border: "0.3mm solid #94a3b8", textAlign: "center", padding: "2mm" }}>
+                  <p style={{ fontSize: "16pt", fontWeight: 700 }}>Grau de Risco</p>
+                  <p style={{ fontSize: "42pt", fontWeight: 800, lineHeight: 1, color: cor.bg }}>{o.grau_risco || "—"}</p>
+                  <p style={{ fontSize: "12pt" }}>{o.grau_risco_descricao}</p>
                 </div>
               </div>
 
-              {imgs.length > 0 && (
-                <div className={`mt-3 grid gap-3 ${imgs.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                  {imgs.map((img) => (
-                    <figure key={img.arquivo} className="overflow-hidden rounded-lg border border-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.arquivo}
-                        alt={img.tipo}
-                        className={imgs.length === 1 ? "mx-auto max-h-44 w-auto max-w-full object-contain" : "mx-auto max-h-36 w-full object-contain"}
-                      />
-                      {img.legenda && <figcaption className="px-2 py-0.5 text-center text-xs text-slate-500">{img.legenda}</figcaption>}
-                    </figure>
-                  ))}
+              {/* Imagens em 2 colunas: esq = Foto do Eqpto + amplitudes/planejamento; dir = Tendência + Espectro */}
+              <div style={{ display: "flex", gap: "10mm", marginTop: "5mm" }}>
+                <div>
+                  <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
+                  <div style={{ marginTop: "5mm", lineHeight: 1.3 }}>
+                    <AmplitudesOSP o={o} tipo={tipoTec} />
+                    <table style={{ marginTop: "4mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th />
+                          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
+                          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
+                          <tr key={e}>
+                            <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
+                            <td style={{ borderBottom: "0.2mm solid #64748b", width: "22mm" }} />
+                            <td style={{ borderBottom: "0.2mm solid #64748b" }} />
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              )}
-
-              <div className="mt-3 space-y-0.5 text-sm">
-                <p><span className="font-semibold text-slate-700">Recomendação:</span> <span className="text-slate-600">{o.recomendacao || "—"}</span></p>
-                <p><span className="font-semibold text-slate-700">Observação:</span> <span className="text-slate-600">{o.observacao || "—"}</span></p>
-                <BlocoMedicao o={o} tipo={tipoTec} />
+                <div>
+                  <SlotImagem img={imgs.find((im) => im.tipo === "Linha de tendência")} label="Tendência" />
+                  <div style={{ marginTop: "10mm" }}>
+                    <SlotImagem img={imgs.find((im) => im.tipo === "Espectro")} label="Espectro" />
+                  </div>
+                </div>
               </div>
 
-              {o.avaliacao && <TabelaAvaliacao aval={o.avaliacao} />}
-
-              <table className="mt-3 w-full border-collapse text-xs text-slate-600">
-                <thead>
-                  <tr className="border-b border-slate-300 text-left">
-                    <th className="py-0.5 font-semibold" /><th className="py-0.5 font-semibold">Data</th><th className="py-0.5 font-semibold">Responsável</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {["Planejamento", "Corretiva", "Finalização"].map((e) => (
-                    <tr key={e} className="border-b border-slate-100">
-                      <td className="py-1 font-medium text-slate-700">{e}</td><td className="py-1" /><td className="py-1" />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TabelaRetorno aval={o.avaliacao} />
             </section>
           );
         })}
