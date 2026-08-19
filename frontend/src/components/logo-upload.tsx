@@ -4,8 +4,7 @@ import { useRef, useState } from "react";
 import { ImagePlus, Trash2, Upload } from "lucide-react";
 import { cn } from "./ui";
 
-const TAMANHO_IDEAL = 250; // px — a logomarca sai 250×250 na capa do relatório
-const TAMANHO_MAX_MB = 2;
+const TAMANHO_MAX_MB = 20; // alinhado ao limite do backend (DATA_UPLOAD_MAX_MEMORY_SIZE)
 
 /**
  * Upload de logomarca com prévia quadrada (250×250).
@@ -15,7 +14,7 @@ export function LogoUpload({
   urlAtual,
   onArquivo,
   label = "Logomarca",
-  ajuda = "Imagem quadrada, idealmente 250×250 px. Sai na capa do relatório.",
+  ajuda = "Logomarca horizontal, PNG com fundo transparente, recortada rente (ex.: ~2000px de largura). Sai no cabeçalho e nas capas do relatório.",
 }: {
   urlAtual?: string | null;
   onArquivo: (arquivo: File | null) => void;
@@ -64,9 +63,8 @@ export function LogoUpload({
             escolher(e.dataTransfer.files?.[0] ?? null);
           }}
           className={cn(
-            "relative flex h-[120px] w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border-strong bg-surface-muted transition-colors hover:border-accent",
+            "relative flex h-[90px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border-strong bg-surface-muted transition-colors hover:border-accent",
           )}
-          style={{ aspectRatio: "1 / 1" }}
           aria-label="Selecionar logomarca"
         >
           {preview ? (
@@ -75,7 +73,7 @@ export function LogoUpload({
           ) : (
             <span className="flex flex-col items-center gap-1 text-fg-subtle">
               <ImagePlus className="h-6 w-6" />
-              <span className="text-[10px]">{TAMANHO_IDEAL}×{TAMANHO_IDEAL}</span>
+              <span className="text-[10px]">PNG</span>
             </span>
           )}
         </button>

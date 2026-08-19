@@ -254,7 +254,7 @@ export function PrestadorForm({ prestadorId }: { prestadorId?: number }) {
           <LogoUpload
             urlAtual={logoAtual}
             onArquivo={aoEscolherLogo}
-            ajuda="Imagem quadrada, idealmente 250×250 px. Aparece no cabeçalho dos relatórios técnicos."
+            ajuda="Logomarca HORIZONTAL, PNG com fundo transparente, recortada rente (ex.: ~2000px de largura). Aparece no cabeçalho e nas capas dos relatórios."
           />
         </div>
       </Card>
