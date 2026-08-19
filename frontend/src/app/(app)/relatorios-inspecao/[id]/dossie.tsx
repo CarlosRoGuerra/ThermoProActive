@@ -229,10 +229,10 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
   const p = cab.prestador;
   if (!p) return null;
   return (
-    <div style={{ width: "190mm", height: "18mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
-      <div style={{ width: "58mm", height: "15mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "visible" }}>
+    <div style={{ width: "190mm", height: "22mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
+      <div style={{ width: "80mm", height: "20mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "visible" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "58mm", height: "15mm", maxWidth: "58mm", maxHeight: "15mm", objectFit: "contain", objectPosition: "left center", margin: 0, padding: 0 }} />}
+        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "80mm", height: "20mm", maxWidth: "80mm", maxHeight: "20mm", objectFit: "contain", objectPosition: "left center", margin: 0, padding: 0 }} />}
       </div>
       <div style={{ width: "80mm", textAlign: "right", fontSize: "7.5pt", lineHeight: 1.1, color: "#64748b" }}>
         <p style={{ fontSize: "9pt", fontWeight: 700, color: "#334155" }}>{p.nome}</p>
@@ -430,7 +430,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: lista-modelo-v30</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: logo-cabecalho-v31</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
