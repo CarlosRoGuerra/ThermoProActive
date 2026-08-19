@@ -68,9 +68,10 @@ function temConteudoOsp(o: OspD) {
     o.amplitude_velocidade, o.amplitude_aceleracao,
     o.temperatura_medida, o.temperatura_referencia, o.delta_t, o.carga_percentual,
   ];
+  // A foto é EVIDÊNCIA de uma OSP, não motivo para criar uma OSP — por isso
+  // imagens não entram nesta decisão (só conteúdo técnico).
   return (
     campos.some(temTexto) ||
-    o.imagens.some((img) => temTexto(img.arquivo)) ||
     o.corrente.some(temTexto) ||
     o.tensao.some(temTexto)
   );
@@ -232,17 +233,51 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   );
 }
 
+/* Logo horizontal oficial (timbrado + contracapa final). Quando houver um arquivo
+   dedicado, coloque-o em frontend/public/ e aponte aqui (ex.: "/thermoproactive-horizontal.png").
+   Enquanto for null, usa a logomarca do cadastro (comportamento atual, sem quebrar). */
+const LOGO_HORIZONTAL: string | null = null;
+
+/* Logo do timbrado (páginas internas) — horizontal, SEM rotação, proporção
+   preservada (object-fit: contain; height: auto). Largura-alvo 55mm. */
+function LogoTimbrado({ marca }: { marca: string | null }) {
+  if (!marca) return null;
+  return (
+    <div style={{ width: "62mm", height: "20mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "hidden" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={marca}
+        alt="Thermoproactive"
+        style={{ width: "55mm", height: "auto", maxHeight: "20mm", objectFit: "contain", objectPosition: "left center", display: "block", margin: 0, padding: 0 }}
+      />
+    </div>
+  );
+}
+
+/* Logo horizontal grande da contracapa final — SEM rotação, sem distorcer. */
+function LogoContracapa({ marca }: { marca: string | null }) {
+  if (!marca) return null;
+  return (
+    <div style={{ width: "115mm", height: "28mm", display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={marca}
+        alt="Thermoproactive"
+        style={{ width: "110mm", height: "auto", maxHeight: "26mm", objectFit: "contain", objectPosition: "left center", display: "block" }}
+      />
+    </div>
+  );
+}
+
 /* Cabeçalho institucional (papel timbrado) EM FLUXO na página — sem position:fixed.
-   190mm de largura, logo à esquerda (56×11mm), dados à direita, linha azul embaixo. */
+   190mm de largura, logo horizontal à esquerda, dados à direita, linha azul embaixo. */
 function Timbrado({ cab }: { cab: Cabecalho }) {
   const p = cab.prestador;
   if (!p) return null;
+  const logoHorizontal = LOGO_HORIZONTAL ?? p.logomarca;
   return (
-    <div style={{ width: "190mm", height: "26mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
-      <div style={{ width: "100mm", height: "24mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "visible" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "100mm", height: "24mm", maxWidth: "100mm", maxHeight: "24mm", objectFit: "contain", objectPosition: "left center", margin: 0, padding: 0 }} />}
-      </div>
+    <div style={{ width: "190mm", minHeight: "22mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
+      <LogoTimbrado marca={logoHorizontal} />
       <div style={{ width: "80mm", textAlign: "right", fontSize: "7.5pt", lineHeight: 1.1, color: "#64748b" }}>
         <p style={{ fontSize: "9pt", fontWeight: 700, color: "#334155" }}>{p.nome}</p>
         {p.cnpj && <p>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</p>}
@@ -341,7 +376,7 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
 function ContracapaFinal({ prestador }: { prestador: Prestador | null }) {
   return (
     <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8">
-      <LogoVertical marca={prestador?.logomarca ?? null} />
+      <LogoContracapa marca={LOGO_HORIZONTAL ?? prestador?.logomarca ?? null} />
       <div className="flex flex-1 flex-col justify-end text-right text-slate-600">
         {prestador?.nome && <p className="text-base font-semibold text-slate-800">{prestador.nome}</p>}
         {prestador?.cnpj && <p className="mt-1 text-xs">CNPJ {prestador.cnpj}</p>}
@@ -439,7 +474,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: tabela-colunas-v32</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: logo-horizontal-v33</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
