@@ -272,15 +272,15 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 return None
             return {
                 "linhas": [
-                    {"rotulo": "Mão de obra (h)", "pred_q": o.pred_mao_obra_h, "pred_v": o.pred_mao_obra_valor,
+                    {"rotulo": "Mão de Obra [h]", "pred_q": o.pred_mao_obra_h, "pred_v": o.pred_mao_obra_valor,
                      "emerg_q": o.emerg_mao_obra_h, "emerg_v": o.emerg_mao_obra_valor},
-                    {"rotulo": "Serv. terceirizado (h)", "pred_q": o.pred_terceirizado_h, "pred_v": o.pred_terceirizado_valor,
+                    {"rotulo": "M.O. Terceirizada [h]", "pred_q": o.pred_terceirizado_h, "pred_v": o.pred_terceirizado_valor,
                      "emerg_q": o.emerg_terceirizado_h, "emerg_v": o.emerg_terceirizado_valor},
-                    {"rotulo": "Material de reparo ($)", "pred_q": None, "pred_v": o.pred_material_valor,
+                    {"rotulo": "Material Reparo [$]", "pred_q": None, "pred_v": o.pred_material_valor,
                      "emerg_q": None, "emerg_v": o.emerg_material_valor},
-                    {"rotulo": "Produção (h/ton)", "pred_q": o.pred_producao_h, "pred_v": o.pred_producao_valor,
+                    {"rotulo": "Produção [h|Ton.]", "pred_q": o.pred_producao_h, "pred_v": o.pred_producao_valor,
                      "emerg_q": o.emerg_producao_h, "emerg_v": o.emerg_producao_valor},
-                    {"rotulo": "Outros ($)", "pred_q": None, "pred_v": o.pred_outros_valor,
+                    {"rotulo": "Outros [$]", "pred_q": None, "pred_v": o.pred_outros_valor,
                      "emerg_q": None, "emerg_v": o.emerg_outros_valor},
                 ],
                 "total_preditiva": o.total_preditiva,
@@ -303,6 +303,12 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         comp_tally, anom_tally = {}, {}
         secao_d = []
         for a in achados_qs:
+            # Achado sem conteúdo técnico (sem componente E sem anomalia) NÃO vira
+            # anomalia/OSP nem entra na contagem do KPI — evita OSP vazia e "Outros".
+            tem_componente = bool(a.tipo_componente_id or (a.componente_texto or "").strip())
+            tem_anomalia = bool(a.tipo_anomalia_id or (a.anomalia_texto or "").strip())
+            if not tem_componente and not tem_anomalia:
+                continue
             comp_cat = a.tipo_componente.nome if a.tipo_componente_id else (a.componente_texto or "Outros")
             anom_cat = a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "Outros")
             comp_tally[comp_cat] = comp_tally.get(comp_cat, 0) + 1

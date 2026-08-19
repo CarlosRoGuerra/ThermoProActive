@@ -180,7 +180,7 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
     <table style={{ width: "190mm", borderCollapse: "collapse", fontSize: "9pt", marginTop: "5mm" }}>
       <thead>
         <tr>
-          <th colSpan={7} style={{ background: "#16a34a", color: "#fff", fontSize: "12pt", fontWeight: 700, textAlign: "center", padding: "1mm" }}>Retorno de Informação</th>
+          <th colSpan={7} style={{ background: "#16a34a", color: "#fff", fontSize: "12pt", fontWeight: 700, textAlign: "center", height: "6mm", padding: 0, lineHeight: 1 }}>Retorno de Informação</th>
         </tr>
         <tr>
           <th style={{ width: "40mm" }} />
@@ -198,15 +198,18 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
       <tbody>
         {(aval?.linhas ?? []).map((l) => {
           const ret = num(l.emerg_v) - num(l.pred_v);
+          // Célula vazia deve sair EM BRANCO (não "—"), como no modelo.
+          const cq = (v: string | null) => (v && v.trim() ? qtd(v) : "");
+          const cv = (v: string | null) => (v && v.trim() ? moeda(v) : "");
           return (
             <tr key={l.rotulo} style={{ borderBottom: "0.2mm solid #e2e8f0" }}>
               <td style={{ fontWeight: 700, padding: "0.5mm 1mm" }}>{l.rotulo}:</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{qtd(l.pred_q)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{moeda(l.pred_v)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{qtd(l.emerg_q)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{moeda(l.emerg_v)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cq(l.pred_q)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cv(l.pred_v)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cq(l.emerg_q)}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cv(l.emerg_v)}</td>
               <td style={{ padding: "0.5mm 1mm" }} />
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{ret ? moeda(ret) : "—"}</td>
+              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{ret ? moeda(ret) : ""}</td>
             </tr>
           );
         })}
@@ -420,16 +423,17 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             display: flex;
             position: fixed;
             z-index: 20;
-            top: 3mm;
+            top: 6mm;
             left: 15mm;
             right: 5mm;
             box-sizing: border-box;
             height: 12mm;
             align-items: flex-start;
             justify-content: space-between;
-            padding: 0;
+            padding: 0 0 1mm 0;
             margin: 0;
             background: #fff;
+            border-bottom: 0.3mm solid #1d4ed8;
             overflow: visible;
           }
           /* Logo Thermoproactive no cabeçalho */
@@ -452,9 +456,9 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             text-align: right;
             line-height: 1.05 !important;
           }
-          /* Conteúdo interno desce abaixo do timbrado. */
+          /* Conteúdo interno desce abaixo do timbrado (6mm + 12mm + respiro). */
           .pagina:not(.pagina-capa) {
-            padding-top: 13mm !important;
+            padding-top: 20mm !important;
           }
           .rodape-impressao {
             display: flex;
@@ -507,7 +511,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-modelo-v26</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-cotas-v27</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -732,7 +736,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ========================= SEÇÃO C ========================= */}
         <section className="pagina bg-white p-6">
-          <p className="mb-3 text-right text-sm font-semibold text-rose-700">Seção C — Relação de Equipamentos Contemplados</p>
           <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
             <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
             <p className="text-xs text-slate-600">Total de equipamentos: {c.total}</p>
@@ -796,7 +799,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                     <p key={k}><span style={{ fontWeight: 700 }}>{k}:</span> {v || "—"}</p>
                   ))}
                 </div>
-                <div style={{ width: "50.5mm", flexShrink: 0, alignSelf: "flex-start", border: "0.3mm solid #94a3b8", textAlign: "center", padding: "2mm" }}>
+                <div style={{ width: "50.5mm", flexShrink: 0, alignSelf: "stretch", borderLeft: "0.3mm solid #94a3b8", textAlign: "center", padding: "0 2mm" }}>
                   <p style={{ fontSize: "16pt", fontWeight: 700 }}>Grau de Risco</p>
                   <p style={{ fontSize: "42pt", fontWeight: 800, lineHeight: 1, color: cor.bg }}>{o.grau_risco || "—"}</p>
                   <p style={{ fontSize: "12pt" }}>{o.grau_risco_descricao}</p>
