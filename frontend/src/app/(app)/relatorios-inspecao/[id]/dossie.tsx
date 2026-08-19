@@ -179,7 +179,7 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
     <>
       <style>{`
-        .tbl-ret { width: 190mm; border-collapse: collapse; font-size: 9pt; margin-top: 5mm; table-layout: fixed; }
+        .tbl-ret { width: 190mm; border-collapse: collapse; font-size: 9pt; margin-top: 3mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
         .tbl-ret th, .tbl-ret td { border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; }
         .tbl-ret .barra { height: 6mm; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; }
       `}</style>
@@ -229,12 +229,12 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
   const p = cab.prestador;
   if (!p) return null;
   return (
-    <div style={{ width: "190mm", minHeight: "18mm", display: "grid", gridTemplateColumns: "95mm 95mm", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", paddingBottom: "1.5mm", fontFamily: FONTE_OSP }}>
-      <div style={{ display: "flex", alignItems: "flex-start" }}>
+    <div style={{ width: "190mm", height: "18mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
+      <div style={{ width: "58mm", height: "15mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "visible" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "56mm", height: "11mm", objectFit: "contain", objectPosition: "left top" }} />}
+        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "58mm", height: "15mm", maxWidth: "58mm", maxHeight: "15mm", objectFit: "contain", objectPosition: "left center", margin: 0, padding: 0 }} />}
       </div>
-      <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.2, color: "#64748b" }}>
+      <div style={{ width: "80mm", textAlign: "right", fontSize: "7.5pt", lineHeight: 1.1, color: "#64748b" }}>
         <p style={{ fontSize: "9pt", fontWeight: 700, color: "#334155" }}>{p.nome}</p>
         {p.cnpj && <p>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</p>}
         {p.endereco_linha1 && <p>{p.endereco_linha1}</p>}
@@ -247,15 +247,20 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
 }
 
 /* Página interna como folha A4 física (210×297mm, margens 10/5/10/15mm),
-   com o timbrado EM FLUXO no topo. Substitui o cabeçalho position:fixed. */
-function PaginaInterna({ cab, children }: { cab: Cabecalho; children: ReactNode }) {
+   com o timbrado EM FLUXO no topo. Substitui o cabeçalho position:fixed.
+   evitarQuebra: mantém a página inteira junta (usar na OSP, que é 1 folha). */
+function PaginaInterna({ cab, children, evitarQuebra = false }: { cab: Cabecalho; children: ReactNode; evitarQuebra?: boolean }) {
   return (
     <section
       className="pagina"
-      style={{ width: "210mm", minHeight: "297mm", padding: "10mm 5mm 10mm 15mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937" }}
+      style={{
+        width: "210mm", minHeight: "297mm", padding: "10mm 5mm 10mm 15mm", boxSizing: "border-box",
+        background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937",
+        breakInside: evitarQuebra ? "avoid" : undefined, pageBreakInside: evitarQuebra ? "avoid" : undefined,
+      }}
     >
       <Timbrado cab={cab} />
-      <div style={{ width: "190mm", marginTop: "5mm", fontSize: "9pt" }}>{children}</div>
+      <div style={{ width: "190mm", marginTop: "4mm", fontSize: "9pt" }}>{children}</div>
     </section>
   );
 }
@@ -425,7 +430,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: a4-fisico-v28</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-1folha-v29</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -698,12 +703,12 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
           return (
-            <PaginaInterna key={i} cab={cab}>
-              <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "1mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
+            <PaginaInterna key={i} cab={cab} evitarQuebra>
+              <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
 
               {/* Dados (esq.) + Grau de Risco (dir.) */}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "8.75mm" }}>
-                <div style={{ width: "130.75mm", lineHeight: 1.3 }}>
+                <div style={{ width: "130.75mm", lineHeight: 1.15 }}>
                   {[
                     ["Empresa", cab.empresa], ["Data", ddmmaaaa(cab.data_termino)], ["Analista", o.analista],
                     ["Área", o.area], ["Setor", o.setor], ["TAG", o.tag], ["Equipamento", o.equipamento],
@@ -721,12 +726,12 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               </div>
 
               {/* Imagens em 2 colunas: esq = Foto do Eqpto + amplitudes/planejamento; dir = Tendência + Espectro */}
-              <div style={{ display: "flex", gap: "10mm", marginTop: "5mm" }}>
+              <div style={{ display: "flex", gap: "10mm", marginTop: "3mm" }}>
                 <div>
                   <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
-                  <div style={{ marginTop: "5mm", lineHeight: 1.3 }}>
+                  <div style={{ marginTop: "3mm", lineHeight: 1.15 }}>
                     <AmplitudesOSP o={o} tipo={tipoTec} />
-                    <table style={{ marginTop: "4mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+                    <table style={{ marginTop: "3mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
                       <thead>
                         <tr>
                           <th />
