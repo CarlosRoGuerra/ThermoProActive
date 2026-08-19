@@ -269,6 +269,24 @@ function LogoContracapa({ marca }: { marca: string | null }) {
   );
 }
 
+/* DIAGNÓSTICO TEMPORÁRIO — mostra o arquivo e a resolução natural da logomarca
+   carregada (naturalWidth×naturalHeight). Remover após confirmar o asset. */
+function DiagLogo({ url }: { url: string | null }) {
+  const [info, setInfo] = useState("carregando…");
+  useEffect(() => {
+    if (!url) { setInfo("SEM logomarca"); return; }
+    const im = new window.Image();
+    im.onload = () => setInfo(`${im.naturalWidth}×${im.naturalHeight}px`);
+    im.onerror = () => setInfo("ERRO ao carregar");
+    im.src = url;
+  }, [url]);
+  return (
+    <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] text-amber-800" title={url ?? ""}>
+      diag logo: {info} · {url ? url.split("/").pop() : "—"}
+    </span>
+  );
+}
+
 /* Cabeçalho institucional (papel timbrado) EM FLUXO na página — sem position:fixed.
    190mm de largura, logo horizontal à esquerda, dados à direita, linha azul embaixo. */
 function Timbrado({ cab }: { cab: Cabecalho }) {
@@ -474,7 +492,8 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: logo-horizontal-v33</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: diag-logo-v34</span>
+          <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
