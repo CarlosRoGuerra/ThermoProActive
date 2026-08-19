@@ -9,34 +9,9 @@ import { RelatorioCorpo, type Dossie } from "@/app/(app)/relatorios-inspecao/[id
 /* Regras que o paged.js PRECISA processar (transforma @page/running/quebras em
    elementos reais — o navegador sozinho ignora essas regras). Vão pelo polisher. */
 const PAGED_RULES = `
-  @page {
-    size: A4;
-    /* Margens pedidas: topo 10 / direita 5 / rodapé 10 / esquerda 15 (mm).
-       Obs.: topo 10mm é apertado para o timbrado completo (ver aviso ao cliente). */
-    margin: 10mm 5mm 10mm 15mm;
-    @top-left      { content: element(runCabLogo); }
-    @top-right     { content: element(runCabDados); }
-    @bottom-center { content: element(runRodapeSite); }
-    @bottom-right  { content: "pág. " counter(page) " de " counter(pages); font-size: 9px; color: #64748b; }
-  }
-  /* A 1ª capa usa a página NORMAL (é a 1ª do documento): assim não há troca de
-     página nomeada logo no início, o que gerava uma página em branco antes dela.
-     O @page:first tira o cabeçalho e o nº de página só dessa 1ª folha. */
-  @page :first {
-    @top-left     { content: none; }
-    @top-right    { content: none; }
-    @bottom-right { content: none; }
-  }
-  /* Demais capas e contracapas: página nomeada SEM cabeçalho e SEM nº de página. */
-  .pagina-capa:not(:first-child) { page: capa; }
-  @page capa {
-    @top-left     { content: none; }
-    @top-right    { content: none; }
-    @bottom-right { content: none; }
-  }
-  .run-cab-logo    { position: running(runCabLogo); }
-  .run-cab-dados   { position: running(runCabDados); }
-  .run-rodape-site { position: running(runRodapeSite); }
+  /* Margem 0: cada seção é uma folha A4 física (210×297mm) com margens internas
+     próprias e o timbrado EM FLUXO. Sem cabeçalho/rodapé corrente do @page. */
+  @page { size: A4; margin: 0; }
   .pagina { break-before: page; }
   .evitar-quebra { break-inside: avoid; }
 `;
@@ -120,8 +95,6 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
 
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
-  const prestador = d?.cabecalho.prestador ?? null;
-
   return (
     <div>
       <style>{CHROME_CSS}</style>
@@ -134,7 +107,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao relatório
         </Link>
         <span className="hidden text-xs font-semibold text-slate-600 sm:block">
-          PDF com numeração de página (pág. X de Y)
+          PDF A4 (folha física em mm)
         </span>
         <div className="flex items-center gap-3">
           {status && <span className="text-xs text-slate-500">{status}</span>}
@@ -148,44 +121,10 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
         </div>
       </div>
 
-      {/* Fonte consumida pelo paged.js: cabeçalho/rodapé correntes + corpo.
+      {/* Fonte consumida pelo paged.js (o timbrado agora é EM FLUXO no corpo).
           Fica oculta enquanto pagina; se o paged.js falhar, é revelada (fallback). */}
       <div ref={fonteRef} className={mostrarFonte ? "" : "paged-source"}>
-        {d && (
-          <>
-            {/* Elementos correntes (cabeçalho/rodapé) ANTES do corpo — o paged.js
-                só aplica o running header às páginas a partir de onde ele aparece. */}
-            {prestador?.logomarca && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className="run-cab-logo"
-                src={prestador.logomarca}
-                alt=""
-                style={{ width: 260, maxWidth: "none", objectFit: "contain" }}
-              />
-            )}
-            {prestador && (
-              <div className="run-cab-dados" style={{ textAlign: "right", fontSize: 9, lineHeight: 1.25, color: "#64748b" }}>
-                <div style={{ fontWeight: 600, color: "#64748b" }}>{prestador.nome}</div>
-                {prestador.cnpj && (
-                  <div style={{ color: "#94a3b8" }}>CNPJ {prestador.cnpj}{prestador.inscricao_estadual ? ` | IE ${prestador.inscricao_estadual}` : ""}</div>
-                )}
-                <div style={{ marginTop: 2, color: "#94a3b8" }}>
-                  {prestador.endereco_linha1 && <div>{prestador.endereco_linha1}</div>}
-                  {prestador.endereco_linha2 && <div>{prestador.endereco_linha2}</div>}
-                  {prestador.telefone && <div>{prestador.telefone}</div>}
-                  {prestador.email && <div>{prestador.email}</div>}
-                </div>
-              </div>
-            )}
-            <div className="run-rodape-site" style={{ fontSize: 9, color: "#64748b", textAlign: "center", lineHeight: 1.3 }}>
-              {[prestador?.cidade_uf, prestador?.telefone, prestador?.email]
-                .filter(Boolean)
-                .map((x, i) => <div key={i}>{x}</div>)}
-            </div>
-            <RelatorioCorpo d={d} />
-          </>
-        )}
+        {d && <RelatorioCorpo d={d} />}
       </div>
 
       {/* paged.js injeta as páginas aqui. */}

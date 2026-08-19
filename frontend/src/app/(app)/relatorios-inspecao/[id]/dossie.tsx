@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer, Save } from "lucide-react";
 import { api } from "@/lib/api";
@@ -177,44 +177,86 @@ function SlotImagem({ img, label }: { img?: OspD["imagens"][number]; label: stri
 /* Tabela "Retorno de Informação" (OSP), conforme modelo do cliente. */
 function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
-    <table style={{ width: "190mm", borderCollapse: "collapse", fontSize: "9pt", marginTop: "5mm" }}>
-      <thead>
-        <tr>
-          <th colSpan={7} style={{ background: "#16a34a", color: "#fff", fontSize: "12pt", fontWeight: 700, textAlign: "center", height: "6mm", padding: 0, lineHeight: 1 }}>Retorno de Informação</th>
-        </tr>
-        <tr>
-          <th style={{ width: "40mm" }} />
-          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Manutenção Preditiva</th>
-          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Manutenção Emergencial</th>
-          <th colSpan={2} style={{ fontWeight: 700, textAlign: "center", padding: "0.5mm" }}>Retorno de Investimento</th>
-        </tr>
-        <tr>
-          <th />
-          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
-          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
-          <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
-        </tr>
-      </thead>
-      <tbody>
-        {(aval?.linhas ?? []).map((l) => {
-          const ret = num(l.emerg_v) - num(l.pred_v);
-          // Célula vazia deve sair EM BRANCO (não "—"), como no modelo.
-          const cq = (v: string | null) => (v && v.trim() ? qtd(v) : "");
-          const cv = (v: string | null) => (v && v.trim() ? moeda(v) : "");
-          return (
-            <tr key={l.rotulo} style={{ borderBottom: "0.2mm solid #e2e8f0" }}>
-              <td style={{ fontWeight: 700, padding: "0.5mm 1mm" }}>{l.rotulo}:</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cq(l.pred_q)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cv(l.pred_v)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cq(l.emerg_q)}</td>
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{cv(l.emerg_v)}</td>
-              <td style={{ padding: "0.5mm 1mm" }} />
-              <td style={{ textAlign: "right", padding: "0.5mm 1mm" }}>{ret ? moeda(ret) : ""}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <style>{`
+        .tbl-ret { width: 190mm; border-collapse: collapse; font-size: 9pt; margin-top: 5mm; table-layout: fixed; }
+        .tbl-ret th, .tbl-ret td { border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; }
+        .tbl-ret .barra { height: 6mm; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; }
+      `}</style>
+      <table className="tbl-ret">
+        <thead>
+          <tr><th className="barra" colSpan={7}>Retorno de Informação</th></tr>
+          <tr>
+            <th style={{ width: "40mm" }} />
+            <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Preditiva</th>
+            <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Emergencial</th>
+            <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Retorno de Investimento</th>
+          </tr>
+          <tr>
+            <th />
+            <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+            <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+            <th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Qtde.</th><th style={{ width: "25mm", fontWeight: 700, textAlign: "center" }}>Valor [$]</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(aval?.linhas ?? []).map((l) => {
+            const ret = num(l.emerg_v) - num(l.pred_v);
+            // Célula vazia deve sair EM BRANCO (não "—"), como no modelo.
+            const cq = (v: string | null) => (v && v.trim() ? qtd(v) : "");
+            const cv = (v: string | null) => (v && v.trim() ? moeda(v) : "");
+            return (
+              <tr key={l.rotulo}>
+                <td style={{ fontWeight: 700 }}>{l.rotulo}:</td>
+                <td style={{ textAlign: "right" }}>{cq(l.pred_q)}</td>
+                <td style={{ textAlign: "right" }}>{cv(l.pred_v)}</td>
+                <td style={{ textAlign: "right" }}>{cq(l.emerg_q)}</td>
+                <td style={{ textAlign: "right" }}>{cv(l.emerg_v)}</td>
+                <td />
+                <td style={{ textAlign: "right" }}>{ret ? moeda(ret) : ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+/* Cabeçalho institucional (papel timbrado) EM FLUXO na página — sem position:fixed.
+   190mm de largura, logo à esquerda (56×11mm), dados à direita, linha azul embaixo. */
+function Timbrado({ cab }: { cab: Cabecalho }) {
+  const p = cab.prestador;
+  if (!p) return null;
+  return (
+    <div style={{ width: "190mm", minHeight: "18mm", display: "grid", gridTemplateColumns: "95mm 95mm", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", paddingBottom: "1.5mm", fontFamily: FONTE_OSP }}>
+      <div style={{ display: "flex", alignItems: "flex-start" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {p.logomarca && <img src={p.logomarca} alt="" style={{ width: "56mm", height: "11mm", objectFit: "contain", objectPosition: "left top" }} />}
+      </div>
+      <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.2, color: "#64748b" }}>
+        <p style={{ fontSize: "9pt", fontWeight: 700, color: "#334155" }}>{p.nome}</p>
+        {p.cnpj && <p>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</p>}
+        {p.endereco_linha1 && <p>{p.endereco_linha1}</p>}
+        {p.endereco_linha2 && <p>{p.endereco_linha2}</p>}
+        {p.telefone && <p>{p.telefone}</p>}
+        {p.email && <p>{p.email}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* Página interna como folha A4 física (210×297mm, margens 10/5/10/15mm),
+   com o timbrado EM FLUXO no topo. Substitui o cabeçalho position:fixed. */
+function PaginaInterna({ cab, children }: { cab: Cabecalho; children: ReactNode }) {
+  return (
+    <section
+      className="pagina"
+      style={{ width: "210mm", minHeight: "297mm", padding: "10mm 5mm 10mm 15mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937" }}
+    >
+      <Timbrado cab={cab} />
+      <div style={{ width: "190mm", marginTop: "5mm", fontSize: "9pt" }}>{children}</div>
+    </section>
   );
 }
 
@@ -355,163 +397,35 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   return (
     <div className="space-y-4">
       <style>{`
-        .cab-impressao, .rodape-impressao { display: none; }
-
         @media print {
-          @page {
-            size: A4;
-            margin: 10mm 5mm 10mm 15mm;
-          }
-          @page capa {
-            size: A4;
-            margin: 0;
-          }
+          /* Margem 0: cada seção é uma folha A4 FÍSICA (210×297mm) com suas
+             próprias margens internas (10/5/10/15mm) e o timbrado em fluxo. */
+          @page { size: A4; margin: 0; }
 
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #fff !important;
-          }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
 
           body * { visibility: hidden; }
-          .print-area, .print-area *,
-          .cab-impressao, .cab-impressao *,
-          .rodape-impressao, .rodape-impressao * { visibility: visible; }
+          .print-area, .print-area * { visibility: visible; }
 
-          .print-area {
-            position: absolute;
-            inset: 0 auto auto 0;
-            width: 100%;
-          }
-
-          /* Remove o space-y do Tailwind na impressão, evitando deslocamentos. */
+          .print-area { position: absolute; inset: 0 auto auto 0; width: 100%; }
           .print-area > * { margin-top: 0 !important; }
           .no-print { display: none !important; }
 
-          /* Usar break-after evita a página branca que pode surgir com break-before. */
-          .print-area > section {
-            break-after: page;
-            page-break-after: always;
-          }
-          .print-area > section:last-child {
-            break-after: auto;
-            page-break-after: auto;
-          }
-          .evitar-quebra {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
+          .print-area > section { break-after: page; page-break-after: always; }
+          .print-area > section:last-child { break-after: auto; page-break-after: auto; }
+          .evitar-quebra { break-inside: avoid; page-break-inside: avoid; }
 
-          /* Capa e divisórias ocupam a folha inteira e ficam acima do timbrado fixo. */
-          .pagina-capa {
-            page: capa;
-            position: relative;
-            z-index: 100;
-            box-sizing: border-box;
-            width: 210mm;
-            min-height: 297mm;
-            background: #fff !important;
-            isolation: isolate;
-          }
-
-          /* Papel timbrado somente das páginas internas.
-             Nas capas ele continua tecnicamente fixo, porém fica atrás do fundo branco
-             da página nomeada 'capa', evitando as sobreposições vistas no PDF. */
-          /* Cabeçalho posicionado nas mesmas medidas físicas das margens
-             (15mm esq. / 5mm dir.), 3mm do topo — não fica colado na borda. */
-          .cab-impressao {
-            display: flex;
-            position: fixed;
-            z-index: 20;
-            top: 6mm;
-            left: 15mm;
-            right: 5mm;
-            box-sizing: border-box;
-            height: 12mm;
-            align-items: flex-start;
-            justify-content: space-between;
-            padding: 0 0 1mm 0;
-            margin: 0;
-            background: #fff;
-            border-bottom: 0.3mm solid #1d4ed8;
-            overflow: visible;
-          }
-          /* Logo Thermoproactive no cabeçalho */
-          .cab-impressao > img {
-            width: 56mm !important;
-            max-width: 56mm !important;
-            height: 11mm !important;
-            max-height: 11mm !important;
-            object-fit: contain !important;
-            object-position: left top !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          /* Dados da empresa (lado direito) */
-          .cab-impressao > div {
-            width: 70mm;
-            max-width: 70mm;
-            padding: 0 !important;
-            margin: 0 !important;
-            text-align: right;
-            line-height: 1.05 !important;
-          }
-          /* Conteúdo interno desce abaixo do timbrado (6mm + 12mm + respiro). */
-          .pagina:not(.pagina-capa) {
-            padding-top: 20mm !important;
-          }
-          .rodape-impressao {
-            display: flex;
-            position: fixed;
-            z-index: 1;
-            bottom: -8mm;
-            left: 0;
-            right: 0;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            border-top: 1px solid #cbd5e1;
-            padding-top: 2mm;
-            background: #fff;
-          }
+          /* Capa/contracapas ocupam a folha inteira. */
+          .pagina-capa { box-sizing: border-box; width: 210mm; min-height: 297mm; background: #fff !important; }
         }
       `}</style>
-
-      {/* Cabeçalho de impressão (papel timbrado interno) */}
-      {cab.prestador && (
-        <div className="cab-impressao leading-snug bg-white">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {cab.prestador.logomarca && (
-            <img src={cab.prestador.logomarca} alt="" className="w-[300px] shrink-0 object-contain" />
-          )}
-          <div className="text-right">
-            <p className="text-[8px] font-semibold leading-none text-slate-500">{cab.prestador.nome}</p>
-            {cab.prestador.cnpj && (
-              <p className="mt-[1px] text-[6.5px] leading-none text-slate-400">CNPJ {cab.prestador.cnpj}{cab.prestador.inscricao_estadual ? ` | IE ${cab.prestador.inscricao_estadual}` : ""}</p>
-            )}
-            <div className="mt-[2px] text-[6.5px] leading-[1.1] text-slate-400">
-              {cab.prestador.endereco_linha1 && <p>{cab.prestador.endereco_linha1}</p>}
-              {cab.prestador.endereco_linha2 && <p>{cab.prestador.endereco_linha2}</p>}
-              {/* Telefone e e-mail combinados para não extrapolar a altura */}
-              {(cab.prestador.telefone || cab.prestador.email) && (
-                <p>{[cab.prestador.telefone, cab.prestador.email].filter(Boolean).join(" | ")}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Rodapé de impressão Interno */}
-      <div className="rodape-impressao text-[9px] text-slate-500 bg-white">
-        <span>{cab.prestador?.site || ""}</span>
-      </div>
 
       <div className="no-print flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-cotas-v27</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: a4-fisico-v28</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
@@ -587,7 +501,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </section>
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
-        <section className="pagina bg-white p-6">
+        <PaginaInterna cab={cab}>
           <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
             <p className="text-sm font-semibold text-rose-700">Seção A — Carta ao Cliente</p>
             <BlocoCliente cab={cab} />
@@ -694,13 +608,13 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               ))}
             </div>
           </div>
-        </section>
+        </PaginaInterna>
 
         {/* Contracapa da Seção B */}
         <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
-        <section className="pagina bg-white p-6">
+        <PaginaInterna cab={cab}>
           <p className="mb-4 text-right text-sm font-semibold text-rose-700">Seção B — KPI’s Dashboard</p>
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
             <div>
@@ -729,13 +643,13 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               <Barras dados={b.anomalias} hue="#7c5cbf" />
             </div>
           </div>
-        </section>
+        </PaginaInterna>
 
         {/* Contracapa da Seção C */}
         <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
-        <section className="pagina bg-white p-6">
+        <PaginaInterna cab={cab}>
           <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
             <p className="text-base font-semibold text-slate-900">{cab.empresa}</p>
             <p className="text-xs text-slate-600">Total de equipamentos: {c.total}</p>
@@ -774,7 +688,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               ))}
             </div>
           )}
-        </section>
+        </PaginaInterna>
 
         {/* Contracapa da Seção D */}
         <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
@@ -784,11 +698,11 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
           return (
-            <section key={i} className="pagina evitar-quebra bg-white" style={{ fontFamily: FONTE_OSP, fontSize: "9pt", color: "#1f2937" }}>
+            <PaginaInterna key={i} cab={cab}>
               <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "1mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
 
               {/* Dados (esq.) + Grau de Risco (dir.) */}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "9mm" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "8.75mm" }}>
                 <div style={{ width: "130.75mm", lineHeight: 1.3 }}>
                   {[
                     ["Empresa", cab.empresa], ["Data", ddmmaaaa(cab.data_termino)], ["Analista", o.analista],
@@ -841,7 +755,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               </div>
 
               <TabelaRetorno aval={o.avaliacao} />
-            </section>
+            </PaginaInterna>
           );
         })}
 
