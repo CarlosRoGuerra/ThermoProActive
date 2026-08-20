@@ -7,6 +7,7 @@ A classificação de criticidade (item 2.4) é calculada no `save()` via apps.co
 Modelagem extensível: cada novo tipo de análise do item 2.3.2 (termografia, fluidos,
 ensaios elétricos…) vira uma nova tabela vinculada a `Inspecao`, sem alterar esta.
 """
+import re
 from decimal import Decimal
 
 from django.conf import settings
@@ -391,8 +392,8 @@ class Relatorio(BaseModel):
     @staticmethod
     def proximo_numero(tecnologia, data_termino) -> str:
         """
-        Número no padrão do Fabrício: RT-{SIGLA}-{AAAA.MM.DD}.{SEQ}
-        Ex.: RT-AVSMD-2026.04.23.02323
+        Número no padrão do gabarito do Fabrício: RT-{SIGLA}-{AAAA-MM-DD}-{SEQ}
+        Ex.: RT-ASSE-2026-08-14-00004 (separadores em hífen, sem pontos).
 
         RT = "Relatório Técnico"; SIGLA = sigla da tecnologia; a data é o último dia
         da inspeção (auditoria); SEQ é o sequencial GLOBAL da tabela de relatórios
@@ -401,11 +402,11 @@ class Relatorio(BaseModel):
         sigla = (getattr(tecnologia, "sigla", "") or "").strip().upper() or "XX"
         maior = 0
         for num in Relatorio.objects.values_list("numero", flat=True):
-            try:
-                maior = max(maior, int(str(num).rsplit(".", 1)[1]))
-            except (IndexError, ValueError):
-                continue
-        return f"RT-{sigla}-{data_termino:%Y.%m.%d}.{maior + 1:05d}"
+            # Sequencial = dígitos finais do número (robusto a "." ou "-" antigos/novos).
+            m = re.search(r"(\d+)$", str(num))
+            if m:
+                maior = max(maior, int(m.group(1)))
+        return f"RT-{sigla}-{data_termino:%Y-%m-%d}-{maior + 1:05d}"
 
 
 class Carregamento(BaseModel):
