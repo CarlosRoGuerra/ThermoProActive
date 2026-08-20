@@ -129,24 +129,25 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
 /* Fonte do modelo do cliente (OSP). */
 const FONTE_OSP = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
 
-/* Amplitudes/medições da OSP por tecnologia (modelo do cliente). */
+/* Amplitudes/medições da OSP por tecnologia (modelo do cliente). Módulo de 5mm. */
 function AmplitudesOSP({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
+  const linha = { minHeight: "5mm", lineHeight: "5mm" } as const;
   if (tipo === "termografia") {
     return (
       <>
-        <p style={{ fontWeight: 700 }}>Medições</p>
-        <p><span style={{ fontWeight: 700 }}>Temp. medida [°C]:</span> {o.temperatura_medida ?? "—"}</p>
-        <p><span style={{ fontWeight: 700 }}>Temp. referência [°C]:</span> {o.temperatura_referencia ?? "—"}</p>
-        <p><span style={{ fontWeight: 700 }}>ΔT [°C]:</span> {o.delta_t ?? "—"}</p>
-        <p><span style={{ fontWeight: 700 }}>Carga [%]:</span> {o.carga_percentual ?? "—"}</p>
+        <div style={{ ...linha, fontWeight: 700 }}>Medições</div>
+        <div style={linha}><span style={{ fontWeight: 700 }}>Temp. medida [°C]:</span> {o.temperatura_medida ?? "—"}</div>
+        <div style={linha}><span style={{ fontWeight: 700 }}>Temp. referência [°C]:</span> {o.temperatura_referencia ?? "—"}</div>
+        <div style={linha}><span style={{ fontWeight: 700 }}>ΔT [°C]:</span> {o.delta_t ?? "—"}</div>
+        <div style={linha}><span style={{ fontWeight: 700 }}>Carga [%]:</span> {o.carga_percentual ?? "—"}</div>
       </>
     );
   }
   return (
     <>
-      <p style={{ fontWeight: 700 }}>Amplitudes [valor global]</p>
-      <p><span style={{ fontWeight: 700 }}>Aceleração [g&rsquo;s]:</span> {o.amplitude_aceleracao ?? "—"}</p>
-      <p><span style={{ fontWeight: 700 }}>Velocidade [mm/s]:</span> {o.amplitude_velocidade ?? "—"}</p>
+      <div style={{ ...linha, fontWeight: 700 }}>Amplitudes [valor global]</div>
+      <div style={linha}><span style={{ fontWeight: 700 }}>Aceleração [g&rsquo;s]:</span> {o.amplitude_aceleracao ?? "—"}</div>
+      <div style={linha}><span style={{ fontWeight: 700 }}>Velocidade [mm/s]:</span> {o.amplitude_velocidade ?? "—"}</div>
     </>
   );
 }
@@ -155,12 +156,12 @@ function AmplitudesOSP({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
    sem borda; caixa leve com rótulo quando não há imagem daquele tipo. */
 function SlotImagem({ img, label }: { img?: OspD["imagens"][number]; label: string }) {
   return (
-    <div style={{ width: "80mm", height: "60mm", overflow: "hidden" }}>
+    <div style={{ width: "80mm", height: "60mm", boxSizing: "border-box", flexShrink: 0, overflow: "hidden" }}>
       {img ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={img.arquivo} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        <img src={img.arquivo} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
       ) : (
-        <div style={{ width: "100%", height: "100%", border: "0.25mm solid #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "12pt" }}>
+        <div style={{ width: "100%", height: "100%", boxSizing: "border-box", border: "0.2mm solid #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: "12pt" }}>
           {label}
         </div>
       )}
@@ -173,13 +174,13 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
     <>
       <style>{`
-        .tbl-ret { width: 190mm; border-collapse: collapse; font-size: 9pt; margin-top: 3mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
+        .tbl-ret { width: 188mm; border-collapse: collapse; font-size: 9pt; margin-top: 3mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
         .tbl-ret th, .tbl-ret td { border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; }
         .tbl-ret .barra { height: 6mm; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; }
       `}</style>
       <table className="tbl-ret">
         <colgroup>
-          <col style={{ width: "40mm" }} />
+          <col style={{ width: "38mm" }} />
           <col style={{ width: "25mm" }} />
           <col style={{ width: "25mm" }} />
           <col style={{ width: "25mm" }} />
@@ -190,7 +191,7 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
         <thead>
           <tr><th className="barra" colSpan={7}>Retorno de Informação</th></tr>
           <tr>
-            <th style={{ width: "40mm" }} />
+            <th style={{ width: "38mm" }} />
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Preditiva</th>
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Emergencial</th>
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Retorno de Investimento</th>
@@ -236,12 +237,12 @@ const LOGO_HORIZONTAL: string | null = null;
 function LogoTimbrado({ marca }: { marca: string | null }) {
   if (!marca) return null;
   return (
-    <div style={{ width: "62mm", height: "20mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "hidden" }}>
+    <div style={{ width: "62mm", height: "16mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "hidden" }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={marca}
         alt="Thermoproactive"
-        style={{ width: "55mm", height: "auto", maxHeight: "20mm", objectFit: "contain", objectPosition: "left center", display: "block", margin: 0, padding: 0 }}
+        style={{ width: "55mm", height: "auto", maxHeight: "15mm", objectFit: "contain", objectPosition: "left center", display: "block", margin: 0, padding: 0 }}
       />
     </div>
   );
@@ -350,15 +351,23 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
   if (!p) return null;
   const logoHorizontal = LOGO_HORIZONTAL ?? p.logomarca;
   return (
-    <div style={{ width: "190mm", minHeight: "22mm", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "0.3mm solid #1d4ed8", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
-      <LogoTimbrado marca={logoHorizontal} />
-      <div style={{ width: "80mm", textAlign: "right", fontSize: "7.5pt", lineHeight: 1.1, color: "#64748b" }}>
-        <p style={{ fontSize: "9pt", fontWeight: 700, color: "#334155" }}>{p.nome}</p>
-        {p.cnpj && <p>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</p>}
-        {p.endereco_linha1 && <p>{p.endereco_linha1}</p>}
-        {p.endereco_linha2 && <p>{p.endereco_linha2}</p>}
-        {p.telefone && <p>{p.telefone}</p>}
-        {p.email && <p>{p.email}</p>}
+    <div style={{ width: "188mm", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
+      {/* ACIMA da linha: logo (esq.) + razão social / CNPJ / IE (dir.) — tudo em cinza */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <LogoTimbrado marca={logoHorizontal} />
+        <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.25, color: "#94a3b8" }}>
+          <div style={{ fontSize: "9pt", fontWeight: 700, color: "#64748b" }}>{p.nome}</div>
+          {p.cnpj && <div>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</div>}
+        </div>
+      </div>
+      {/* Linha azul FINA, 3mm abaixo da logomarca */}
+      <div style={{ borderTop: "0.15mm solid #1d4ed8", marginTop: "3mm" }} />
+      {/* ABAIXO da linha: endereço / contato (dir.) — cinza claro */}
+      <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.25, color: "#94a3b8", marginTop: "1mm" }}>
+        {p.endereco_linha1 && <div>{p.endereco_linha1}</div>}
+        {p.endereco_linha2 && <div>{p.endereco_linha2}</div>}
+        {p.telefone && <div>{p.telefone}</div>}
+        {p.email && <div>{p.email}</div>}
       </div>
     </div>
   );
@@ -372,13 +381,13 @@ function PaginaInterna({ cab, children, evitarQuebra = false }: { cab: Cabecalho
     <section
       className="pagina"
       style={{
-        width: "210mm", minHeight: "297mm", padding: "10mm 5mm 10mm 15mm", boxSizing: "border-box",
+        width: "210mm", minHeight: "297mm", padding: "10mm 7mm 10mm 15mm", boxSizing: "border-box",
         background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937",
         breakInside: evitarQuebra ? "avoid" : undefined, pageBreakInside: evitarQuebra ? "avoid" : undefined,
       }}
     >
       <Timbrado cab={cab} />
-      <div style={{ width: "190mm", marginTop: "4mm", fontSize: "9pt" }}>{children}</div>
+      <div style={{ width: "188mm", marginTop: "3mm", fontSize: "9pt" }}>{children}</div>
     </section>
   );
 }
@@ -548,7 +557,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: sem-def-tecnica-v37</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-cotas-mm-v38</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -779,16 +788,18 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             <PaginaInterna key={i} cab={cab} evitarQuebra>
               <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
 
-              {/* Dados (esq.) + Grau de Risco (dir.) */}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "8.75mm" }}>
-                <div style={{ width: "130.75mm", lineHeight: 1.15 }}>
+              {/* Dados (esq.) + Grau de Risco (dir.) — cada campo em módulo físico de 5mm */}
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div style={{ width: "130.75mm" }}>
                   {[
                     ["Empresa", cab.empresa], ["Data", ddmmaaaa(cab.data_termino)], ["Analista", o.analista],
                     ["Área", o.area], ["Setor", o.setor], ["TAG", o.tag], ["Equipamento", o.equipamento],
                     ["Componente", o.componente], ["Diagnóstico", o.anomalia], ["Observação", o.observacao],
                     ["Recomendação", o.recomendacao],
                   ].map(([k, v]) => (
-                    <p key={k}><span style={{ fontWeight: 700 }}>{k}:</span> {v || "—"}</p>
+                    <div key={k} style={{ minHeight: "5mm", lineHeight: "5mm" }}>
+                      <span style={{ fontWeight: 700 }}>{k}:</span> {v || "—"}
+                    </div>
                   ))}
                 </div>
                 <div style={{ width: "50.5mm", flexShrink: 0, alignSelf: "stretch", borderLeft: "0.3mm solid #94a3b8", textAlign: "center", padding: "0 2mm" }}>
@@ -798,38 +809,40 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </div>
               </div>
 
-              {/* Imagens em 2 colunas: esq = Foto do Eqpto + amplitudes/planejamento; dir = Tendência + Espectro */}
-              <div style={{ display: "flex", gap: "10mm", marginTop: "3mm" }}>
-                <div>
+              {/* Imagens em GRID físico: 10(offset) + 80 + 10 + 80 + 8 = 188mm.
+                  Amplitudes (esq.) alinham com o topo do Espectro via gap de 10mm. */}
+              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "10mm 80mm 10mm 80mm 8mm", alignItems: "start", marginTop: "5mm" }}>
+                <div />
+                <div style={{ width: "80mm" }}>
                   <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
-                  <div style={{ marginTop: "3mm", lineHeight: 1.15 }}>
-                    <AmplitudesOSP o={o} tipo={tipoTec} />
-                    <table style={{ marginTop: "3mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr>
-                          <th />
-                          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
-                          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
+                  <div style={{ height: "10mm" }} />
+                  <AmplitudesOSP o={o} tipo={tipoTec} />
+                  <table style={{ marginTop: "3mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th />
+                        <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
+                        <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
+                        <tr key={e}>
+                          <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
+                          <td style={{ borderBottom: "0.2mm solid #64748b", width: "22mm" }} />
+                          <td style={{ borderBottom: "0.2mm solid #64748b" }} />
                         </tr>
-                      </thead>
-                      <tbody>
-                        {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
-                          <tr key={e}>
-                            <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
-                            <td style={{ borderBottom: "0.2mm solid #64748b", width: "22mm" }} />
-                            <td style={{ borderBottom: "0.2mm solid #64748b" }} />
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div>
+                <div />
+                <div style={{ width: "80mm" }}>
                   <SlotImagem img={imgs.find((im) => im.tipo === "Linha de tendência")} label="Tendência" />
-                  <div style={{ marginTop: "10mm" }}>
-                    <SlotImagem img={imgs.find((im) => im.tipo === "Espectro")} label="Espectro" />
-                  </div>
+                  <div style={{ height: "10mm" }} />
+                  <SlotImagem img={imgs.find((im) => im.tipo === "Espectro")} label="Espectro" />
                 </div>
+                <div />
               </div>
 
               <TabelaRetorno aval={o.avaliacao} />
