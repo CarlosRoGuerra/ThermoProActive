@@ -548,7 +548,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: capa-unica-v36</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: sem-def-tecnica-v37</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -586,7 +586,6 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
 export function RelatorioCorpo({ d }: { d: Dossie }) {
   const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
   const tipoTec = tecnologiaTipo(cab.tecnologia);
-  const temDef = !!(cab.definicao_tecnica?.trim() || cab.pontos_medicao_imagem);
   const ospsValidas = osps.filter(temConteudoOsp);
   
   return (
@@ -666,23 +665,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             </dl>
           ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
 
-          {temDef && (
-            <>
-              <h3 className="text-sm font-bold text-slate-800">7. Definição da Técnica</h3>
-              {cab.definicao_tecnica?.trim() && (
-                <p className="mb-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.definicao_tecnica}</p>
-              )}
-              {cab.pontos_medicao_imagem && (
-                <figure className="mb-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={cab.pontos_medicao_imagem} alt="Pontos de medição" className="mx-auto max-h-80 object-contain" />
-                  <figcaption className="mt-1 text-center text-xs text-slate-500">Disposição dos pontos de medição.</figcaption>
-                </figure>
-              )}
-            </>
-          )}
-
-          <h3 className="text-sm font-bold text-slate-800">{temDef ? "8" : "7"}. Considerações Importantes</h3>
+          <h3 className="text-sm font-bold text-slate-800">7. Considerações Importantes</h3>
           <p className="text-justify text-sm text-slate-600">
             Os critérios das análises são técnicos, associados à experiência do analista. Cada equipamento tem
             seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
