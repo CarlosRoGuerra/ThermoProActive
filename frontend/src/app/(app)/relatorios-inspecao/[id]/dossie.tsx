@@ -88,13 +88,6 @@ function imagensUnicas(imagens: OspD["imagens"]) {
   });
 }
 
-function tamanhoNumeroRelatorio(numero: string) {
-  if (numero.length >= 28) return 28;
-  if (numero.length >= 24) return 30;
-  if (numero.length >= 20) return 34;
-  return 38;
-}
-
 /* ------------------------------- Cores GR --------------------------------- */
 const CORES: Record<string, { bg: string; fg: string }> = {
   GR0: { bg: "#16a34a", fg: "#fff" }, GR1: { bg: "#dc2626", fg: "#fff" },
@@ -266,6 +259,69 @@ function LogoContracapa({ marca }: { marca: string | null }) {
         style={{ width: "110mm", height: "auto", maxHeight: "26mm", objectFit: "contain", objectPosition: "left center", display: "block" }}
       />
     </div>
+  );
+}
+
+/* Logo vertical da CAPA — folha física: faixa 53,7mm × 277mm à esquerda,
+   logo horizontal rotacionada -90° (proporção preservada). */
+function LogoVerticalCapa({ marca }: { marca: string | null }) {
+  if (!marca) return null;
+  return (
+    <div style={{ position: "absolute", left: "15mm", top: "10mm", width: "53.7mm", height: "277mm", overflow: "hidden" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={marca}
+        alt="Thermoproactive"
+        style={{ position: "absolute", left: "50%", top: "50%", width: "276mm", height: "auto", maxWidth: "none", transform: "translate(-50%, -50%) rotate(-90deg)", transformOrigin: "center", objectFit: "contain" }}
+      />
+    </div>
+  );
+}
+
+/* Capa do relatório — folha A4 física ÚNICA (funde as antigas págs. 1 e 2),
+   posicionamento em mm conforme o gabarito AVSMD_Capa. */
+function CapaRelatorio({ cab }: { cab: Cabecalho }) {
+  return (
+    <section className="pagina-capa evitar-quebra" style={{ position: "relative", width: "210mm", height: "297mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937", overflow: "hidden" }}>
+      {/* Logo vertical Thermoproactive à esquerda */}
+      <LogoVerticalCapa marca={cab.prestador?.logomarca ?? null} />
+
+      {/* Ícone da tecnologia — 30×30mm, colado no topo/direita */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {cab.tecnologia_imagem && (
+        <img src={cab.tecnologia_imagem} alt={cab.tecnologia} style={{ position: "absolute", top: "10mm", right: "5mm", width: "30mm", height: "30mm", objectFit: "contain" }} />
+      )}
+
+      {/* Título + número (direita) */}
+      <div style={{ position: "absolute", right: "5mm", top: "50mm", width: "120mm", textAlign: "right" }}>
+        <p style={{ fontSize: "18pt", fontWeight: 700, color: "#64748b" }}>Relatório Técnico</p>
+        <p style={{ fontSize: "22pt", fontWeight: 700, color: "#37459a", whiteSpace: "nowrap" }}>{cab.numero}</p>
+      </div>
+
+      {/* Logo do cliente (50×50mm) + dados (direita) */}
+      <div style={{ position: "absolute", right: "5mm", top: "92mm", width: "120mm", textAlign: "right" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {cab.logomarca && (
+          <div style={{ width: "50mm", height: "50mm", marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <img src={cab.logomarca} alt={cab.empresa} style={{ maxWidth: "50mm", maxHeight: "50mm", objectFit: "contain" }} />
+          </div>
+        )}
+        <p style={{ marginTop: "5mm", fontSize: "20pt", fontWeight: 700, color: "#37459a" }}>{cab.empresa}</p>
+        {cab.nome_fantasia && <p style={{ fontSize: "12pt" }}>{cab.nome_fantasia}</p>}
+        <div style={{ marginTop: "2mm", fontSize: "10pt" }}>
+          {cab.cnpj && <p>CNPJ {cab.cnpj}</p>}
+          {cab.endereco_linha1 && <p>{cab.endereco_linha1}</p>}
+          {cab.endereco_linha2 && <p>{cab.endereco_linha2}</p>}
+        </div>
+        {cab.contato && <p style={{ marginTop: "3mm", fontSize: "12pt", fontWeight: 700 }}>A/C Sr(a). {cab.contato}</p>}
+        {cab.departamento && <p style={{ fontSize: "10pt" }}>{cab.departamento}</p>}
+      </div>
+
+      {/* Telefone/WhatsApp — canto inferior direito */}
+      {cab.prestador?.telefone && (
+        <p style={{ position: "absolute", right: "5mm", bottom: "10mm", fontSize: "16pt", fontWeight: 700, color: "#37459a" }}>{cab.prestador.telefone}</p>
+      )}
+    </section>
   );
 }
 
@@ -492,7 +548,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: upload-logo-v35</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: capa-unica-v36</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -535,38 +591,8 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   
   return (
     <div className="print-area space-y-4 text-slate-800">
-        {/* ===================== CAPA PRINCIPAL (pág. 1) ===================== */}
-        <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
-          <LogoVertical marca={cab.prestador?.logomarca ?? null} />
-          <div className="flex flex-1 flex-col">
-            <div className="flex justify-end">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.tecnologia_imagem && <img src={cab.tecnologia_imagem} alt={cab.tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
-            </div>
-            <div className="mt-auto text-right">
-              {/* Texto "Relatório Técnico" menor e "Número" Maior, conforme exigido */}
-              <p className="text-lg font-semibold uppercase tracking-widest text-slate-500">Relatório Técnico</p>
-              <p
-                className="mt-2 font-mono font-black leading-none text-[#1d4ed8]"
-                style={{ fontSize: tamanhoNumeroRelatorio(cab.numero), whiteSpace: "nowrap", letterSpacing: "-0.04em" }}
-              >
-                {cab.numero}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ===================== CAPA CLIENTE (pág. 2) ===================== */}
-        <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8 relative">
-          <LogoVertical marca={cab.prestador?.logomarca ?? null} />
-          <div className="flex flex-1 flex-col justify-center">
-            <div className="text-right">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {cab.logomarca && <img src={cab.logomarca} alt="Logo do cliente" className="mb-6 ml-auto max-h-40 max-w-[280px] object-contain" />}
-              <BlocoCliente cab={cab} semNumero />
-            </div>
-          </div>
-        </section>
+        {/* ===================== CAPA (folha única, gabarito AVSMD_Capa) ===================== */}
+        <CapaRelatorio cab={cab} />
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
         <PaginaInterna cab={cab}>
