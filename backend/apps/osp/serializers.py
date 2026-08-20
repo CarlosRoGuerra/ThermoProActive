@@ -33,7 +33,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrdemServico
         fields = [
-            "id", "numero", "sequencial_cliente", "achado",
+            "id", "numero", "sequencial_cliente", "sequencial_global", "achado",
             "data_auditoria", "numero_relatorio",
             "cliente", "cliente_nome", "equipamento", "equipamento_tag",
             "inspecao", "titulo", "descricao", "prioridade", "prioridade_display",

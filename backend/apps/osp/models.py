@@ -117,10 +117,15 @@ class OrdemServico(TimeStampedModel):
     achado = models.OneToOneField(
         "coletas.Achado", on_delete=models.SET_NULL, null=True, blank=True, related_name="osp"
     )
-    # Número da OSP no relatório: sequencial POR CLIENTE (tomador de serviço).
-    # O "código" que o acompanha é o id global desta tabela ("OSP | Código").
+    # Número da OSP no relatório: "sequencial do cliente / sequencial global".
+    # Antes da barra: contador POR CLIENTE (reseta a cada cliente novo).
     sequencial_cliente = models.PositiveIntegerField(
         "Sequencial da OSP (por cliente)", null=True, blank=True, editable=False
+    )
+    # Depois da barra: contador GLOBAL — soma de todas as OSPs já incluídas no
+    # banco (todos os clientes, todas as tecnologias). Nunca reseta nem reusa números.
+    sequencial_global = models.PositiveIntegerField(
+        "Sequencial global da OSP (todo o BD)", null=True, blank=True, editable=False
     )
 
     titulo = models.CharField("Título", max_length=200)
@@ -246,6 +251,12 @@ class OrdemServico(TimeStampedModel):
         )["m"]
         return (maior or 0) + 1
 
+    @staticmethod
+    def proximo_sequencial_global() -> int:
+        """Sequencial global: total de OSPs já incluídas no banco (todos os clientes)."""
+        maior = OrdemServico.objects.aggregate(m=models.Max("sequencial_global"))["m"]
+        return (maior or 0) + 1
+
     @classmethod
     def gerar_de_achado(cls, achado):
         """
@@ -284,8 +295,8 @@ class OrdemServico(TimeStampedModel):
             amplitude_aceleracao=achado.aceleracao_global,
             gerada_automaticamente=True,
         )
-        # "OSP | Código" = sequencial do cliente | id global da tabela.
-        achado.numero_osp = f"{seq:04d} | {osp.id}"
+        # Número do relatório: "sequencial do cliente / sequencial global do BD".
+        achado.numero_osp = f"{seq}/{osp.sequencial_global}"
         achado.save(update_fields=["numero_osp"])
         return osp
 
@@ -337,6 +348,9 @@ class OrdemServico(TimeStampedModel):
     def save(self, *args, **kwargs):
         if not self.numero:
             self.numero = self.proximo_numero()
+        # Carimba o sequencial global uma única vez, na criação.
+        if self.sequencial_global is None:
+            self.sequencial_global = self.proximo_sequencial_global()
         # O prazo segue o Grau de Risco quando informado; senão, cai na prioridade.
         if self.sla_data is None:
             dias = PRAZO_GR_DIAS.get(self.grau_risco) or SLA_DIAS.get(self.prioridade, 7)

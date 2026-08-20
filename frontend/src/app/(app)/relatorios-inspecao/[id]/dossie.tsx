@@ -56,10 +56,16 @@ export type Dossie = { cabecalho: Cabecalho; secao_b: SecaoB; secao_c: { total: 
 const temTexto = (v: string | null | undefined) => !!v?.trim();
 
 /**
- * O backend deve idealmente devolver somente o número público da OSP.
- * Enquanto isso, evita expor IDs internos em valores como "0006 | 10".
+ * Número da OSP no relatório: "sequencial do cliente / sequencial global do BD"
+ * (ex.: 6/42). Antes da barra reinicia por cliente; depois é a soma acumulada de
+ * todas as OSPs do banco. Compat.: registros antigos vinham como "0006 | 42" —
+ * nesse caso mostra só o trecho antes do pipe.
  */
-const numeroOspPublico = (v: string) => (v || "—").split("|")[0].trim() || "—";
+const numeroOsp = (v: string) => {
+  const s = (v || "").trim();
+  if (!s || s === "—") return "—";
+  return s.includes("|") ? (s.split("|")[0].trim() || "—") : s;
+};
 
 /** Evita gerar uma folha inteira para registros sem conteúdo técnico. */
 function temConteudoOsp(o: OspD) {
@@ -557,7 +563,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-1folha-v39</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-num-cliente-global-v40</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -786,7 +792,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const imgs = imagensUnicas(o.imagens);
           return (
             <PaginaInterna key={i} cab={cab} evitarQuebra>
-              <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOspPublico(o.osp)}</p>
+              <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOsp(o.osp)}</p>
 
               {/* Dados (esq.) + Grau de Risco (dir.) — cada campo em módulo físico de 5mm */}
               <div style={{ display: "flex", justifyContent: "space-between" }}>

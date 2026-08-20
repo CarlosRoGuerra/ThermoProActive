@@ -316,9 +316,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             setor = eq.setor
             area = setor.area if setor else None
             osp = getattr(a, "osp", None)
+            # Número do relatório: "sequencial do cliente / sequencial global do BD".
             osp_num = (
-                f"{osp.sequencial_cliente:04d} | {osp.id}"
-                if osp and osp.sequencial_cliente else (a.numero_osp or "—")
+                f"{osp.sequencial_cliente}/{osp.sequencial_global}"
+                if osp and osp.sequencial_cliente and osp.sequencial_global
+                else (a.numero_osp or "—")
             )
             imagens = [
                 {"tipo": img.get_tipo_display(), "arquivo": request.build_absolute_uri(img.arquivo.url),
