@@ -174,7 +174,7 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
     <>
       <style>{`
-        .tbl-ret { width: 188mm; border-collapse: collapse; font-size: 9pt; margin-top: 3mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
+        .tbl-ret { width: 188mm; border-collapse: collapse; font-size: 9pt; margin-top: 2mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
         .tbl-ret th, .tbl-ret td { border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; }
         .tbl-ret .barra { height: 6mm; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; }
       `}</style>
@@ -237,12 +237,12 @@ const LOGO_HORIZONTAL: string | null = null;
 function LogoTimbrado({ marca }: { marca: string | null }) {
   if (!marca) return null;
   return (
-    <div style={{ width: "62mm", height: "16mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "hidden" }}>
+    <div style={{ width: "62mm", height: "12mm", display: "flex", alignItems: "center", justifyContent: "flex-start", overflow: "hidden" }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={marca}
         alt="Thermoproactive"
-        style={{ width: "55mm", height: "auto", maxHeight: "15mm", objectFit: "contain", objectPosition: "left center", display: "block", margin: 0, padding: 0 }}
+        style={{ width: "55mm", height: "auto", maxHeight: "11mm", objectFit: "contain", objectPosition: "left center", display: "block", margin: 0, padding: 0 }}
       />
     </div>
   );
@@ -387,7 +387,7 @@ function PaginaInterna({ cab, children, evitarQuebra = false }: { cab: Cabecalho
       }}
     >
       <Timbrado cab={cab} />
-      <div style={{ width: "188mm", marginTop: "3mm", fontSize: "9pt" }}>{children}</div>
+      <div style={{ width: "188mm", marginTop: "2mm", fontSize: "9pt" }}>{children}</div>
     </section>
   );
 }
@@ -557,7 +557,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-cotas-mm-v38</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-1folha-v39</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -811,7 +811,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
               {/* Imagens em GRID físico: 10(offset) + 80 + 10 + 80 + 8 = 188mm.
                   Amplitudes (esq.) alinham com o topo do Espectro via gap de 10mm. */}
-              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "10mm 80mm 10mm 80mm 8mm", alignItems: "start", marginTop: "5mm" }}>
+              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "10mm 80mm 10mm 80mm 8mm", alignItems: "start", marginTop: "3mm" }}>
                 <div />
                 <div style={{ width: "80mm" }}>
                   <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
