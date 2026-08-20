@@ -250,20 +250,18 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             chave = (area.nome if area else "—", setor.nome if setor else "—")
             linhas = grupos.setdefault(chave, [])
             achados = list(item.achados.all())
+            # A lista é de EQUIPAMENTOS: 1 linha por equipamento (a condição do
+            # equipamento). Os componentes aparecem nas OSPs (Seção D), não aqui —
+            # assim o "Total de equipamentos" bate com o nº de linhas (gabarito).
+            linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": rotulo(item.condicao)})
+            total_linhas += 1
+            # A distribuição de condições (Seção B) segue por análise (achado).
             if achados:
                 for a in achados:
-                    cat = a.tipo_componente.nome if a.tipo_componente_id else ""
-                    comp = concat(cat, a.componente_texto)
-                    nome = f"{eq.nome} - {comp}" if comp else eq.nome
                     r = rotulo(a.condicao)
-                    linhas.append({"tag": eq.tag, "equipamento": nome, "condicao": r})
                     cond_tally[r] = cond_tally.get(r, 0) + 1
-                    total_linhas += 1
             else:
-                r = rotulo(item.condicao)
-                linhas.append({"tag": eq.tag, "equipamento": eq.nome, "condicao": r})
-                cond_tally[r] = cond_tally.get(r, 0) + 1
-                total_linhas += 1
+                cond_tally[rotulo(item.condicao)] = cond_tally.get(rotulo(item.condicao), 0) + 1
 
         # Avaliação de Resultados (tabela verde da Seção D) — compara preditiva
         # × emergencial e o retorno (ROI). Campos já existem na OrdemServico.
