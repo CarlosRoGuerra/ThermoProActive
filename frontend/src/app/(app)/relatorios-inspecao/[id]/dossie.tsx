@@ -175,6 +175,14 @@ function SlotImagem({ img, label }: { img?: OspD["imagens"][number]; label: stri
   );
 }
 
+/* Rótulos fixos da tabela "Retorno de Informação": SEMPRE exibidos como formulário,
+   mesmo sem avaliação preenchida. Devem casar exatamente com os do backend
+   (avaliacao_osp em coletas/views.py) para herdar os valores por rótulo. */
+const ROTULOS_RETORNO = [
+  "Mão de Obra [h]", "M.O. Terceirizada [h]", "Material Reparo [$]",
+  "Produção [h|Ton.]", "Outros [$]",
+] as const;
+
 /* Tabela "Retorno de Informação" (OSP), conforme modelo do cliente. */
 function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
@@ -210,18 +218,21 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
           </tr>
         </thead>
         <tbody>
-          {(aval?.linhas ?? []).map((l) => {
-            const ret = num(l.emerg_v) - num(l.pred_v);
+          {/* As 5 linhas SEMPRE aparecem (formulário). Quando há avaliação, os valores
+              são casados pelo rótulo; sem avaliação, saem em branco. */}
+          {ROTULOS_RETORNO.map((rot) => {
+            const l = aval?.linhas.find((x) => x.rotulo === rot);
+            const ret = l ? num(l.emerg_v) - num(l.pred_v) : 0;
             // Célula vazia deve sair EM BRANCO (não "—"), como no modelo.
-            const cq = (v: string | null) => (v && v.trim() ? qtd(v) : "");
-            const cv = (v: string | null) => (v && v.trim() ? moeda(v) : "");
+            const cq = (v: string | null | undefined) => (v && v.trim() ? qtd(v) : "");
+            const cv = (v: string | null | undefined) => (v && v.trim() ? moeda(v) : "");
             return (
-              <tr key={l.rotulo}>
-                <td style={{ fontWeight: 700 }}>{l.rotulo}:</td>
-                <td style={{ textAlign: "right" }}>{cq(l.pred_q)}</td>
-                <td style={{ textAlign: "right" }}>{cv(l.pred_v)}</td>
-                <td style={{ textAlign: "right" }}>{cq(l.emerg_q)}</td>
-                <td style={{ textAlign: "right" }}>{cv(l.emerg_v)}</td>
+              <tr key={rot}>
+                <td style={{ fontWeight: 700 }}>{rot}:</td>
+                <td style={{ textAlign: "right" }}>{cq(l?.pred_q)}</td>
+                <td style={{ textAlign: "right" }}>{cv(l?.pred_v)}</td>
+                <td style={{ textAlign: "right" }}>{cq(l?.emerg_q)}</td>
+                <td style={{ textAlign: "right" }}>{cv(l?.emerg_v)}</td>
                 <td />
                 <td style={{ textAlign: "right" }}>{ret ? moeda(ret) : ""}</td>
               </tr>
@@ -254,27 +265,14 @@ function LogoTimbrado({ marca }: { marca: string | null }) {
   );
 }
 
-/* Logo horizontal grande da contracapa final — SEM rotação, sem distorcer. */
-function LogoContracapa({ marca }: { marca: string | null }) {
-  if (!marca) return null;
-  return (
-    <div style={{ width: "115mm", height: "28mm", display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={marca}
-        alt="Thermoproactive"
-        style={{ width: "110mm", height: "auto", maxHeight: "26mm", objectFit: "contain", objectPosition: "left center", display: "block" }}
-      />
-    </div>
-  );
-}
-
 /* Logo vertical da CAPA — folha física: faixa 53,7mm × 277mm à esquerda,
-   logo horizontal rotacionada -90° (proporção preservada). */
+   logo horizontal rotacionada -90° (proporção preservada).
+   left=12mm calibra a MARGEM VISÍVEL do logo em ~15mm (a faixa é centralizada e o
+   arquivo tem ~3mm de respiro interno). Se trocar o arquivo do logo, recalibrar. */
 function LogoVerticalCapa({ marca }: { marca: string | null }) {
   if (!marca) return null;
   return (
-    <div style={{ position: "absolute", left: "15mm", top: "10mm", width: "53.7mm", height: "277mm", overflow: "hidden" }}>
+    <div style={{ position: "absolute", left: "12mm", top: "10mm", width: "53.7mm", height: "277mm", overflow: "hidden" }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={marca}
@@ -289,7 +287,7 @@ function LogoVerticalCapa({ marca }: { marca: string | null }) {
    posicionamento em mm conforme o gabarito AVSMD_Capa. */
 function CapaRelatorio({ cab }: { cab: Cabecalho }) {
   return (
-    <section className="pagina-capa evitar-quebra" style={{ position: "relative", width: "210mm", height: "297mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937", overflow: "hidden" }}>
+    <section className="pagina-capa evitar-quebra" style={{ position: "relative", width: "210mm", height: "297mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, fontWeight: 400, color: "#1f2937", overflow: "hidden", WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale" }}>
       {/* Logo vertical Thermoproactive à esquerda */}
       <LogoVerticalCapa marca={cab.prestador?.logomarca ?? null} />
 
@@ -323,14 +321,14 @@ function CapaRelatorio({ cab }: { cab: Cabecalho }) {
       {/* Dados do cliente — y ≈ 185mm */}
       <div style={{ position: "absolute", right: "5mm", top: "185mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "20pt", fontWeight: 700, color: "#37459a" }}>{cab.empresa}</p>
-        {cab.nome_fantasia && <p style={{ fontSize: "12pt" }}>{cab.nome_fantasia}</p>}
-        <div style={{ marginTop: "2mm", fontSize: "10pt" }}>
+        {cab.nome_fantasia && <p style={{ fontSize: "12pt", fontWeight: 400 }}>{cab.nome_fantasia}</p>}
+        <div style={{ marginTop: "2mm", fontSize: "10pt", fontWeight: 400 }}>
           {cab.cnpj && <p>CNPJ {cab.cnpj}</p>}
           {cab.endereco_linha1 && <p>{cab.endereco_linha1}</p>}
           {cab.endereco_linha2 && <p>{cab.endereco_linha2}</p>}
         </div>
         {cab.contato && <p style={{ marginTop: "3mm", fontSize: "12pt", fontWeight: 700 }}>A/C Sr(a). {cab.contato}</p>}
-        {cab.departamento && <p style={{ fontSize: "10pt" }}>{cab.departamento}</p>}
+        {cab.departamento && <p style={{ fontSize: "10pt", fontWeight: 400 }}>{cab.departamento}</p>}
       </div>
 
       {/* Telefone/WhatsApp — canto inferior direito */}
@@ -367,10 +365,11 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
   const logoHorizontal = LOGO_HORIZONTAL ?? p.logomarca;
   return (
     <div style={{ width: "188mm", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
-      {/* ACIMA da linha: logo (esq.) + razão social / CNPJ / IE (dir.) — tudo em cinza */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      {/* ACIMA da linha: logo (esq.) + razão social / CNPJ / IE (dir.) — tudo em cinza.
+          Texto alinhado ao RODAPÉ da faixa do logo p/ ficar rente à linha azul. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <LogoTimbrado marca={logoHorizontal} />
-        <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.25, color: "#94a3b8" }}>
+        <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.2, color: "#94a3b8" }}>
           <div style={{ fontSize: "9pt", fontWeight: 700, color: "#64748b" }}>{p.nome}</div>
           {p.cnpj && <div>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</div>}
         </div>
@@ -397,7 +396,8 @@ function PaginaInterna({ cab, children, evitarQuebra = false }: { cab: Cabecalho
       className="pagina"
       style={{
         width: "210mm", minHeight: "297mm", padding: "10mm 7mm 10mm 15mm", boxSizing: "border-box",
-        background: "#fff", fontFamily: FONTE_OSP, color: "#1f2937",
+        background: "#fff", fontFamily: FONTE_OSP, fontWeight: 400, color: "#1f2937",
+        WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
         breakInside: evitarQuebra ? "avoid" : undefined, pageBreakInside: evitarQuebra ? "avoid" : undefined,
       }}
     >
@@ -465,25 +465,6 @@ function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
           <p className="text-4xl font-black leading-tight text-[#1d4ed8]">{titulo}</p>
           {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
         </div>
-      </div>
-    </section>
-  );
-}
-
-/* Contracapa final do relatório — sem cabeçalho/rodapé interno. */
-function ContracapaFinal({ prestador }: { prestador: Prestador | null }) {
-  return (
-    <section className="pagina-capa evitar-quebra flex gap-6 bg-white p-8">
-      <LogoContracapa marca={LOGO_HORIZONTAL ?? prestador?.logomarca ?? null} />
-      <div className="flex flex-1 flex-col justify-end text-right text-slate-600">
-        {prestador?.nome && <p className="text-base font-semibold text-slate-800">{prestador.nome}</p>}
-        {prestador?.cnpj && <p className="mt-1 text-xs">CNPJ {prestador.cnpj}</p>}
-        {prestador?.endereco_linha1 && <p className="mt-2 text-xs">{prestador.endereco_linha1}</p>}
-        {prestador?.endereco_linha2 && <p className="text-xs">{prestador.endereco_linha2}</p>}
-        {(prestador?.telefone || prestador?.email) && (
-          <p className="mt-2 text-xs">{[prestador.telefone, prestador.email].filter(Boolean).join(" · ")}</p>
-        )}
-        {prestador?.site && <p className="mt-1 text-xs font-medium">{prestador.site}</p>}
       </div>
     </section>
   );
@@ -572,7 +553,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: capa-cotas-num-hifen-v41</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-capa-ajustes-v42</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -824,15 +805,19 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </div>
               </div>
 
-              {/* Imagens em GRID físico: 10(offset) + 80 + 10 + 80 + 8 = 188mm.
-                  Amplitudes (esq.) alinham com o topo do Espectro via gap de 10mm. */}
-              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "10mm 80mm 10mm 80mm 8mm", alignItems: "start", marginTop: "3mm" }}>
-                <div />
-                <div style={{ width: "80mm" }}>
-                  <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
+              {/* GRID físico 90 + 10 + 80 + 8 = 188mm.
+                  Esquerda (90mm): FOTO deslocada 10mm da margem (10→90), mas Amplitudes
+                  e Planejamento ALINHADOS À MARGEM ESQUERDA (0mm), como os campos acima;
+                  as linhas de Planejamento terminam a 90mm (borda direita da foto).
+                  Direita (100→180mm): Tendência + 10mm + Espectro. */}
+              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "90mm 10mm 80mm 8mm", alignItems: "start", marginTop: "3mm" }}>
+                <div style={{ width: "90mm" }}>
+                  <div style={{ marginLeft: "10mm", width: "80mm" }}>
+                    <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
+                  </div>
                   <div style={{ height: "10mm" }} />
                   <AmplitudesOSP o={o} tipo={tipoTec} />
-                  <table style={{ marginTop: "3mm", width: "80mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+                  <table style={{ marginTop: "3mm", width: "90mm", fontSize: "9pt", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
                         <th />
@@ -844,7 +829,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                       {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
                         <tr key={e}>
                           <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
-                          <td style={{ borderBottom: "0.2mm solid #64748b", width: "22mm" }} />
+                          <td style={{ borderBottom: "0.2mm solid #64748b", width: "25mm" }} />
                           <td style={{ borderBottom: "0.2mm solid #64748b" }} />
                         </tr>
                       ))}
@@ -871,9 +856,8 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           </section>
         )}
 
-        {/* Contracapa final */}
-        <ContracapaFinal prestador={cab.prestador} />
-
+        {/* A última página do relatório é a última OSP (contracapa final removida
+            a pedido do cliente). */}
       </div>
   );
 }
