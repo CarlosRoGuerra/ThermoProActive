@@ -298,28 +298,28 @@ function CapaRelatorio({ cab }: { cab: Cabecalho }) {
       )}
 
       {/* Cotas verticais do gabarito AVSMD_Capa (cada bloco absoluto no seu Y):
-          "Relatório Técnico" ~64mm · número ~76mm · logo ACCO ~123mm · dados ~185mm. */}
+          "Relatório Técnico" 60,7mm · número 74,8mm · logo ACCO topo 111,6mm · dados 183mm. */}
 
-      {/* Título "Relatório Técnico" — y ≈ 64mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "64mm", width: "120mm", textAlign: "right" }}>
+      {/* Título "Relatório Técnico" — y = 60,7mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "60.7mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "18pt", fontWeight: 700, color: "#64748b" }}>Relatório Técnico</p>
       </div>
 
-      {/* Número do relatório — y ≈ 76mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "76mm", width: "120mm", textAlign: "right" }}>
+      {/* Número do relatório — y = 74,8mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "74.8mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "22pt", fontWeight: 700, color: "#37459a", whiteSpace: "nowrap" }}>{cab.numero}</p>
       </div>
 
-      {/* Logo do cliente (50×50mm) — y ≈ 123mm, alinhada à direita */}
+      {/* Logo do cliente (50×50mm) — topo y = 111,6mm, colada à margem direita */}
       {cab.logomarca && (
-        <div style={{ position: "absolute", right: "5mm", top: "123mm", width: "50mm", height: "50mm", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+        <div style={{ position: "absolute", right: "5mm", top: "111.6mm", width: "50mm", height: "50mm", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={cab.logomarca} alt={cab.empresa} style={{ maxWidth: "50mm", maxHeight: "50mm", objectFit: "contain" }} />
         </div>
       )}
 
-      {/* Dados do cliente — y ≈ 185mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "185mm", width: "120mm", textAlign: "right" }}>
+      {/* Dados do cliente — y = 183mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "183mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "20pt", fontWeight: 700, color: "#37459a" }}>{cab.empresa}</p>
         {cab.nome_fantasia && <p style={{ fontSize: "12pt", fontWeight: 400 }}>{cab.nome_fantasia}</p>}
         <div style={{ marginTop: "2mm", fontSize: "10pt", fontWeight: 400 }}>
@@ -427,45 +427,25 @@ function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: 
   );
 }
 
-/* Logomarca vertical (rotacionada) da capa/contracapa */
-function LogoVertical({ marca }: { marca: string | null }) {
-  if (!marca) return <div className="w-[150px] shrink-0" />;
-  return (
-    <div className="relative h-[660px] w-[150px] shrink-0 overflow-hidden">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={marca}
-        alt=""
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          width: 640,
-          maxWidth: "none",
-          transform: "translate(-50%, -50%) rotate(-90deg)",
-        }}
-      />
-    </div>
-  );
-}
-
-/* Contracapa (divisória) de cada seção */
-function Contracapa({ titulo, subtitulo, imagem, tecnologia, marca }: {
-  titulo: string; subtitulo?: string; imagem: string | null; tecnologia: string; marca: string | null;
+/* Contra-capa (divisória de seção) — MESMO modelo físico da capa (gabarito
+   AVSMD_Contra-Capa): logo vertical do prestador (15mm), ícone da tecnologia
+   (30×30mm, topo/direita), nome da seção à direita em Segoe UI 22pt negrito
+   (margem 5mm) e telefone do prestador no rodapé. `titulo` aceita "\n" p/ 2 linhas. */
+function Contracapa({ marca, icone, tecnologia, telefone, titulo }: {
+  marca: string | null; icone: string | null; tecnologia: string; telefone: string | null; titulo: string;
 }) {
   return (
-    <section className="pagina pagina-capa evitar-quebra flex gap-6 bg-white p-8">
-      <LogoVertical marca={marca} />
-      <div className="flex flex-1 flex-col">
-        <div className="flex justify-end">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {imagem && <img src={imagem} alt={tecnologia} className="max-h-[180px] max-w-[180px] object-contain" />}
-        </div>
-        <div className="mt-auto text-right">
-          <p className="text-4xl font-black leading-tight text-[#1d4ed8]">{titulo}</p>
-          {subtitulo && <p className="mt-1 text-lg font-semibold text-slate-600">{subtitulo}</p>}
-        </div>
+    <section className="pagina pagina-capa evitar-quebra" style={{ position: "relative", width: "210mm", height: "297mm", boxSizing: "border-box", background: "#fff", fontFamily: FONTE_OSP, fontWeight: 400, color: "#1f2937", overflow: "hidden", WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale" }}>
+      <LogoVerticalCapa marca={marca} />
+      {/* Ícone da tecnologia — 30×30mm, colado no topo/direita (10/5mm) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {icone && <img src={icone} alt={tecnologia} style={{ position: "absolute", top: "10mm", right: "5mm", width: "30mm", height: "30mm", objectFit: "contain" }} />}
+      {/* Nome da seção — direita, margem 5mm, Segoe UI 22pt negrito, ~centro vertical */}
+      <div style={{ position: "absolute", right: "5mm", top: "125mm", width: "150mm", textAlign: "right" }}>
+        <p style={{ fontSize: "22pt", fontWeight: 700, color: "#1d4ed8", lineHeight: 1.2, whiteSpace: "pre-line" }}>{titulo}</p>
       </div>
+      {/* Telefone/WhatsApp do prestador — canto inferior direito */}
+      {telefone && <p style={{ position: "absolute", right: "5mm", bottom: "10mm", fontSize: "16pt", fontWeight: 700, color: "#37459a" }}>{telefone}</p>}
     </section>
   );
 }
@@ -553,7 +533,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: osp-capa-ajustes-v42</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: contracapas-capa-cotas-v43</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -693,7 +673,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </PaginaInterna>
 
         {/* Contracapa da Seção B */}
-        <Contracapa titulo="KPI’s DASHBOARD" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo={"KPI’s\nDashboard’s"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <PaginaInterna cab={cab}>
@@ -728,7 +708,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </PaginaInterna>
 
         {/* Contracapa da Seção C */}
-        <Contracapa titulo="RELAÇÃO DE EQUIPAMENTOS CONTEMPLADOS" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo={"Equipamentos\nContemplados"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
         <PaginaInterna cab={cab}>
@@ -774,7 +754,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         </PaginaInterna>
 
         {/* Contracapa da Seção D */}
-        <Contracapa titulo="ORDENS DE SERVIÇOS PREDITIVOS" subtitulo="[corretiva orientada pela preditiva]" imagem={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} />
+        <Contracapa titulo={"Ordens de Serviços\nOrientadas pela Preditiva"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
 
         {/* ========================= SEÇÃO D — OSPs ========================= */}
         {ospsValidas.map((o, i) => {
