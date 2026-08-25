@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, Printer, Save } from "lucide-react";
+import { ArrowLeft, FileText, Phone, Printer, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { tecnologiaTipo, type TecnologiaTipo } from "@/lib/inspecoes";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
@@ -105,6 +105,30 @@ function corCondicao(c: string) {
   return CORES[c.replace(/[^A-Za-z0-9]/g, "").toUpperCase()] ?? { bg: "#94a3b8", fg: "#fff" };
 }
 
+/** Normaliza a descrição do grau de risco para o padrão visual do cliente.
+ * Exemplos:
+ * "Grau de Risco BAIXO" -> "Risco Baixo"
+ * "Grau de Risco IMINENTE" -> "Risco Iminente"
+ * "INEXISTENTE" -> "Risco Inexistente"
+ */
+function descricaoRiscoModelo(v: string) {
+  let s = (v || "").trim();
+  if (!s) return "";
+
+  s = s.replace(/^grau\s+de\s+risco\s*/i, "").trim();
+
+  // Se o backend já devolver "Risco ...", apenas padroniza capitalização.
+  const jaTemRisco = /^risco\s+/i.test(s);
+  if (jaTemRisco) s = s.replace(/^risco\s+/i, "").trim();
+
+  // Mantém siglas/números e transforma palavras em Title Case.
+  const nome = s
+    .toLocaleLowerCase("pt-BR")
+    .replace(/(^|[\s\-/])([a-záàâãéèêíïóôõöúç])/g, (_, sep, ch) => sep + ch.toLocaleUpperCase("pt-BR"));
+
+  return nome ? `Risco ${nome}` : "";
+}
+
 // 6.1 — abreviações fixas do glossário
 const ABREVIACOES: [string, string][] = [
   ["O.S.P.", "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada."],
@@ -134,6 +158,30 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
 
 /* Fonte do modelo do cliente (OSP). */
 const FONTE_OSP = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
+
+/* Telefone no padrão visual do gabarito: sem o prefixo internacional +55. */
+function telefoneModelo(telefone: string | null | undefined) {
+  if (!telefone) return "";
+  return telefone
+    .trim()
+    .replace(/^\+?55[\s.-]*/, "")
+    .replace(/^\(?(\d{2})\)?[\s.-]*(\d{4,5})[\s.-]?(\d{4})$/, "$1-$2-$3");
+}
+
+/* Pequeno selo verde + telefone, reproduzindo o indicador de WhatsApp da
+   capa/contracapas sem depender de um asset externo. */
+function TelefoneWhatsApp({ telefone, fontSize = "16pt" }: { telefone: string | null | undefined; fontSize?: string }) {
+  const exibicao = telefoneModelo(telefone);
+  if (!exibicao) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: "1mm", whiteSpace: "nowrap" }}>
+      <span style={{ width: "4.6mm", height: "4.6mm", borderRadius: "1.1mm", background: "#25D366", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Phone style={{ width: "3mm", height: "3mm", color: "#fff", strokeWidth: 2.6 }} />
+      </span>
+      <span style={{ fontSize, fontWeight: 700, color: "#37459a" }}>{exibicao}</span>
+    </span>
+  );
+}
 
 /* Amplitudes/medições da OSP por tecnologia (modelo do cliente). Módulo de 5mm. */
 function AmplitudesOSP({ o, tipo }: { o: OspD; tipo: TecnologiaTipo }) {
@@ -188,13 +236,14 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
   return (
     <>
       <style>{`
-        .tbl-ret { width: 188mm; border-collapse: collapse; font-size: 9pt; margin-top: 2mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
-        .tbl-ret th, .tbl-ret td { border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; }
-        .tbl-ret .barra { height: 6mm; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; }
+        .tbl-ret { width: 190mm; border-collapse: collapse; font-size: 9pt; margin-top: 4.5mm; table-layout: fixed; break-inside: avoid; page-break-inside: avoid; }
+        .tbl-ret th, .tbl-ret td { box-sizing: border-box; border: 0.2mm solid #b8b8b8; padding: 0 1mm; height: 5mm; line-height: 5mm; }
+        .tbl-ret .linha-barra, .tbl-ret .linha-barra th { height: 6mm !important; min-height: 6mm; max-height: 6mm; }
+        .tbl-ret .barra { box-sizing: border-box; height: 6mm !important; min-height: 6mm; max-height: 6mm; padding: 0 1mm !important; line-height: 6mm !important; background: #16a34a; color: #fff; font-size: 12pt; font-weight: 700; text-align: center; border-color: #16a34a; vertical-align: middle; }
       `}</style>
       <table className="tbl-ret">
         <colgroup>
-          <col style={{ width: "38mm" }} />
+          <col style={{ width: "40mm" }} />
           <col style={{ width: "25mm" }} />
           <col style={{ width: "25mm" }} />
           <col style={{ width: "25mm" }} />
@@ -203,9 +252,9 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
           <col style={{ width: "25mm" }} />
         </colgroup>
         <thead>
-          <tr><th className="barra" colSpan={7}>Retorno de Informação</th></tr>
+          <tr className="linha-barra"><th className="barra" colSpan={7}>Retorno de Informação</th></tr>
           <tr>
-            <th style={{ width: "38mm" }} />
+            <th style={{ width: "40mm" }} />
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Preditiva</th>
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Manutenção Emergencial</th>
             <th colSpan={2} style={{ fontWeight: 700, textAlign: "center" }}>Retorno de Investimento</th>
@@ -265,14 +314,12 @@ function LogoTimbrado({ marca }: { marca: string | null }) {
   );
 }
 
-/* Logo vertical da CAPA — folha física: faixa 53,7mm × 277mm à esquerda,
-   logo horizontal rotacionada -90° (proporção preservada).
-   left=12mm calibra a MARGEM VISÍVEL do logo em ~15mm (a faixa é centralizada e o
-   arquivo tem ~3mm de respiro interno). Se trocar o arquivo do logo, recalibrar. */
+/* Logo vertical da CAPA/CONTRACAPA — o próprio contêiner começa exatamente
+   em X=15mm, conforme a cota física do gabarito do cliente. */
 function LogoVerticalCapa({ marca }: { marca: string | null }) {
   if (!marca) return null;
   return (
-    <div style={{ position: "absolute", left: "12mm", top: "10mm", width: "53.7mm", height: "277mm", overflow: "hidden" }}>
+    <div style={{ position: "absolute", left: "15mm", top: "10mm", width: "53.7mm", height: "277mm", overflow: "hidden" }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={marca}
@@ -297,32 +344,31 @@ function CapaRelatorio({ cab }: { cab: Cabecalho }) {
         <img src={cab.tecnologia_imagem} alt={cab.tecnologia} style={{ position: "absolute", top: "10mm", right: "5mm", width: "30mm", height: "30mm", objectFit: "contain" }} />
       )}
 
-      {/* Cotas verticais do gabarito AVSMD_Capa (cada bloco absoluto no seu Y):
-          "Relatório Técnico" 60,7mm · número 74,8mm · logo ACCO topo 111,6mm · dados 183mm. */}
+      {/* Posições verticais calibradas sobre o PDF do cliente. */}
 
-      {/* Título "Relatório Técnico" — y = 60,7mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "60.7mm", width: "120mm", textAlign: "right" }}>
+      {/* Título "Relatório Técnico" — topo visual calibrado em ~64mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "63.6mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "18pt", fontWeight: 700, color: "#64748b" }}>Relatório Técnico</p>
       </div>
 
-      {/* Número do relatório — y = 74,8mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "74.8mm", width: "120mm", textAlign: "right" }}>
+      {/* Número do relatório — calibrado para o topo visual ~76,4mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "75.7mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "22pt", fontWeight: 700, color: "#37459a", whiteSpace: "nowrap" }}>{cab.numero}</p>
       </div>
 
-      {/* Logo do cliente (50×50mm) — topo y = 111,6mm, colada à margem direita */}
+      {/* Logo do cliente (50×50mm) — topo físico y = 123,5mm, colada à margem direita */}
       {cab.logomarca && (
-        <div style={{ position: "absolute", right: "5mm", top: "111.6mm", width: "50mm", height: "50mm", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+        <div style={{ position: "absolute", right: "5mm", top: "123.5mm", width: "50mm", height: "50mm", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={cab.logomarca} alt={cab.empresa} style={{ maxWidth: "50mm", maxHeight: "50mm", objectFit: "contain" }} />
         </div>
       )}
 
-      {/* Dados do cliente — y = 183mm */}
-      <div style={{ position: "absolute", right: "5mm", top: "183mm", width: "120mm", textAlign: "right" }}>
+      {/* Dados do cliente — calibrados para o topo visual ~185,4mm */}
+      <div style={{ position: "absolute", right: "5mm", top: "184.7mm", width: "120mm", textAlign: "right" }}>
         <p style={{ fontSize: "20pt", fontWeight: 700, color: "#37459a" }}>{cab.empresa}</p>
         {cab.nome_fantasia && <p style={{ fontSize: "12pt", fontWeight: 400 }}>{cab.nome_fantasia}</p>}
-        <div style={{ marginTop: "2mm", fontSize: "10pt", fontWeight: 400 }}>
+        <div style={{ marginTop: "2mm", fontSize: "12pt", lineHeight: 1, fontWeight: 400 }}>
           {cab.cnpj && <p>CNPJ {cab.cnpj}</p>}
           {cab.endereco_linha1 && <p>{cab.endereco_linha1}</p>}
           {cab.endereco_linha2 && <p>{cab.endereco_linha2}</p>}
@@ -333,7 +379,9 @@ function CapaRelatorio({ cab }: { cab: Cabecalho }) {
 
       {/* Telefone/WhatsApp — canto inferior direito */}
       {cab.prestador?.telefone && (
-        <p style={{ position: "absolute", right: "5mm", bottom: "10mm", fontSize: "16pt", fontWeight: 700, color: "#37459a" }}>{cab.prestador.telefone}</p>
+        <div style={{ position: "absolute", right: "5mm", bottom: "10mm" }}>
+          <TelefoneWhatsApp telefone={cab.prestador.telefone} fontSize="16pt" />
+        </div>
       )}
     </section>
   );
@@ -357,14 +405,14 @@ function DiagLogo({ url }: { url: string | null }) {
   );
 }
 
-/* Cabeçalho institucional (papel timbrado) EM FLUXO na página — sem position:fixed.
-   190mm de largura, logo horizontal à esquerda, dados à direita, linha azul embaixo. */
+/* Cabeçalho institucional (papel timbrado). Ele é posicionado de forma absoluta
+   pela PaginaInterna para NÃO empurrar verticalmente o conteúdo técnico. */
 function Timbrado({ cab }: { cab: Cabecalho }) {
   const p = cab.prestador;
   if (!p) return null;
   const logoHorizontal = LOGO_HORIZONTAL ?? p.logomarca;
   return (
-    <div style={{ width: "188mm", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
+    <div style={{ width: "190mm", boxSizing: "border-box", fontFamily: FONTE_OSP }}>
       {/* ACIMA da linha: logo (esq.) + razão social / CNPJ / IE (dir.) — tudo em cinza.
           Texto alinhado ao RODAPÉ da faixa do logo p/ ficar rente à linha azul. */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
@@ -374,35 +422,55 @@ function Timbrado({ cab }: { cab: Cabecalho }) {
           {p.cnpj && <div>{p.cnpj}{p.inscricao_estadual ? ` | IE ${p.inscricao_estadual}` : ""}</div>}
         </div>
       </div>
-      {/* Linha azul FINA, 3mm abaixo da logomarca */}
-      <div style={{ borderTop: "0.15mm solid #1d4ed8", marginTop: "3mm" }} />
+      {/* Linha azul logo abaixo da logomarca: y físico ~22,5mm. */}
+      <div style={{ borderTop: "0.15mm solid #1d4ed8", marginTop: "0.5mm" }} />
       {/* ABAIXO da linha: endereço / contato (dir.) — cinza claro */}
       <div style={{ textAlign: "right", fontSize: "7.5pt", lineHeight: 1.25, color: "#94a3b8", marginTop: "1mm" }}>
         {p.endereco_linha1 && <div>{p.endereco_linha1}</div>}
         {p.endereco_linha2 && <div>{p.endereco_linha2}</div>}
-        {p.telefone && <div>{p.telefone}</div>}
+        {p.telefone && <div>{telefoneModelo(p.telefone)}</div>}
         {p.email && <div>{p.email}</div>}
       </div>
     </div>
   );
 }
 
-/* Página interna como folha A4 física (210×297mm, margens 10/5/10/15mm),
-   com o timbrado EM FLUXO no topo. Substitui o cabeçalho position:fixed.
-   evitarQuebra: mantém a página inteira junta (usar na OSP, que é 1 folha). */
-function PaginaInterna({ cab, children, evitarQuebra = false }: { cab: Cabecalho; children: ReactNode; evitarQuebra?: boolean }) {
+/* Página interna A4 física. O timbrado fica absoluto e o conteúdo recebe
+   coordenada Y própria, evitando que endereço/telefone do cabeçalho empurrem
+   a OSP e a lista para baixo. */
+function PaginaInterna({
+  cab, children, evitarQuebra = false, conteudoTopMm = 41.4,
+}: {
+  cab: Cabecalho; children: ReactNode; evitarQuebra?: boolean; conteudoTopMm?: number;
+}) {
   return (
     <section
       className="pagina"
       style={{
-        width: "210mm", minHeight: "297mm", padding: "10mm 7mm 10mm 15mm", boxSizing: "border-box",
+        position: "relative", width: "210mm", minHeight: "297mm", boxSizing: "border-box",
         background: "#fff", fontFamily: FONTE_OSP, fontWeight: 400, color: "#1f2937",
         WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
         breakInside: evitarQuebra ? "avoid" : undefined, pageBreakInside: evitarQuebra ? "avoid" : undefined,
       }}
     >
-      <Timbrado cab={cab} />
-      <div style={{ width: "188mm", marginTop: "2mm", fontSize: "9pt" }}>{children}</div>
+      {/* Timbrado fixo na geometria da folha: X=15mm, Y=10mm, W=190mm.
+          Como é absoluto, o conteúdo da OSP/lista pode começar antes do fim
+          dos dados institucionais à direita, exatamente como no gabarito. */}
+      <div style={{ position: "absolute", left: "15mm", top: "10mm", width: "190mm", zIndex: 0 }}>
+        <Timbrado cab={cab} />
+      </div>
+
+      {/* O conteúdo usa coordenada vertical física própria.
+          Default 41,4mm preserva Carta/KPIs. Seção C usa 34,9mm e OSP 23,5mm. */}
+      <div
+        style={{
+          position: "relative", zIndex: 1, width: "190mm", marginLeft: "15mm",
+          paddingTop: `${conteudoTopMm}mm`, paddingBottom: "10mm", boxSizing: "border-box",
+          fontSize: "9pt",
+        }}
+      >
+        {children}
+      </div>
     </section>
   );
 }
@@ -441,11 +509,15 @@ function Contracapa({ marca, icone, tecnologia, telefone, titulo }: {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {icone && <img src={icone} alt={tecnologia} style={{ position: "absolute", top: "10mm", right: "5mm", width: "30mm", height: "30mm", objectFit: "contain" }} />}
       {/* Nome da seção — direita, margem 5mm, Segoe UI 22pt negrito, ~centro vertical */}
-      <div style={{ position: "absolute", right: "5mm", top: "125mm", width: "150mm", textAlign: "right" }}>
+      <div style={{ position: "absolute", right: "5mm", top: "138mm", width: "150mm", textAlign: "right" }}>
         <p style={{ fontSize: "22pt", fontWeight: 700, color: "#1d4ed8", lineHeight: 1.2, whiteSpace: "pre-line" }}>{titulo}</p>
       </div>
       {/* Telefone/WhatsApp do prestador — canto inferior direito */}
-      {telefone && <p style={{ position: "absolute", right: "5mm", bottom: "10mm", fontSize: "16pt", fontWeight: 700, color: "#37459a" }}>{telefone}</p>}
+      {telefone && (
+        <div style={{ position: "absolute", right: "5mm", bottom: "10mm" }}>
+          <TelefoneWhatsApp telefone={telefone} fontSize="16pt" />
+        </div>
+      )}
     </section>
   );
 }
@@ -533,7 +605,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: contracapas-capa-cotas-v43</span>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">build: gabarito-mm-v45</span>
           <DiagLogo url={cab.prestador?.logomarca ?? null} />
         </div>
         <div className="flex items-center gap-2">
@@ -543,6 +615,13 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg shadow-xs transition-colors hover:bg-accent-hover"
           >
             <Printer className="h-4 w-4" /> Imprimir / PDF (com nº de página)
+          </Link>
+          {/* Documento independente (não faz parte do relatório) */}
+          <Link
+            href={`/carta/${relatorioId}`}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-fg-muted shadow-xs transition-colors hover:bg-surface-muted hover:text-fg"
+          >
+            <FileText className="h-4 w-4" /> Carta ao Cliente
           </Link>
         </div>
       </div>
@@ -711,7 +790,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         <Contracapa titulo={"Equipamentos\nContemplados"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
 
         {/* ========================= SEÇÃO C ========================= */}
-        <PaginaInterna cab={cab}>
+        <PaginaInterna cab={cab} conteudoTopMm={34.9}>
           <p style={{ fontSize: "9pt" }}><span style={{ fontWeight: 700 }}>Empresa:</span> {cab.empresa}</p>
           {c.grupos.length === 0 ? (
             <p style={{ fontSize: "9pt", textAlign: "center", padding: "12mm 0", color: "#64748b" }}>Nenhum equipamento inspecionado.</p>
@@ -735,14 +814,11 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                   </thead>
                   <tbody>
                     {g.linhas.map((l, li) => {
-                      const cor = corCondicao(l.condicao);
                       return (
-                        <tr key={li} style={{ background: li % 2 ? "#eff6ff" : "#fff" }}>
+                        <tr key={li} style={{ background: li % 2 === 0 ? "#eff6ff" : "#fff" }}>
                           <td style={{ fontFamily: "monospace", padding: "0.6mm 0" }}>{l.tag || "—"}</td>
                           <td style={{ padding: "0.6mm 0" }}>{l.equipamento}</td>
-                          <td style={{ textAlign: "right", padding: "0.6mm 0" }}>
-                            <span style={{ display: "inline-block", borderRadius: "1mm", padding: "0 2mm", fontWeight: 700, background: cor.bg, color: cor.fg }}>{l.condicao}</span>
-                          </td>
+                          <td style={{ textAlign: "right", padding: "0.6mm 0", fontWeight: 400 }}>{l.condicao}</td>
                         </tr>
                       );
                     })}
@@ -761,11 +837,14 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
           return (
-            <PaginaInterna key={i} cab={cab} evitarQuebra>
+            <PaginaInterna key={i} cab={cab} evitarQuebra conteudoTopMm={23.5}>
               <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOsp(o.osp)}</p>
 
-              {/* Dados (esq.) + Grau de Risco (dir.) — cada campo em módulo físico de 5mm */}
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+              {/* Dados (esq.) + Grau de Risco (dir.).
+                  O bloco textual usa passo vertical de 4,2mm, conforme o gabarito.
+                  A caixa do risco é independente: começa ~39,5mm no Y físico,
+                  mede 50,5mm de largura e 35mm de altura. */}
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "-2.4mm" }}>
                 <div style={{ width: "130.75mm" }}>
                   {[
                     ["Empresa", cab.empresa], ["Data", ddmmaaaa(cab.data_termino)], ["Analista", o.analista],
@@ -773,24 +852,51 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                     ["Componente", o.componente], ["Diagnóstico", o.anomalia], ["Observação", o.observacao],
                     ["Recomendação", o.recomendacao],
                   ].map(([k, v]) => (
-                    <div key={k} style={{ minHeight: "5mm", lineHeight: "5mm" }}>
+                    <div key={k} style={{ minHeight: "4.2mm", lineHeight: "4.2mm" }}>
                       <span style={{ fontWeight: 700 }}>{k}:</span> {v || "—"}
                     </div>
                   ))}
                 </div>
-                <div style={{ width: "50.5mm", flexShrink: 0, alignSelf: "stretch", borderLeft: "0.3mm solid #94a3b8", textAlign: "center", padding: "0 2mm" }}>
-                  <p style={{ fontSize: "16pt", fontWeight: 700 }}>Grau de Risco</p>
-                  <p style={{ fontSize: "42pt", fontWeight: 800, lineHeight: 1, color: cor.bg }}>{o.grau_risco || "—"}</p>
-                  <p style={{ fontSize: "12pt" }}>{o.grau_risco_descricao}</p>
+
+                <div
+                  style={{
+                    width: "50.5mm",
+                    height: "35mm",
+                    boxSizing: "border-box",
+                    flexShrink: 0,
+                    marginTop: "10.4mm",
+                    borderLeft: "0.3mm solid #94a3b8",
+                    textAlign: "center",
+                    padding: "3.2mm 2mm 0",
+                    overflow: "hidden",
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: "16pt", fontWeight: 700, lineHeight: 1 }}>
+                    Grau de Risco
+                  </p>
+                  <p
+                    style={{
+                      margin: "2mm 0 0",
+                      fontSize: "48pt",
+                      fontWeight: 800,
+                      lineHeight: 0.92,
+                      color: cor.bg,
+                    }}
+                  >
+                    {o.grau_risco || "—"}
+                  </p>
+                  <p style={{ margin: "1.2mm 0 0", fontSize: "12pt", lineHeight: 1.05 }}>
+                    {descricaoRiscoModelo(o.grau_risco_descricao)}
+                  </p>
                 </div>
               </div>
 
-              {/* GRID físico 90 + 10 + 80 + 8 = 188mm.
+              {/* GRID físico 90 + 10 + 80 + 10 = 190mm.
                   Esquerda (90mm): FOTO deslocada 10mm da margem (10→90), mas Amplitudes
                   e Planejamento ALINHADOS À MARGEM ESQUERDA (0mm), como os campos acima;
                   as linhas de Planejamento terminam a 90mm (borda direita da foto).
                   Direita (100→180mm): Tendência + 10mm + Espectro. */}
-              <div style={{ width: "188mm", display: "grid", gridTemplateColumns: "90mm 10mm 80mm 8mm", alignItems: "start", marginTop: "3mm" }}>
+              <div style={{ width: "190mm", display: "grid", gridTemplateColumns: "90mm 10mm 80mm 10mm", alignItems: "start", marginTop: "14.2mm" }}>
                 <div style={{ width: "90mm" }}>
                   <div style={{ marginLeft: "10mm", width: "80mm" }}>
                     <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
