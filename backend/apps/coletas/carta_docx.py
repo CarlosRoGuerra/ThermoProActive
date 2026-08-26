@@ -101,6 +101,16 @@ def _shade(cell, fill_hex):
     tcPr.append(shd)
 
 
+def _shade_par(paragraph, fill_hex):
+    """Sombreamento de fundo do parágrafo (barra de margem a margem)."""
+    pPr = paragraph._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill_hex)
+    pPr.append(shd)
+
+
 def _bottom_border(paragraph, color_hex="1D4ED8", size="4"):
     """Linha fina embaixo do parágrafo (usada como régua do timbrado)."""
     p = paragraph._p
@@ -147,6 +157,11 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
     if text:
         _fmt_run(p.add_run(text), bold=bold, italic=italic, size=size, color=color)
     return p
+
+
+def _titulo(container, texto):
+    """Título de item numerado (1.–8.) com mais respiro acima."""
+    return _p(container, texto, bold=True, left=10, hanging=10, space_before=10, space_after=2)
 
 
 # --------------------------------- Cabeçalho ---------------------------------
@@ -225,7 +240,7 @@ def _tabela_iso(doc):
     # Título (linha mesclada) + subcabeçalho.
     top = tab.rows[0].cells
     top[0].merge(top[5])
-    _cell(top[0], "Norma ISO-10816-1 — Severidade · Faixas de Velocidade e Classes de Máquina",
+    _cell(top[0], "Norma ISO-20816-3 — Severidade · Faixas de Velocidade e Classes de Máquina",
           bold=True, size=10, color=VERMELHO)
     hdr = tab.rows[1].cells
     _cell(hdr[0], "V [mm/s] RMS", fill="F1F5F9")
@@ -267,6 +282,8 @@ def construir_carta_docx(rel, prestador) -> Document:
     normal.font.name = FONTE
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
+    # Entrelinhas 1.15 em toda a carta (pedido do cliente).
+    normal.paragraph_format.line_spacing = 1.15
 
     # Página A4 + margens do modelo (topo 35 reserva o cabeçalho).
     sec = doc.sections[0]
@@ -294,57 +311,53 @@ def construir_carta_docx(rel, prestador) -> Document:
     if cli.departamento:
         _p(doc, cli.departamento, bold=True, space_after=0)
 
-    # ---- Número (centralizado) ----
-    _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=6, space_after=6)
+    # ---- Número (centralizado, barra cinza de margem a margem) ----
+    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=8, space_after=8)
+    _shade_par(pnum, "CCCCCC")
 
     # ---- 1. Objetivo ----
-    _p(doc, "1. Objetivo do Relatório", bold=True, left=10, hanging=10, space_before=4)
+    _titulo(doc, "1. Objetivo do Relatório")
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
     _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
 
-    # ---- 2. Datas ----
-    _p(doc, "2. Data(s) da(s) Execução(ões) da(s) Atividade(s)", bold=True, left=10, hanging=10, space_before=4)
-    if rel.data_inicio and rel.data_termino and rel.data_inicio != rel.data_termino:
-        med = f"{_dt(rel.data_inicio)} a {_dt(rel.data_termino)}"
-    else:
-        med = _dt(rel.data_termino or rel.data_inicio)
-    _p(doc, f"Medições em Campo – {med}", left=10, space_after=0)
-    _p(doc, f"Upload das OSP’s – {_dt(rel.data_termino)}", left=10, space_after=0)
-    _p(doc, f"Upload Relatório Completo – {_dt(rel.data_finalizacao)}", left=10)
+    # ---- 2. Datas (apenas duas: fim das medições e fim das análises) ----
+    _titulo(doc, "2. Data(s) da(s) Execução(ões) da(s) Atividade(s)")
+    _p(doc, f"Finalização das medições em campo – {_dt(rel.data_termino)}", left=10, space_after=0)
+    _p(doc, f"Finalização das análises – {_dt(rel.data_finalizacao)}", left=10)
 
     # ---- 3. Conteúdo ----
-    _p(doc, "3. Conteúdo do Relatório", bold=True, left=10, hanging=10, space_before=4)
+    _titulo(doc, "3. Conteúdo do Relatório")
     for t in CONTEUDO:
         _p(doc, t, left=10, space_after=0)
 
-    # ---- 4. Instrumentação ----
-    _p(doc, "4. Instrumentação Utilizada", bold=True, left=10, hanging=10, space_before=6)
+    # ---- 4. Instrumentação (sub-itens alinhados a 10mm) ----
+    _titulo(doc, "4. Instrumentação Utilizada")
     if instrumentos:
         for ins in instrumentos:
             if ins.tipo:
-                _p(doc, ins.tipo, left=22.5, space_after=0)
+                _p(doc, ins.tipo, left=10, space_after=0)
             if ins.marca:
-                _p(doc, f"Marca: {ins.marca}", left=22.5, space_after=0)
+                _p(doc, f"Marca: {ins.marca}", left=10, space_after=0)
             if ins.modelo:
-                _p(doc, f"Modelo: {ins.modelo}", left=22.5, space_after=0)
+                _p(doc, f"Modelo: {ins.modelo}", left=10, space_after=0)
             if ins.numero_serie:
-                _p(doc, f"Serial #: {ins.numero_serie}", left=22.5, space_after=0)
+                _p(doc, f"Serial #: {ins.numero_serie}", left=10, space_after=0)
             if ins.data_ultima_calibracao:
-                _p(doc, f"Data da última calibração: {_dt(ins.data_ultima_calibracao)}", left=22.5, space_after=0)
+                _p(doc, f"Data da última calibração: {_dt(ins.data_ultima_calibracao)}", left=10, space_after=0)
             periodicidade = ins.get_periodicidade_calibracao_display() if ins.periodicidade_calibracao else ""
             if periodicidade:
-                _p(doc, f"Validade: {periodicidade}", left=22.5, space_after=0)
+                _p(doc, f"Validade: {periodicidade}", left=10, space_after=0)
             if ins.entidade_calibracao:
-                _p(doc, f"Entidade Calibração: {ins.entidade_calibracao}", left=22.5, space_after=0)
+                _p(doc, f"Entidade Calibração: {ins.entidade_calibracao}", left=10, space_after=0)
             if ins.software_analise:
-                _p(doc, "Softwares de Análises", left=22.5, space_before=2, space_after=0)
-                _p(doc, ins.software_analise, left=22.5, space_after=2)
+                _p(doc, "Softwares de Análises", left=10, space_before=2, space_after=0)
+                _p(doc, ins.software_analise, left=10, space_after=2)
     else:
-        _p(doc, "Não informada.", left=22.5)
+        _p(doc, "Não informada.", left=10)
 
     # ---- 5. Normatização + tabela ISO ----
-    _p(doc, "5. Normatização", bold=True, left=10, hanging=10, space_before=6)
+    _titulo(doc, "5. Normatização")
     if normas:
         for n in normas:
             texto = " - ".join(x for x in [n.codigo, n.nome] if x)
@@ -354,7 +367,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     _tabela_iso(doc)
 
     # ---- 6. Glossário ----
-    _p(doc, "6. Glossário Técnico", bold=True, left=10, hanging=10, space_before=6)
+    _titulo(doc, "6. Glossário Técnico")
     for n, sigla, texto in GLOSSARIO:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -365,7 +378,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         _fmt_run(p.add_run(f" – {texto}"))
 
     # ---- 7. Definição da Técnica ----
-    _p(doc, "7. Definição da Técnica", bold=True, left=10, hanging=10, space_before=6)
+    _titulo(doc, "7. Definição da Técnica")
     if (tec.definicao_tecnica or "").strip():
         for par in tec.definicao_tecnica.splitlines():
             if par.strip():
@@ -382,7 +395,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         pass
 
     # ---- 8. Considerações + assinatura ----
-    _p(doc, "8. Considerações Importantes", bold=True, left=10, hanging=10, space_before=6)
+    _titulo(doc, "8. Considerações Importantes")
     for par in CONSIDERACOES:
         _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     if (rel.consideracoes_finais or "").strip():
