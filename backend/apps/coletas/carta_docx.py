@@ -116,11 +116,6 @@ def _cant_split(row):
     row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
 
 
-def _keep_next(paragraph):
-    """Mantém o parágrafo junto com o próximo (cola as linhas da tabela)."""
-    paragraph._p.get_or_add_pPr().append(OxmlElement("w:keepNext"))
-
-
 def _bottom_border(paragraph, color_hex="1D4ED8", size="4"):
     """Linha fina embaixo do parágrafo (usada como régua do timbrado)."""
     p = paragraph._p
@@ -236,6 +231,12 @@ def _tabela_iso(doc):
     classes = ["I", "II", "III", "IV"]
     cab = {"I": ("Classe I", "< 15 kW"), "II": ("Classe II", "15 a 75 kW"),
            "III": ("Classe III", "Rígida · > 75 kW"), "IV": ("Classe IV", "Flexível · > 75 kW")}
+    # A tabela começa em página nova: garante que ela caiba INTEIRA numa folha
+    # (o Word ignora keepNext em linhas de tabela; a quebra-antes é o método seguro).
+    quebra = doc.add_paragraph()
+    quebra.paragraph_format.page_break_before = True
+    quebra.paragraph_format.space_after = Pt(0)
+    quebra.paragraph_format.space_before = Pt(0)
     tab = doc.add_table(rows=2, cols=6)
     tab.style = "Table Grid"
     tab.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -266,15 +267,9 @@ def _tabela_iso(doc):
             txt, fill, fg = _sev(mm, cl)
             _cell(row[2 + i], txt, bold=True, color=fg, fill=fill)
 
-    # Mantém a tabela INTEIRA numa página só: nenhuma linha se divide e todas as
-    # linhas ficam "coladas" (keepNext), então a tabela migra inteira se não couber.
-    linhas = tab.rows
-    for i, row in enumerate(linhas):
+    # Reforço: nenhuma LINHA da tabela pode ser dividida entre páginas.
+    for row in tab.rows:
         _cant_split(row)
-        if i < len(linhas) - 1:
-            for cell in row.cells:
-                for par in cell.paragraphs:
-                    _keep_next(par)
 
 
 # ------------------------------ Coleta dos dados -----------------------------
@@ -318,18 +313,18 @@ def construir_carta_docx(rel, prestador) -> Document:
     analistas, instrumentos, normas = _dados(rel)
     tec = rel.tecnologia
 
-    # ---- Destinatário (mesma coluna de conteúdo dos itens: recuo 10mm) ----
+    # ---- Destinatário (rente à margem esquerda, como no modelo Word) ----
     razao = cli.nome + (f"   {cli.nome_fantasia}" if cli.nome_fantasia else "")
-    _p(doc, razao, bold=True, left=10, space_after=0)
+    _p(doc, razao, bold=True, left=0, space_after=0)
     cl1, cl2 = _montar_endereco(cli)
     if cl1:
-        _p(doc, cl1, left=10, space_after=0)
+        _p(doc, cl1, left=0, space_after=0)
     if cl2:
-        _p(doc, cl2, left=10, space_after=0)
+        _p(doc, cl2, left=0, space_after=0)
     if cli.contato_gestor:
-        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, left=10, space_before=4, space_after=0)
+        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, left=0, space_before=4, space_after=0)
     if cli.departamento:
-        _p(doc, cli.departamento, bold=True, left=10, space_after=0)
+        _p(doc, cli.departamento, bold=True, left=0, space_after=0)
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
     pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=8, space_after=8)
