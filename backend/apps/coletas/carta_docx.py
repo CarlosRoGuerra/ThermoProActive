@@ -298,18 +298,18 @@ def construir_carta_docx(rel, prestador) -> Document:
     analistas, instrumentos, normas = _dados(rel)
     tec = rel.tecnologia
 
-    # ---- Destinatário ----
+    # ---- Destinatário (mesma coluna de conteúdo dos itens: recuo 10mm) ----
     razao = cli.nome + (f"   {cli.nome_fantasia}" if cli.nome_fantasia else "")
-    _p(doc, razao, bold=True, space_after=0)
+    _p(doc, razao, bold=True, left=10, space_after=0)
     cl1, cl2 = _montar_endereco(cli)
     if cl1:
-        _p(doc, cl1, space_after=0)
+        _p(doc, cl1, left=10, space_after=0)
     if cl2:
-        _p(doc, cl2, space_after=0)
+        _p(doc, cl2, left=10, space_after=0)
     if cli.contato_gestor:
-        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, space_before=4, space_after=0)
+        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, left=10, space_before=4, space_after=0)
     if cli.departamento:
-        _p(doc, cli.departamento, bold=True, space_after=0)
+        _p(doc, cli.departamento, bold=True, left=10, space_after=0)
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
     pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=8, space_after=8)
@@ -377,15 +377,17 @@ def construir_carta_docx(rel, prestador) -> Document:
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
-    # ---- 7. Definição da Técnica ----
+    # ---- 7. Definição da Técnica (DINÂMICA: texto cadastrado na tecnologia) ----
     _titulo(doc, "7. Definição da Técnica")
-    if (tec.definicao_tecnica or "").strip():
-        for par in tec.definicao_tecnica.splitlines():
+    definicao = (tec.definicao_tecnica or "").strip()
+    if definicao:
+        for par in definicao.splitlines():
             if par.strip():
                 _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     else:
-        for par in DEFINICAO:
-            _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+        _p(doc, "(Definição da técnica não cadastrada para esta tecnologia. "
+                "Preencha em Cadastros → Tecnologias de análise → “Definição da técnica”.)",
+           italic=True, left=10, color=CINZA)
     try:
         if getattr(tec, "imagem_pontos_medicao", None):
             pimg = doc.add_paragraph()
