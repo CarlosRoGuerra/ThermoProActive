@@ -111,6 +111,16 @@ def _shade_par(paragraph, fill_hex):
     pPr.append(shd)
 
 
+def _cant_split(row):
+    """Impede que a LINHA da tabela seja quebrada entre páginas."""
+    row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+
+
+def _keep_next(paragraph):
+    """Mantém o parágrafo junto com o próximo (cola as linhas da tabela)."""
+    paragraph._p.get_or_add_pPr().append(OxmlElement("w:keepNext"))
+
+
 def _bottom_border(paragraph, color_hex="1D4ED8", size="4"):
     """Linha fina embaixo do parágrafo (usada como régua do timbrado)."""
     p = paragraph._p
@@ -255,6 +265,16 @@ def _tabela_iso(doc):
         for i, cl in enumerate(classes):
             txt, fill, fg = _sev(mm, cl)
             _cell(row[2 + i], txt, bold=True, color=fg, fill=fill)
+
+    # Mantém a tabela INTEIRA numa página só: nenhuma linha se divide e todas as
+    # linhas ficam "coladas" (keepNext), então a tabela migra inteira se não couber.
+    linhas = tab.rows
+    for i, row in enumerate(linhas):
+        _cant_split(row)
+        if i < len(linhas) - 1:
+            for cell in row.cells:
+                for par in cell.paragraphs:
+                    _keep_next(par)
 
 
 # ------------------------------ Coleta dos dados -----------------------------
