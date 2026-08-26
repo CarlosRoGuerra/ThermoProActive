@@ -27,7 +27,7 @@ type Cabecalho = {
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
   endereco_linha1: string; endereco_linha2: string;
   logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null; analistas: string[];
-  definicao_tecnica: string; pontos_medicao_imagem: string | null;
+  definicao_tecnica: string; definicao_fluxo_trabalho: string; definicao_legenda_imagem: string; pontos_medicao_imagem: string | null;
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
 };

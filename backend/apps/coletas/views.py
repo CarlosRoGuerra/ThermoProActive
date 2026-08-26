@@ -402,6 +402,8 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     if rel.tecnologia.imagem else None
                 ),
                 "definicao_tecnica": rel.tecnologia.definicao_tecnica,
+                "definicao_fluxo_trabalho": rel.tecnologia.definicao_fluxo_trabalho,
+                "definicao_legenda_imagem": rel.tecnologia.definicao_legenda_imagem,
                 "pontos_medicao_imagem": (
                     request.build_absolute_uri(rel.tecnologia.imagem_pontos_medicao.url)
                     if rel.tecnologia.imagem_pontos_medicao else None

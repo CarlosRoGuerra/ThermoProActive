@@ -38,17 +38,6 @@ const GLOSSARIO_CARTA: { n: string; sigla: string; texto: string }[] = [
   { n: "6.9", sigla: "LOA", texto: "Lado Oposto ao Acoplamento." },
 ];
 
-const DEFINICAO_CARTA = [
-  "Uma máquina ideal não produz “qualquer” vibração, pois toda a energia é canalizada para a execução do trabalho a ser realizado. Na prática, entretanto, os elementos que compõem as máquinas, em geral, interagem entre si e, devido à presença de atrito, ação de forças cíclicas etc., dissipa energia na forma de calor, ruído e vibrações.",
-  "Um bom projeto deve apresentar bom rendimento, ou seja, baixo nível de dissipação de calor, baixo nível de ruído e baixo nível de vibração. De uma forma geral, as máquinas novas, quando bem projetadas, satisfazem a esses requisitos. Entretanto, com o desgaste, acomodação de fundações, má utilização, falta de manutenção, etc., as máquinas têm suas propriedades dinâmicas alteradas.",
-  "Todos esses fatores são refletidos na diminuição de rendimento e, consequentemente, no aumento do nível de vibração.",
-  "O fluxo de trabalho consiste em 03 etapas distintas:",
-  "1ª etapa (contratada): coleta de dados, análise de dados, emissão de laudos.",
-  "2ª etapa (contratante): planejamento e execução das correções, retorno das informações.",
-  "3ª etapa (contratada): análise das informações retornadas, avaliação de resultados.",
-  "Abaixo observaremos a disposição dos pontos de medição:",
-];
-
 const CONSIDERACOES_CARTA = [
   "Os critérios considerados nas análises das anomalias detectadas são técnicos, associados com a vasta experiência do analista que dará diagnóstico preciso referente à condição dinâmica na qual o objeto avaliado está submetido, porém vale lembrar que cada equipamento tem seu nível de criticidade para a planta onde está instalado, e deverá ser levado em consideração pelo controle e planejamento da manutenção durante a elaboração do plano de manutenções corretivas baseadas pela manutenção preditiva.",
   "As OSP´s emergenciais (GR-1) foram apresentadas, discutidas e tratadas com o planejamento e controle de manutenção ao término das medições.",
@@ -172,7 +161,12 @@ export function CartaCorpo({ d }: { d: Dossie }) {
     cab.data_inicio && cab.data_termino && cab.data_inicio !== cab.data_termino
       ? `${ddmmaaaa(cab.data_inicio)} a ${ddmmaaaa(cab.data_termino)}`
       : ddmmaaaa(cab.data_termino || cab.data_inicio);
-  const definicao = cab.definicao_tecnica?.trim();
+  // Definição da Técnica — campos estruturados vindos do cadastro da tecnologia.
+  const linhasDef = (s?: string) => (s || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const introDef = linhasDef(cab.definicao_tecnica);
+  const fluxoDef = linhasDef(cab.definicao_fluxo_trabalho);
+  const legendaDef = cab.definicao_legenda_imagem?.trim();
+  const semDefinicao = introDef.length === 0 && fluxoDef.length === 0 && !cab.pontos_medicao_imagem;
 
   return (
     <div className="carta-doc">
@@ -234,14 +228,19 @@ export function CartaCorpo({ d }: { d: Dossie }) {
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
         <CItem n="7.">Definição da Técnica</CItem>
-        {definicao
-          ? <CP><span style={{ whiteSpace: "pre-line" }}>{definicao}</span></CP>
-          : DEFINICAO_CARTA.map((t, k) => <CP key={k}>{t}</CP>)}
-        {cab.pontos_medicao_imagem && (
-          <div style={{ textAlign: "center", marginTop: "4mm" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cab.pontos_medicao_imagem} alt="Pontos de medição" style={{ maxWidth: "150mm", maxHeight: "120mm", objectFit: "contain" }} />
-          </div>
+        {introDef.map((t, k) => <CP key={`i${k}`}>{t}</CP>)}
+        {fluxoDef.map((t, k) => <CP key={`f${k}`}>{t}</CP>)}
+        {cab.pontos_medicao_imagem ? (
+          <>
+            <CP>{legendaDef || "Abaixo observaremos a disposição dos pontos de medição:"}</CP>
+            <div style={{ textAlign: "center", marginTop: "4mm" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cab.pontos_medicao_imagem} alt="Pontos de medição" style={{ maxWidth: "150mm", maxHeight: "120mm", objectFit: "contain" }} />
+            </div>
+          </>
+        ) : legendaDef ? <CP>{legendaDef}</CP> : null}
+        {semDefinicao && (
+          <CP><span style={{ color: "#94a3b8", fontStyle: "italic" }}>(Definição da técnica ainda não cadastrada para esta tecnologia.)</span></CP>
         )}
       </Folha>
 
