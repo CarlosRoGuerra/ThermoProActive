@@ -161,22 +161,32 @@ export function CartaCorpo({ d }: { d: Dossie }) {
     cab.data_inicio && cab.data_termino && cab.data_inicio !== cab.data_termino
       ? `${ddmmaaaa(cab.data_inicio)} a ${ddmmaaaa(cab.data_termino)}`
       : ddmmaaaa(cab.data_termino || cab.data_inicio);
-  // Definição da Técnica — parágrafo GERADO dos dados do relatório + texto da técnica.
+  // Definição da Técnica — parágrafos GERADOS dos dados do relatório + texto da técnica.
   const linhasDef = (s?: string) => (s || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const introDef = linhasDef(cab.definicao_tecnica);
   const fluxoDef = linhasDef(cab.definicao_fluxo_trabalho);
-  const legendaDef = cab.definicao_legenda_imagem?.trim();
+  const lista = (arr: string[]) =>
+    arr.length <= 1 ? (arr[0] ?? "") : `${arr.slice(0, -1).join(", ")} e ${arr[arr.length - 1]}`;
   const nEquip = d.secao_b.equip_monitorados;
   const nAnom = d.secao_b.anomalias_diagnosticadas;
   const nSetores = new Set(d.secao_c.grupos.map((g) => `${g.area}|${g.setor}`)).size;
-  const eqTxt = nEquip === 1 ? "1 equipamento distribuído" : `${nEquip} equipamentos distribuídos`;
+  const nAreas = new Set(d.secao_c.grupos.map((g) => g.area)).size;
+  const eqTxt = nEquip === 1 ? "1 equipamento" : `${nEquip} equipamentos`;
   const stTxt = nSetores === 1 ? "1 setor" : `${nSetores} setores`;
-  const fechoTxt = nAnom === 0
-    ? "não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas."
-    : nAnom === 1
-      ? "foi diagnosticada 1 anomalia, classificada conforme os Graus de Risco descritos no item 6 e convertida na Ordem de Serviço Preditiva apresentada na Seção D."
-      : `foram diagnosticadas ${nAnom} anomalias, classificadas conforme os Graus de Risco descritos no item 6 e convertidas nas Ordens de Serviço Preditivas apresentadas na Seção D.`;
-  const paragrafoGerado = `Neste relatório aplicou-se a técnica de ${cab.tecnologia}, contemplando ${eqTxt} em ${stTxt}, com o auxílio da instrumentação descrita no item 4. A partir das medições realizadas, ${fechoTxt}`;
+  const arTxt = nAreas === 1 ? "1 área" : `${nAreas} áreas`;
+  const par7a = `Neste relatório aplicou-se a técnica de ${cab.tecnologia}, contemplando ${eqTxt} monitorado(s) em ${stTxt} (${arTxt}), com o auxílio da instrumentação descrita no item 4.`;
+  let par7b: string;
+  if (nAnom === 0) {
+    par7b = "A partir das medições realizadas, não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas neste ciclo.";
+  } else {
+    const base = nAnom === 1 ? "foi diagnosticada 1 anomalia" : `foram diagnosticadas ${nAnom} anomalias`;
+    const tipos = lista(d.secao_b.anomalias.map((a) => a.rotulo));
+    const trechoTipos = tipos ? `, do(s) tipo(s): ${tipos}` : "";
+    const dist = d.secao_b.condicoes.map((c) => `${c.rotulo}: ${c.total}`).join("; ");
+    const trechoGr = dist ? ` A distribuição por Grau de Risco foi — ${dist}.` : "";
+    par7b = `A partir das medições realizadas, ${base}${trechoTipos}. Cada anomalia foi classificada conforme os Graus de Risco descritos no item 6 e convertida em Ordem de Serviço Preditiva na Seção D.${trechoGr}`;
+  }
+  const paragrafosGerados = [par7a, par7b];
 
   return (
     <div className="carta-doc">
@@ -238,20 +248,11 @@ export function CartaCorpo({ d }: { d: Dossie }) {
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
         <CItem n="7.">Definição da Técnica</CItem>
-        {/* Parágrafo gerado a partir dos dados do relatório (banco) */}
-        <CP>{paragrafoGerado}</CP>
-        {/* Descrição fixa da técnica (cadastro da tecnologia) */}
+        {/* Parágrafos gerados a partir dos dados do relatório (banco) */}
+        {paragrafosGerados.map((t, k) => <CP key={`g${k}`}>{t}</CP>)}
+        {/* Descrição fixa da técnica (cadastro da tecnologia), quando houver */}
         {introDef.map((t, k) => <CP key={`i${k}`}>{t}</CP>)}
         {fluxoDef.map((t, k) => <CP key={`f${k}`}>{t}</CP>)}
-        {cab.pontos_medicao_imagem ? (
-          <>
-            <CP>{legendaDef || "Abaixo observaremos a disposição dos pontos de medição:"}</CP>
-            <div style={{ textAlign: "center", marginTop: "4mm" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cab.pontos_medicao_imagem} alt="Pontos de medição" style={{ maxWidth: "150mm", maxHeight: "120mm", objectFit: "contain" }} />
-            </div>
-          </>
-        ) : legendaDef ? <CP>{legendaDef}</CP> : null}
       </Folha>
 
       {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}

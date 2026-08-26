@@ -47,9 +47,6 @@ GLOSSARIO = [
     ("6.9", "LOA", "Lado Oposto ao Acoplamento."),
 ]
 
-# Legenda genérica (segura) usada antes da imagem quando a tecnologia não define uma.
-DEFINICAO_LEGENDA = "Abaixo observaremos a disposição dos pontos de medição:"
-
 CONSIDERACOES = [
     "Os critérios considerados nas análises das anomalias detectadas são técnicos, associados com a vasta experiência do analista que dará diagnóstico preciso referente à condição dinâmica na qual o objeto avaliado está submetido, porém vale lembrar que cada equipamento tem seu nível de criticidade para a planta onde está instalado, e deverá ser levado em consideração pelo controle e planejamento da manutenção durante a elaboração do plano de manutenções corretivas baseadas pela manutenção preditiva.",
     "As OSP´s emergenciais (GR-1) foram apresentadas, discutidas e tratadas com o planejamento e controle de manutenção ao término das medições.",
@@ -281,39 +278,72 @@ def _dados(rel):
 
 
 def _escopo(rel):
-    """Escopo do relatório (dados do banco) para o parágrafo gerado do item 7."""
+    """Escopo do relatório (dados do banco) para os parágrafos gerados do item 7."""
     from apps.coletas.models import Achado, ItemInspecao
 
-    equip, setores = set(), set()
-    for it in ItemInspecao.objects.filter(carregamento__relatorio=rel).select_related("equipamento__setor"):
+    equip, setores, areas = set(), set(), set()
+    for it in ItemInspecao.objects.filter(carregamento__relatorio=rel).select_related("equipamento__setor__area"):
         eq = it.equipamento
         equip.add(eq.id)
         if eq.setor_id:
             setores.add(eq.setor_id)
-    n_anom = 0
-    for a in Achado.objects.filter(item__carregamento__relatorio=rel):
-        if a.tipo_anomalia_id or (a.anomalia_texto or "").strip() or a.tipo_componente_id or (a.componente_texto or "").strip():
-            n_anom += 1
-    return len(equip), len(setores), n_anom
+            if eq.setor.area_id:
+                areas.add(eq.setor.area_id)
+    gr_tally, tipos_anom, n_anom = {}, [], 0
+    for a in Achado.objects.filter(item__carregamento__relatorio=rel).select_related("condicao", "tipo_anomalia"):
+        if not (a.tipo_anomalia_id or (a.anomalia_texto or "").strip() or a.tipo_componente_id or (a.componente_texto or "").strip()):
+            continue
+        n_anom += 1
+        if a.condicao_id:
+            sig = (a.condicao.sigla or a.condicao.nome or "").strip()
+            if sig:
+                gr_tally[sig] = gr_tally.get(sig, 0) + 1
+        nome = (a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "")).strip()
+        if nome and nome not in tipos_anom:
+            tipos_anom.append(nome)
+    return {
+        "n_equip": len(equip), "n_setores": len(setores), "n_areas": len(areas),
+        "n_anom": n_anom, "gr_tally": gr_tally, "tipos_anom": tipos_anom,
+    }
 
 
-def _paragrafo_gerado(rel, n_equip, n_setores, n_anom):
-    """Texto do item 7 montado a partir dos dados do relatório (banco)."""
+def _lista(itens):
+    itens = list(itens)
+    if len(itens) <= 1:
+        return itens[0] if itens else ""
+    return ", ".join(itens[:-1]) + " e " + itens[-1]
+
+
+def _paragrafos_gerados(rel, e):
+    """Parágrafos do item 7 montados a partir dos dados do relatório (banco)."""
     tec = rel.tecnologia.nome
-    eq = "1 equipamento distribuído" if n_equip == 1 else f"{n_equip} equipamentos distribuídos"
-    st = "1 setor" if n_setores == 1 else f"{n_setores} setores"
-    if n_anom == 0:
-        fecho = "não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas."
-    elif n_anom == 1:
-        fecho = ("foi diagnosticada 1 anomalia, classificada conforme os Graus de Risco descritos no "
-                 "item 6 e convertida na Ordem de Serviço Preditiva apresentada na Seção D.")
-    else:
-        fecho = (f"foram diagnosticadas {n_anom} anomalias, classificadas conforme os Graus de Risco "
-                 "descritos no item 6 e convertidas nas Ordens de Serviço Preditivas apresentadas na Seção D.")
-    return (
-        f"Neste relatório aplicou-se a técnica de {tec}, contemplando {eq} em {st}, com o auxílio da "
-        f"instrumentação descrita no item 4. A partir das medições realizadas, {fecho}"
+    eq = "1 equipamento" if e["n_equip"] == 1 else f"{e['n_equip']} equipamentos"
+    st = "1 setor" if e["n_setores"] == 1 else f"{e['n_setores']} setores"
+    ar = "1 área" if e["n_areas"] == 1 else f"{e['n_areas']} áreas"
+    p1 = (
+        f"Neste relatório aplicou-se a técnica de {tec}, contemplando {eq} monitorado(s) em {st} "
+        f"({ar}), com o auxílio da instrumentação descrita no item 4."
     )
+    if e["n_anom"] == 0:
+        p2 = ("A partir das medições realizadas, não foram diagnosticadas anomalias que ensejassem "
+               "Ordens de Serviço Preditivas neste ciclo.")
+    else:
+        n = e["n_anom"]
+        base = ("foi diagnosticada 1 anomalia" if n == 1 else f"foram diagnosticadas {n} anomalias")
+        tipos = _lista(e["tipos_anom"])
+        trecho_tipos = f", do(s) tipo(s): {tipos}" if tipos else ""
+        gr = e["gr_tally"]
+        if gr:
+            dist = "; ".join(f"{k}: {v}" for k, v in sorted(gr.items()))
+            trecho_gr = f" A distribuição por Grau de Risco foi — {dist}."
+        else:
+            trecho_gr = ""
+        p2 = (
+            f"A partir das medições realizadas, {base}{trecho_tipos}. Cada anomalia foi classificada "
+            f"conforme os Graus de Risco descritos no item 6 e convertida em Ordem de Serviço Preditiva "
+            f"na Seção D.{trecho_gr}"
+        )
+    return [p1, p2]
 
 
 # --------------------------------- Documento ---------------------------------
@@ -420,35 +450,16 @@ def construir_carta_docx(rel, prestador) -> Document:
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
-    # ---- 7. Definição da Técnica (parágrafo GERADO dos dados + texto da técnica) ----
+    # ---- 7. Definição da Técnica (GERADO dos dados do relatório + texto da técnica) ----
     _titulo(doc, "7. Definição da Técnica")
-    # 7.0 Parágrafo montado a partir dos dados do relatório (banco).
-    n_equip, n_setores, n_anom = _escopo(rel)
-    _p(doc, _paragrafo_gerado(rel, n_equip, n_setores, n_anom), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    # A seguir, a descrição fixa da técnica cadastrada na tecnologia.
-    intro = (tec.definicao_tecnica or "").strip()
-    fluxo = (getattr(tec, "definicao_fluxo_trabalho", "") or "").strip()
-    legenda = (getattr(tec, "definicao_legenda_imagem", "") or "").strip()
-    tem_imagem = bool(getattr(tec, "imagem_pontos_medicao", None))
-    # 7.1 Texto introdutório
-    for par in intro.splitlines():
-        if par.strip():
-            _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    # 7.2 Etapas do fluxo de trabalho
-    for par in fluxo.splitlines():
-        if par.strip():
-            _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    # 7.3 Legenda + imagem dos pontos de medição
-    if tem_imagem:
-        _p(doc, legenda or DEFINICAO_LEGENDA, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-        try:
-            pimg = doc.add_paragraph()
-            pimg.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            pimg.add_run().add_picture(tec.imagem_pontos_medicao.path, width=Mm(150))
-        except Exception:
-            pass
-    elif legenda:
-        _p(doc, legenda, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # 7.0 Parágrafos montados a partir dos dados do relatório (banco).
+    for par in _paragrafos_gerados(rel, _escopo(rel)):
+        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # 7.1/7.2 Descrição fixa da técnica (cadastro da tecnologia), quando houver.
+    for campo in ((tec.definicao_tecnica or ""), (getattr(tec, "definicao_fluxo_trabalho", "") or "")):
+        for par in campo.strip().splitlines():
+            if par.strip():
+                _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
 
     # ---- 8. Considerações + assinatura ----
     _titulo(doc, "8. Considerações Importantes")
