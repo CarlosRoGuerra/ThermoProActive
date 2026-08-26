@@ -47,16 +47,8 @@ GLOSSARIO = [
     ("6.9", "LOA", "Lado Oposto ao Acoplamento."),
 ]
 
-DEFINICAO = [
-    "Uma máquina ideal não produz “qualquer” vibração, pois toda a energia é canalizada para a execução do trabalho a ser realizado. Na prática, entretanto, os elementos que compõem as máquinas, em geral, interagem entre si e, devido à presença de atrito, ação de forças cíclicas etc., dissipa energia na forma de calor, ruído e vibrações.",
-    "Um bom projeto deve apresentar bom rendimento, ou seja, baixo nível de dissipação de calor, baixo nível de ruído e baixo nível de vibração. De uma forma geral, as máquinas novas, quando bem projetadas, satisfazem a esses requisitos. Entretanto, com o desgaste, acomodação de fundações, má utilização, falta de manutenção, etc., as máquinas têm suas propriedades dinâmicas alteradas.",
-    "Todos esses fatores são refletidos na diminuição de rendimento e, consequentemente, no aumento do nível de vibração.",
-    "O fluxo de trabalho consiste em 03 etapas distintas:",
-    "1ª etapa (contratada): coleta de dados, análise de dados, emissão de laudos.",
-    "2ª etapa (contratante): planejamento e execução das correções, retorno das informações.",
-    "3ª etapa (contratada): análise das informações retornadas, avaliação de resultados.",
-    "Abaixo observaremos a disposição dos pontos de medição:",
-]
+# Legenda genérica (segura) usada antes da imagem quando a tecnologia não define uma.
+DEFINICAO_LEGENDA = "Abaixo observaremos a disposição dos pontos de medição:"
 
 CONSIDERACOES = [
     "Os critérios considerados nas análises das anomalias detectadas são técnicos, associados com a vasta experiência do analista que dará diagnóstico preciso referente à condição dinâmica na qual o objeto avaliado está submetido, porém vale lembrar que cada equipamento tem seu nível de criticidade para a planta onde está instalado, e deverá ser levado em consideração pelo controle e planejamento da manutenção durante a elaboração do plano de manutenções corretivas baseadas pela manutenção preditiva.",
@@ -392,24 +384,36 @@ def construir_carta_docx(rel, prestador) -> Document:
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
-    # ---- 7. Definição da Técnica (DINÂMICA: texto cadastrado na tecnologia) ----
+    # ---- 7. Definição da Técnica (campos ESTRUTURADOS da tecnologia) ----
+    # Mostra SOMENTE o que estiver cadastrado na tecnologia — nada de texto
+    # padrão "escondido". Se tudo vazio, avisa que falta cadastrar.
     _titulo(doc, "7. Definição da Técnica")
-    definicao = (tec.definicao_tecnica or "").strip()
-    if definicao:
-        for par in definicao.splitlines():
-            if par.strip():
-                _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    else:
-        _p(doc, "(Definição da técnica não cadastrada para esta tecnologia. "
-                "Preencha em Cadastros → Tecnologias de análise → “Definição da técnica”.)",
-           italic=True, left=10, color=CINZA)
-    try:
-        if getattr(tec, "imagem_pontos_medicao", None):
+    intro = (tec.definicao_tecnica or "").strip()
+    fluxo = (getattr(tec, "definicao_fluxo_trabalho", "") or "").strip()
+    legenda = (getattr(tec, "definicao_legenda_imagem", "") or "").strip()
+    tem_imagem = bool(getattr(tec, "imagem_pontos_medicao", None))
+    # 7.1 Texto introdutório
+    for par in intro.splitlines():
+        if par.strip():
+            _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # 7.2 Etapas do fluxo de trabalho
+    for par in fluxo.splitlines():
+        if par.strip():
+            _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # 7.3 Legenda + imagem dos pontos de medição
+    if tem_imagem:
+        _p(doc, legenda or DEFINICAO_LEGENDA, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+        try:
             pimg = doc.add_paragraph()
             pimg.alignment = WD_ALIGN_PARAGRAPH.CENTER
             pimg.add_run().add_picture(tec.imagem_pontos_medicao.path, width=Mm(150))
-    except Exception:
-        pass
+        except Exception:
+            pass
+    elif legenda:
+        _p(doc, legenda, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    if not (intro or fluxo or tem_imagem):
+        _p(doc, "(Definição da técnica ainda não cadastrada para esta tecnologia — preencha em "
+                "Cadastros → Tecnologias de análise.)", italic=True, left=10, color=CINZA)
 
     # ---- 8. Considerações + assinatura ----
     _titulo(doc, "8. Considerações Importantes")
