@@ -280,6 +280,42 @@ def _dados(rel):
     return analistas, instrumentos, normas
 
 
+def _escopo(rel):
+    """Escopo do relatório (dados do banco) para o parágrafo gerado do item 7."""
+    from apps.coletas.models import Achado, ItemInspecao
+
+    equip, setores = set(), set()
+    for it in ItemInspecao.objects.filter(carregamento__relatorio=rel).select_related("equipamento__setor"):
+        eq = it.equipamento
+        equip.add(eq.id)
+        if eq.setor_id:
+            setores.add(eq.setor_id)
+    n_anom = 0
+    for a in Achado.objects.filter(item__carregamento__relatorio=rel):
+        if a.tipo_anomalia_id or (a.anomalia_texto or "").strip() or a.tipo_componente_id or (a.componente_texto or "").strip():
+            n_anom += 1
+    return len(equip), len(setores), n_anom
+
+
+def _paragrafo_gerado(rel, n_equip, n_setores, n_anom):
+    """Texto do item 7 montado a partir dos dados do relatório (banco)."""
+    tec = rel.tecnologia.nome
+    eq = "1 equipamento distribuído" if n_equip == 1 else f"{n_equip} equipamentos distribuídos"
+    st = "1 setor" if n_setores == 1 else f"{n_setores} setores"
+    if n_anom == 0:
+        fecho = "não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas."
+    elif n_anom == 1:
+        fecho = ("foi diagnosticada 1 anomalia, classificada conforme os Graus de Risco descritos no "
+                 "item 6 e convertida na Ordem de Serviço Preditiva apresentada na Seção D.")
+    else:
+        fecho = (f"foram diagnosticadas {n_anom} anomalias, classificadas conforme os Graus de Risco "
+                 "descritos no item 6 e convertidas nas Ordens de Serviço Preditivas apresentadas na Seção D.")
+    return (
+        f"Neste relatório aplicou-se a técnica de {tec}, contemplando {eq} em {st}, com o auxílio da "
+        f"instrumentação descrita no item 4. A partir das medições realizadas, {fecho}"
+    )
+
+
 # --------------------------------- Documento ---------------------------------
 def construir_carta_docx(rel, prestador) -> Document:
     doc = Document()
@@ -384,10 +420,12 @@ def construir_carta_docx(rel, prestador) -> Document:
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
-    # ---- 7. Definição da Técnica (campos ESTRUTURADOS da tecnologia) ----
-    # Mostra SOMENTE o que estiver cadastrado na tecnologia — nada de texto
-    # padrão "escondido". Se tudo vazio, avisa que falta cadastrar.
+    # ---- 7. Definição da Técnica (parágrafo GERADO dos dados + texto da técnica) ----
     _titulo(doc, "7. Definição da Técnica")
+    # 7.0 Parágrafo montado a partir dos dados do relatório (banco).
+    n_equip, n_setores, n_anom = _escopo(rel)
+    _p(doc, _paragrafo_gerado(rel, n_equip, n_setores, n_anom), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # A seguir, a descrição fixa da técnica cadastrada na tecnologia.
     intro = (tec.definicao_tecnica or "").strip()
     fluxo = (getattr(tec, "definicao_fluxo_trabalho", "") or "").strip()
     legenda = (getattr(tec, "definicao_legenda_imagem", "") or "").strip()
@@ -411,9 +449,6 @@ def construir_carta_docx(rel, prestador) -> Document:
             pass
     elif legenda:
         _p(doc, legenda, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    if not (intro or fluxo or tem_imagem):
-        _p(doc, "(Definição da técnica ainda não cadastrada para esta tecnologia — preencha em "
-                "Cadastros → Tecnologias de análise.)", italic=True, left=10, color=CINZA)
 
     # ---- 8. Considerações + assinatura ----
     _titulo(doc, "8. Considerações Importantes")

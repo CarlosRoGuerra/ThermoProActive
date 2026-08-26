@@ -161,12 +161,22 @@ export function CartaCorpo({ d }: { d: Dossie }) {
     cab.data_inicio && cab.data_termino && cab.data_inicio !== cab.data_termino
       ? `${ddmmaaaa(cab.data_inicio)} a ${ddmmaaaa(cab.data_termino)}`
       : ddmmaaaa(cab.data_termino || cab.data_inicio);
-  // Definição da Técnica — campos estruturados vindos do cadastro da tecnologia.
+  // Definição da Técnica — parágrafo GERADO dos dados do relatório + texto da técnica.
   const linhasDef = (s?: string) => (s || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const introDef = linhasDef(cab.definicao_tecnica);
   const fluxoDef = linhasDef(cab.definicao_fluxo_trabalho);
   const legendaDef = cab.definicao_legenda_imagem?.trim();
-  const semDefinicao = introDef.length === 0 && fluxoDef.length === 0 && !cab.pontos_medicao_imagem;
+  const nEquip = d.secao_b.equip_monitorados;
+  const nAnom = d.secao_b.anomalias_diagnosticadas;
+  const nSetores = new Set(d.secao_c.grupos.map((g) => `${g.area}|${g.setor}`)).size;
+  const eqTxt = nEquip === 1 ? "1 equipamento distribuído" : `${nEquip} equipamentos distribuídos`;
+  const stTxt = nSetores === 1 ? "1 setor" : `${nSetores} setores`;
+  const fechoTxt = nAnom === 0
+    ? "não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas."
+    : nAnom === 1
+      ? "foi diagnosticada 1 anomalia, classificada conforme os Graus de Risco descritos no item 6 e convertida na Ordem de Serviço Preditiva apresentada na Seção D."
+      : `foram diagnosticadas ${nAnom} anomalias, classificadas conforme os Graus de Risco descritos no item 6 e convertidas nas Ordens de Serviço Preditivas apresentadas na Seção D.`;
+  const paragrafoGerado = `Neste relatório aplicou-se a técnica de ${cab.tecnologia}, contemplando ${eqTxt} em ${stTxt}, com o auxílio da instrumentação descrita no item 4. A partir das medições realizadas, ${fechoTxt}`;
 
   return (
     <div className="carta-doc">
@@ -228,6 +238,9 @@ export function CartaCorpo({ d }: { d: Dossie }) {
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
         <CItem n="7.">Definição da Técnica</CItem>
+        {/* Parágrafo gerado a partir dos dados do relatório (banco) */}
+        <CP>{paragrafoGerado}</CP>
+        {/* Descrição fixa da técnica (cadastro da tecnologia) */}
         {introDef.map((t, k) => <CP key={`i${k}`}>{t}</CP>)}
         {fluxoDef.map((t, k) => <CP key={`f${k}`}>{t}</CP>)}
         {cab.pontos_medicao_imagem ? (
@@ -239,9 +252,6 @@ export function CartaCorpo({ d }: { d: Dossie }) {
             </div>
           </>
         ) : legendaDef ? <CP>{legendaDef}</CP> : null}
-        {semDefinicao && (
-          <CP><span style={{ color: "#94a3b8", fontStyle: "italic" }}>(Definição da técnica ainda não cadastrada para esta tecnologia.)</span></CP>
-        )}
       </Folha>
 
       {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}
