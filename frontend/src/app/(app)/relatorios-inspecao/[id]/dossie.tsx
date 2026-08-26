@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Phone, Printer, Save } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, downloadFile } from "@/lib/api";
 import { tecnologiaTipo, type TecnologiaTipo } from "@/lib/inspecoes";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
 
@@ -616,13 +616,19 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           >
             <Printer className="h-4 w-4" /> Imprimir / PDF (com nº de página)
           </Link>
-          {/* Documento independente (não faz parte do relatório) */}
-          <Link
-            href={`/carta/${relatorioId}`}
+          {/* Documento independente (não faz parte do relatório): baixa a carta em .docx */}
+          <button
+            type="button"
+            onClick={() =>
+              downloadFile(
+                `/relatorios-inspecao/${relatorioId}/carta-docx/`,
+                `Carta_${cab.numero}_${cab.empresa}.docx`.replace(/[\\/:*?"<>|]/g, "-"),
+              ).catch(() => alert("Não foi possível gerar a carta ao cliente."))
+            }
             className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-fg-muted shadow-xs transition-colors hover:bg-surface-muted hover:text-fg"
           >
-            <FileText className="h-4 w-4" /> Carta ao Cliente
-          </Link>
+            <FileText className="h-4 w-4" /> Carta ao Cliente (.docx)
+          </button>
         </div>
       </div>
 

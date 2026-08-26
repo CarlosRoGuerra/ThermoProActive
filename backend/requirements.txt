@@ -13,5 +13,6 @@ psycopg[binary]==3.2.3           # driver PostgreSQL
 Pillow==11.0.0                   # upload/processamento de imagens (evidências)
 openpyxl==3.1.5                   # exportação de relatórios em Excel (.xlsx)
 reportlab==4.2.5                  # exportação de relatórios em PDF (server-side)
+python-docx==1.1.2                # geração da Carta ao Cliente em .docx (MIT)
 gunicorn==23.0.0                 # WSGI server para produção (VPS Linux)
 whitenoise==6.8.2                # arquivos estáticos em produção

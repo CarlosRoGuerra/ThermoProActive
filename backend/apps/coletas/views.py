@@ -430,6 +430,33 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             "secao_d": secao_d,
         })
 
+    @action(detail=True, methods=["get"], url_path="carta-docx")
+    def carta_docx(self, request, pk=None):
+        """Carta ao Cliente (Seção A) como .docx — documento independente do relatório."""
+        from io import BytesIO
+
+        from django.http import HttpResponse
+
+        from apps.cadastros.models import Empresa
+
+        from .carta_docx import construir_carta_docx
+
+        rel = self.get_object()
+        prestador = Empresa.objects.ativos().order_by("id").first()
+        doc = construir_carta_docx(rel, prestador)
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+        base = f"Carta_{rel.numero}_{rel.cliente.nome}"
+        seguro = "".join(c if c.isalnum() or c in "-_." else "_" for c in base)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="{seguro}.docx"'
+        return resp
+
 
 class CarregamentoViewSet(viewsets.ModelViewSet):
     """Análise de campo: "carregar rota", listar itens e transferir."""
