@@ -147,14 +147,14 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
         pf.first_line_indent = Mm(-hanging)
     pf.space_after = Pt(space_after)
     pf.space_before = Pt(space_before)
-    pf.line_spacing = 1.15
+    pf.line_spacing = 1.5
     if text:
         _fmt_run(p.add_run(text), bold=bold, italic=italic, size=size, color=color)
     return p
 
 
-def _titulo(container, texto, space_before=16):
-    """Título de item numerado (1.–8.) com mais respiro acima."""
+def _titulo(container, texto, space_before=3):
+    """Título de item numerado (1.–8.). O respiro vem do entrelinhas (1.5)."""
     return _p(container, texto, bold=True, left=10, hanging=10, space_before=space_before, space_after=2)
 
 
@@ -363,7 +363,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
     # Entrelinhas 1.15 em toda a carta (pedido do cliente).
-    normal.paragraph_format.line_spacing = 1.15
+    normal.paragraph_format.line_spacing = 1.5
 
     # Página A4 + margens do modelo (topo 35 reserva o cabeçalho).
     sec = doc.sections[0]
@@ -392,11 +392,11 @@ def construir_carta_docx(rel, prestador) -> Document:
         _p(doc, cli.departamento, bold=True, left=0, space_after=0)
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
-    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=16, space_after=16)
+    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=3, space_after=3)
     _shade_par(pnum, "CCCCCC")
 
     # ---- 1. Objetivo ----
-    _titulo(doc, "1. Objetivo do Relatório", space_before=0)
+    _titulo(doc, "1. Objetivo do Relatório")
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
     _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
@@ -453,7 +453,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.left_indent = Mm(10)
         p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.line_spacing = 1.15
+        p.paragraph_format.line_spacing = 1.5
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
