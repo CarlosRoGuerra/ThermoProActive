@@ -153,8 +153,8 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
     return p
 
 
-def _titulo(container, texto, space_before=3):
-    """Título de item numerado (1.–8.). O respiro vem do entrelinhas (1.5)."""
+def _titulo(container, texto, space_before=12):
+    """Título de item numerado (1.–8.): entrelinhas 1.5 + respiro acima (12pt)."""
     return _p(container, texto, bold=True, left=10, hanging=10, space_before=space_before, space_after=2)
 
 
@@ -392,11 +392,13 @@ def construir_carta_docx(rel, prestador) -> Document:
         _p(doc, cli.departamento, bold=True, left=0, space_after=0)
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
-    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=3, space_after=3)
+    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=12, space_after=12)
     _shade_par(pnum, "CCCCCC")
 
     # ---- 1. Objetivo ----
-    _titulo(doc, "1. Objetivo do Relatório")
+    # item 1 sem space_before: o espaço abaixo da barra é só o space_after dela (12pt),
+    # ficando IGUAL ao espaço acima da barra (12pt).
+    _titulo(doc, "1. Objetivo do Relatório", space_before=0)
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
     _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
