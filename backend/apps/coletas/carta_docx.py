@@ -153,9 +153,9 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
     return p
 
 
-def _titulo(container, texto):
+def _titulo(container, texto, space_before=16):
     """Título de item numerado (1.–8.) com mais respiro acima."""
-    return _p(container, texto, bold=True, left=10, hanging=10, space_before=10, space_after=2)
+    return _p(container, texto, bold=True, left=10, hanging=10, space_before=space_before, space_after=2)
 
 
 # --------------------------------- Cabeçalho ---------------------------------
@@ -213,6 +213,13 @@ def _timbrado(section, prestador):
         p.paragraph_format.space_after = Pt(0)
         p.paragraph_format.line_spacing = 1.1
         _fmt_run(p.add_run(txt), **fmt)
+
+    # Linha azul de margem a margem, logo abaixo do timbrado.
+    linha = header.add_paragraph()
+    linha.paragraph_format.space_before = Pt(1)
+    linha.paragraph_format.space_after = Pt(0)
+    linha.paragraph_format.line_spacing = 1.0
+    _bottom_border(linha, color_hex="1D4ED8", size="8")
 
 
 # --------------------------------- Tabela ISO --------------------------------
@@ -385,11 +392,11 @@ def construir_carta_docx(rel, prestador) -> Document:
         _p(doc, cli.departamento, bold=True, left=0, space_after=0)
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
-    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=8, space_after=8)
+    pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=16, space_after=16)
     _shade_par(pnum, "CCCCCC")
 
     # ---- 1. Objetivo ----
-    _titulo(doc, "1. Objetivo do Relatório")
+    _titulo(doc, "1. Objetivo do Relatório", space_before=0)
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
     _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
