@@ -134,7 +134,7 @@ function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
       className="pagina"
       style={{
         width: "210mm", minHeight: "297mm", padding: "10mm 15mm 10mm 25mm", boxSizing: "border-box",
-        background: "#fff", fontFamily: FONTE, fontSize: "12pt", color: "#000", lineHeight: 1.3,
+        background: "#fff", fontFamily: FONTE, fontSize: "12pt", color: "#000", lineHeight: 1.15,
         WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
       }}
     >

@@ -147,7 +147,7 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
         pf.first_line_indent = Mm(-hanging)
     pf.space_after = Pt(space_after)
     pf.space_before = Pt(space_before)
-    pf.line_spacing = 1.3
+    pf.line_spacing = 1.15
     if text:
         _fmt_run(p.add_run(text), bold=bold, italic=italic, size=size, color=color)
     return p
@@ -191,7 +191,9 @@ def _timbrado(section, prestador):
     pl.alignment = WD_ALIGN_PARAGRAPH.LEFT
     try:
         if prestador.logomarca:
-            pl.add_run().add_picture(prestador.logomarca.path, width=Mm(50))
+            # Altura ~ à do bloco "razão + CNPJ" (2 linhas), para a linha azul
+            # ficar rente ao CNPJ e não abaixo da logo.
+            pl.add_run().add_picture(prestador.logomarca.path, height=Mm(11))
     except Exception:
         pass
 
@@ -365,7 +367,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
     # Entrelinhas 1.15 em toda a carta (pedido do cliente).
-    normal.paragraph_format.line_spacing = 1.3
+    normal.paragraph_format.line_spacing = 1.15
 
     # Página A4 + margens do modelo (topo 35 reserva o cabeçalho).
     sec = doc.sections[0]
@@ -460,7 +462,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.left_indent = Mm(10)
         p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.line_spacing = 1.3
+        p.paragraph_format.line_spacing = 1.15
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
