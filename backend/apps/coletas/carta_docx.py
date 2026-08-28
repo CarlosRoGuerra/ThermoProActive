@@ -139,7 +139,7 @@ def _fmt_run(run, *, bold=False, italic=False, size=12, color=PRETO):
 def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
        left=None, hanging=None, space_after=0, space_before=0, color=PRETO,
        style=None, line_spacing=None):
-    """Cria parágrafo com medidas explícitas, deixando a entrelinha herdar do estilo quando None."""
+    """Cria parágrafo; None em before/after mantém o valor herdado do estilo."""
     p = container.add_paragraph(style=style) if style else container.add_paragraph()
     pf = p.paragraph_format
     if align is not None:
@@ -148,8 +148,10 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
         pf.left_indent = Mm(left)
     if hanging is not None:
         pf.first_line_indent = Mm(-hanging)
-    pf.space_after = Pt(space_after)
-    pf.space_before = Pt(space_before)
+    if space_after is not None:
+        pf.space_after = Pt(space_after)
+    if space_before is not None:
+        pf.space_before = Pt(space_before)
     if line_spacing is not None:
         pf.line_spacing = line_spacing
     if text:
@@ -158,17 +160,52 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
 
 
 def _blank(container, *, style=None):
-    """Linha em branco manual usada pelo modelo para separar blocos."""
+    """
+    Linha em branco manual do modelo.
+
+    No Normal ela HERDA os 10 pt de espaço depois; no SemEspaamento
+    herda 0 pt. Isso é importante para reproduzir a altura visual do modelo.
+    """
+    return _p(container, style=style, space_before=0, space_after=None)
+
+
+def _blank_tight(container, *, style=None):
+    """Linha em branco sem espaço adicional depois (usada no bloco do destinatário)."""
     return _p(container, style=style, space_before=0, space_after=0)
 
 
-def _titulo(container, texto, *, style=None, space_after=0, line_spacing=None):
-    """Título numerado 1.–8.: 10 mm à esquerda e hanging de 10 mm, sem space_before."""
-    return _p(
-        container, texto, bold=True, left=10, hanging=10,
-        space_before=0, space_after=space_after, style=style,
-        line_spacing=line_spacing,
-    )
+def _titulo(container, texto, *, style=None, space_after=None, line_spacing=None):
+    """
+    Título numerado 1.–8. como no Word do modelo:
+      • número na margem;
+      • texto do título alinhado a 10 mm;
+      • hanging de 10 mm;
+      • TAB explícito entre o número e o texto.
+
+    O TAB é essencial: apenas escrever ``"1. Objetivo"`` com hanging não
+    posiciona ``Objetivo`` em 10 mm, como acontece no documento-modelo.
+    """
+    p = container.add_paragraph(style=style) if style else container.add_paragraph()
+    pf = p.paragraph_format
+    pf.left_indent = Mm(10)
+    pf.first_line_indent = Mm(-10)
+    pf.space_before = Pt(0)
+    if space_after is not None:
+        pf.space_after = Pt(space_after)
+    if line_spacing is not None:
+        pf.line_spacing = line_spacing
+
+    # Tab stop exato onde começa o corpo do texto: 10 mm a partir da margem.
+    pf.tab_stops.add_tab_stop(Mm(10))
+
+    if " " in texto:
+        numero, titulo = texto.split(" ", 1)
+        _fmt_run(p.add_run(numero), bold=True)
+        p.add_run("\t")
+        _fmt_run(p.add_run(titulo), bold=True)
+    else:
+        _fmt_run(p.add_run(texto), bold=True)
+    return p
 
 
 def _configurar_doc_defaults(doc):
@@ -431,8 +468,10 @@ def construir_carta_docx(rel, prestador) -> Document:
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
     normal.paragraph_format.space_before = Pt(0)
-    normal.paragraph_format.space_after = Pt(0)
-    # A entrelinha do Normal herda do docDefaults, como no modelo.
+    # No modelo, o Normal mantém 10 pt depois. Os parágrafos de corpo
+    # zeram esse valor diretamente; títulos 1–5 e linhas em branco o herdam.
+    normal.paragraph_format.space_after = Pt(10)
+    # A entrelinha do Normal herda 1,15 do docDefaults.
     normal.paragraph_format.line_spacing = None
 
     # Estilo usado pelo modelo nos itens 6, 7 e 8: entrelinha simples, sem espaço extra.
@@ -466,11 +505,13 @@ def construir_carta_docx(rel, prestador) -> Document:
     _p(doc, razao, bold=True, left=0, space_after=0)
     cl1, cl2 = _montar_endereco(cli)
     if cl1:
-        _p(doc, cl1, left=0, space_after=0)
+        _p(doc, cl1, italic=True, left=0, space_after=0)
     if cl2:
-        _p(doc, cl2, left=0, space_after=0)
+        _p(doc, cl2, italic=True, left=0, space_after=0)
     if cli.contato_gestor:
-        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, left=0, space_before=4, space_after=0)
+        # O modelo deixa uma linha visual entre o endereço e o A/C.
+        _blank_tight(doc)
+        _p(doc, f"A/C.: Sr(a). {cli.contato_gestor}", bold=True, left=0, space_before=0, space_after=0)
     if cli.departamento:
         _p(doc, cli.departamento, bold=True, left=0, space_after=0)
 
@@ -483,7 +524,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     _titulo(doc, "1. Objetivo do Relatório")
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    _p(doc, tec.nome, italic=True, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _blank(doc)
 
     # ---- 2. Datas (apenas duas: fim das medições e fim das análises) ----
