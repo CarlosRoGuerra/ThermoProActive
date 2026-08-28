@@ -21,7 +21,7 @@ FONTE = "Segoe UI"
 PRETO = RGBColor(0x00, 0x00, 0x00)
 CINZA = RGBColor(0x80, 0x80, 0x80)
 CINZA2 = RGBColor(0x9A, 0x9A, 0x9A)
-AZUL = RGBColor(0x1D, 0x4E, 0xD8)
+AZUL = RGBColor(0xC3, 0xDD, 0xF0)
 VERMELHO = RGBColor(0xCC, 0x00, 0x00)
 
 # ----------------------------- Conteúdo fixo (modelo Word) -------------------
@@ -106,15 +106,15 @@ def _cant_split(row):
     row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
 
 
-def _bottom_border(paragraph, color_hex="1D4ED8", size="4"):
-    """Linha fina embaixo do parágrafo (usada como régua do timbrado)."""
+def _bottom_border(paragraph, color_hex="C3DDF0", size="6", space="0"):
+    """Borda inferior do próprio parágrafo; usada para a linha azul do timbrado."""
     p = paragraph._p
     pPr = p.get_or_add_pPr()
     pbdr = OxmlElement("w:pBdr")
     bottom = OxmlElement("w:bottom")
     bottom.set(qn("w:val"), "single")
     bottom.set(qn("w:sz"), size)
-    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:space"), str(space))
     bottom.set(qn("w:color"), color_hex)
     pbdr.append(bottom)
     pPr.append(pbdr)
@@ -176,32 +176,56 @@ def _blank_tight(container, *, style=None):
 
 def _titulo(container, texto, *, style=None, space_after=None, line_spacing=None):
     """
-    Título numerado 1.–8. como no Word do modelo:
-      • número na margem;
-      • texto do título alinhado a 10 mm;
-      • hanging de 10 mm;
-      • TAB explícito entre o número e o texto.
+    Título numerado 1.–8. reproduzindo o XML do modelo:
+      w:ind w:left="567" w:hanging="567"
+      tab stop em w:pos="567"
 
-    O TAB é essencial: apenas escrever ``"1. Objetivo"`` com hanging não
-    posiciona ``Objetivo`` em 10 mm, como acontece no documento-modelo.
+    A gravação é feita diretamente em twips para não depender de arredondamento
+    ou interpretação do python-docx/Word. Assim, o número começa na margem do
+    texto e o título começa exatamente 10 mm à direita, alinhado ao corpo.
     """
     p = container.add_paragraph(style=style) if style else container.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     pf = p.paragraph_format
-    pf.left_indent = Mm(10)
-    pf.first_line_indent = Mm(-10)
     pf.space_before = Pt(0)
     if space_after is not None:
         pf.space_after = Pt(space_after)
     if line_spacing is not None:
         pf.line_spacing = line_spacing
 
-    # Tab stop exato onde começa o corpo do texto: 10 mm a partir da margem.
-    pf.tab_stops.add_tab_stop(Mm(10))
+    pPr = p._p.get_or_add_pPr()
+
+    # Recuo EXATO do modelo: 567 twips = 10 mm.
+    ind = pPr.find(qn("w:ind"))
+    if ind is None:
+        ind = OxmlElement("w:ind")
+        pPr.append(ind)
+    ind.set(qn("w:left"), "567")
+    ind.set(qn("w:hanging"), "567")
+    # Remove propriedades conflitantes, caso venham do estilo.
+    ind.attrib.pop(qn("w:firstLine"), None)
+    ind.attrib.pop(qn("w:start"), None)
+    ind.attrib.pop(qn("w:end"), None)
+
+    # Tab stop EXATO em 567 twips. Remove tabs diretos anteriores do parágrafo.
+    old_tabs = pPr.find(qn("w:tabs"))
+    if old_tabs is not None:
+        pPr.remove(old_tabs)
+    tabs = OxmlElement("w:tabs")
+    tab = OxmlElement("w:tab")
+    tab.set(qn("w:val"), "left")
+    tab.set(qn("w:pos"), "567")
+    tabs.append(tab)
+    pPr.append(tabs)
 
     if " " in texto:
         numero, titulo = texto.split(" ", 1)
         _fmt_run(p.add_run(numero), bold=True)
-        p.add_run("\t")
+
+        # TAB real (<w:tab/>), em vez de espaço comum.
+        rtab = p.add_run()
+        rtab._r.append(OxmlElement("w:tab"))
+
         _fmt_run(p.add_run(titulo), bold=True)
     else:
         _fmt_run(p.add_run(texto), bold=True)
@@ -272,12 +296,15 @@ def _montar_endereco(o):
 def _timbrado(section, prestador):
     if not prestador:
         return
+
     header = section.header
     header.is_linked_to_previous = False
-    # Limpa o parágrafo padrão do header.
+
+    # Limpa o parágrafo padrão do cabeçalho.
     for p in list(header.paragraphs):
         p._element.getparent().remove(p._element)
 
+    # A largura útil é exatamente 170 mm: 210 - 25 - 15.
     tab = header.add_table(rows=1, cols=2, width=Mm(170))
     tab.autofit = False
     tab.columns[0].width = Mm(62)
@@ -286,13 +313,34 @@ def _timbrado(section, prestador):
     esq.width = Mm(62)
     dir_.width = Mm(108)
 
-    # Logo à esquerda.
+    # Zera margens internas para o bloco da direita terminar exatamente
+    # na largura da coluna e para a borda do CNPJ não ficar recuada.
+    def _cell_margins_zero(cell):
+        tcPr = cell._tc.get_or_add_tcPr()
+        tcMar = tcPr.find(qn("w:tcMar"))
+        if tcMar is None:
+            tcMar = OxmlElement("w:tcMar")
+            tcPr.append(tcMar)
+        for side in ("top", "left", "bottom", "right"):
+            el = tcMar.find(qn(f"w:{side}"))
+            if el is None:
+                el = OxmlElement(f"w:{side}")
+                tcMar.append(el)
+            el.set(qn("w:w"), "0")
+            el.set(qn("w:type"), "dxa")
+
+    _cell_margins_zero(esq)
+    _cell_margins_zero(dir_)
+
+    # Logo à esquerda. Ela NÃO controla mais a posição da linha azul:
+    # a linha pertence ao parágrafo do CNPJ, na coluna direita.
     pl = esq.paragraphs[0]
     pl.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    pl.paragraph_format.space_before = Pt(0)
+    pl.paragraph_format.space_after = Pt(0)
+    pl.paragraph_format.line_spacing = 1.0
     try:
         if prestador.logomarca:
-            # Altura ~ à do bloco "razão + CNPJ" (2 linhas), para a linha azul
-            # ficar rente ao CNPJ e não abaixo da logo.
             pl.add_run().add_picture(prestador.logomarca.path, height=Mm(11))
     except Exception:
         pass
@@ -300,30 +348,43 @@ def _timbrado(section, prestador):
     l1, l2 = _montar_endereco(prestador)
     ie = f" | IE {prestador.inscricao_estadual}" if getattr(prestador, "inscricao_estadual", "") else ""
 
-    def _linha_cinza(container, txt, fmt, primeiro=None):
+    def _linha_cinza(container, txt, fmt, primeiro=None, *, line_spacing=1.0):
         p = primeiro if primeiro is not None else container.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(0)
-        p.paragraph_format.line_spacing = 1.15
+        p.paragraph_format.line_spacing = line_spacing
         _fmt_run(p.add_run(txt), **fmt)
         return p
 
-    # ACIMA da linha azul (na tabela, ao lado da logo): razão social + CNPJ | IE.
-    _linha_cinza(dir_, prestador.nome, dict(bold=True, size=12, color=CINZA), primeiro=dir_.paragraphs[0])
-    _linha_cinza(dir_, f"CNPJ {prestador.cnpj}{ie}", dict(size=9, color=CINZA2))
+    # Razão social.
+    _linha_cinza(
+        dir_, prestador.nome,
+        dict(bold=True, size=12, color=CINZA),
+        primeiro=dir_.paragraphs[0],
+        line_spacing=1.0,
+    )
 
-    # LINHA AZUL de margem a margem, logo abaixo do CNPJ | IE (como no PDF).
-    linha = header.add_paragraph()
-    linha.paragraph_format.space_before = Pt(1)
-    linha.paragraph_format.space_after = Pt(2)
-    linha.paragraph_format.line_spacing = 1.0
-    _bottom_border(linha, color_hex="1D4ED8", size="8")
+    # CNPJ + IE. A linha azul é a BORDA INFERIOR DESTE MESMO PARÁGRAFO.
+    # Portanto não existe parágrafo vazio, espaço_before ou espaço_after
+    # capaz de deslocá-la para baixo.
+    p_cnpj = _linha_cinza(
+        dir_, f"CNPJ {prestador.cnpj}{ie}",
+        dict(size=9, color=CINZA2),
+        line_spacing=1.0,
+    )
+    _bottom_border(p_cnpj, color_hex="C3DDF0", size="6", space="0")
 
-    # ABAIXO da linha azul: endereço / telefone / e-mail (direita, cinza).
-    for txt, fmt in [(l1, dict(size=8, color=CINZA2)), (l2, dict(size=8, color=CINZA2)),
-                     (prestador.telefone, dict(size=8, color=CINZA2)), (prestador.email, dict(size=8, color=CINZA2))]:
+    # ABAIXO da linha azul: endereço / telefone / e-mail, todos à direita.
+    # O primeiro parágrafo começa imediatamente depois da borda do CNPJ.
+    for txt, fmt in [
+        (l1, dict(size=8, color=CINZA2)),
+        (l2, dict(size=8, color=CINZA2)),
+        (prestador.telefone, dict(size=8, color=CINZA2)),
+        (prestador.email, dict(size=8, color=CINZA2)),
+    ]:
         if txt:
-            _linha_cinza(header, txt, fmt)
+            _linha_cinza(header, txt, fmt, line_spacing=1.0)
 
 
 # --------------------------------- Tabela ISO --------------------------------
