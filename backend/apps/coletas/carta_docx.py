@@ -11,6 +11,7 @@ Técnica (texto + imagem de pontos de medição) e assinatura.
 from __future__ import annotations
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -136,8 +137,10 @@ def _fmt_run(run, *, bold=False, italic=False, size=12, color=PRETO):
 
 
 def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
-       left=None, hanging=None, space_after=2, space_before=0, color=PRETO):
-    p = container.add_paragraph()
+       left=None, hanging=None, space_after=0, space_before=0, color=PRETO,
+       style=None, line_spacing=None):
+    """Cria parágrafo com medidas explícitas, deixando a entrelinha herdar do estilo quando None."""
+    p = container.add_paragraph(style=style) if style else container.add_paragraph()
     pf = p.paragraph_format
     if align is not None:
         p.alignment = align
@@ -147,15 +150,75 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
         pf.first_line_indent = Mm(-hanging)
     pf.space_after = Pt(space_after)
     pf.space_before = Pt(space_before)
-    pf.line_spacing = 1.15
+    if line_spacing is not None:
+        pf.line_spacing = line_spacing
     if text:
         _fmt_run(p.add_run(text), bold=bold, italic=italic, size=size, color=color)
     return p
 
 
-def _titulo(container, texto, space_before=12):
-    """Título de item numerado (1.–8.): entrelinhas 1.5 + respiro acima (12pt)."""
-    return _p(container, texto, bold=True, left=10, hanging=10, space_before=space_before, space_after=2)
+def _blank(container, *, style=None):
+    """Linha em branco manual usada pelo modelo para separar blocos."""
+    return _p(container, style=style, space_before=0, space_after=0)
+
+
+def _titulo(container, texto, *, style=None, space_after=0, line_spacing=None):
+    """Título numerado 1.–8.: 10 mm à esquerda e hanging de 10 mm, sem space_before."""
+    return _p(
+        container, texto, bold=True, left=10, hanging=10,
+        space_before=0, space_after=space_after, style=style,
+        line_spacing=line_spacing,
+    )
+
+
+def _configurar_doc_defaults(doc):
+    """Replica no XML os defaults do modelo: Segoe UI 12 pt e entrelinha 1,15."""
+    styles = doc.styles.element
+    doc_defaults = styles.find(qn("w:docDefaults"))
+    if doc_defaults is None:
+        doc_defaults = OxmlElement("w:docDefaults")
+        styles.insert(0, doc_defaults)
+
+    rpr_default = doc_defaults.find(qn("w:rPrDefault"))
+    if rpr_default is None:
+        rpr_default = OxmlElement("w:rPrDefault")
+        doc_defaults.append(rpr_default)
+    rpr = rpr_default.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        rpr_default.append(rpr)
+
+    rfonts = rpr.find(qn("w:rFonts"))
+    if rfonts is None:
+        rfonts = OxmlElement("w:rFonts")
+        rpr.insert(0, rfonts)
+    for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        rfonts.set(qn(attr), FONTE)
+    for theme_attr in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+        rfonts.attrib.pop(qn(theme_attr), None)
+
+    for tag in ("w:sz", "w:szCs"):
+        el = rpr.find(qn(tag))
+        if el is None:
+            el = OxmlElement(tag)
+            rpr.append(el)
+        el.set(qn("w:val"), "24")
+
+    ppr_default = doc_defaults.find(qn("w:pPrDefault"))
+    if ppr_default is None:
+        ppr_default = OxmlElement("w:pPrDefault")
+        doc_defaults.append(ppr_default)
+    ppr = ppr_default.find(qn("w:pPr"))
+    if ppr is None:
+        ppr = OxmlElement("w:pPr")
+        ppr_default.append(ppr)
+    spacing = ppr.find(qn("w:spacing"))
+    if spacing is None:
+        spacing = OxmlElement("w:spacing")
+        ppr.append(spacing)
+    spacing.set(qn("w:after"), "0")
+    spacing.set(qn("w:line"), "276")
+    spacing.set(qn("w:lineRule"), "auto")
 
 
 # --------------------------------- Cabeçalho ---------------------------------
@@ -204,7 +267,7 @@ def _timbrado(section, prestador):
         p = primeiro if primeiro is not None else container.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p.paragraph_format.space_after = Pt(0)
-        p.paragraph_format.line_spacing = 1.1
+        p.paragraph_format.line_spacing = 1.15
         _fmt_run(p.add_run(txt), **fmt)
         return p
 
@@ -361,13 +424,29 @@ def _paragrafos_gerados(rel, e):
 def construir_carta_docx(rel, prestador) -> Document:
     doc = Document()
 
-    # Fonte padrão.
+    # Defaults do modelo Word: Segoe UI 12 pt e entrelinha 1,15 (w:line=276).
+    _configurar_doc_defaults(doc)
     normal = doc.styles["Normal"]
     normal.font.name = FONTE
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
-    # Entrelinhas 1.15 em toda a carta (pedido do cliente).
-    normal.paragraph_format.line_spacing = 1.15
+    normal.paragraph_format.space_before = Pt(0)
+    normal.paragraph_format.space_after = Pt(0)
+    # A entrelinha do Normal herda do docDefaults, como no modelo.
+    normal.paragraph_format.line_spacing = None
+
+    # Estilo usado pelo modelo nos itens 6, 7 e 8: entrelinha simples, sem espaço extra.
+    try:
+        sem_espacamento = doc.styles["SemEspaamento"]
+    except KeyError:
+        sem_espacamento = doc.styles.add_style("SemEspaamento", WD_STYLE_TYPE.PARAGRAPH)
+    sem_espacamento.base_style = normal
+    sem_espacamento.font.name = FONTE
+    sem_espacamento.font.size = Pt(12)
+    sem_espacamento.font.color.rgb = PRETO
+    sem_espacamento.paragraph_format.space_before = Pt(0)
+    sem_espacamento.paragraph_format.space_after = Pt(0)
+    sem_espacamento.paragraph_format.line_spacing = 1.0
 
     # Página A4 + margens do modelo (topo 35 reserva o cabeçalho).
     sec = doc.sections[0]
@@ -397,94 +476,116 @@ def construir_carta_docx(rel, prestador) -> Document:
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
     pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=12, space_after=12)
-    # Entrelinhas simples na barra: o texto fica centralizado na altura do
-    # sombreamento e os espaços de 12pt acima/abaixo ficam simétricos.
-    pnum.paragraph_format.line_spacing = 1.0
-    _shade_par(pnum, "CCCCCC")
+    # O número do relatório herda a entrelinha 1,15 do docDefaults, como no modelo.
+    _shade_par(pnum, "D9D9D9")
 
     # ---- 1. Objetivo ----
-    # item 1 sem space_before: o espaço abaixo da barra é só o space_after dela (12pt),
-    # ficando IGUAL ao espaço acima da barra (12pt).
-    _titulo(doc, "1. Objetivo do Relatório", space_before=0)
+    _titulo(doc, "1. Objetivo do Relatório")
     _p(doc, "Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:",
-       align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
+       align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _p(doc, tec.nome, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    _blank(doc)
 
     # ---- 2. Datas (apenas duas: fim das medições e fim das análises) ----
     _titulo(doc, "2. Data(s) da(s) Execução(ões) da(s) Atividade(s)")
-    _p(doc, f"Finalização das medições em campo – {_dt(rel.data_termino)}", left=10, space_after=0)
-    _p(doc, f"Finalização das análises – {_dt(rel.data_finalizacao)}", left=10)
+    _p(doc, f"Finalização das medições em campo – {_dt(rel.data_termino)}",
+       align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    _p(doc, f"Finalização das análises – {_dt(rel.data_finalizacao)}",
+       align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    _blank(doc)
 
     # ---- 3. Conteúdo ----
     _titulo(doc, "3. Conteúdo do Relatório")
     for t in CONTEUDO:
-        _p(doc, t, left=10, space_after=0)
+        _p(doc, t, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    _blank(doc)
 
-    # ---- 4. Instrumentação (sub-itens alinhados a 10mm) ----
+    # ---- 4. Instrumentação (sub-itens a 22,51 mm, conforme XML do modelo) ----
     _titulo(doc, "4. Instrumentação Utilizada")
     if instrumentos:
         for ins in instrumentos:
             if ins.tipo:
-                _p(doc, ins.tipo, left=10, space_after=0)
+                _p(doc, ins.tipo, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.marca:
-                _p(doc, f"Marca: {ins.marca}", left=10, space_after=0)
+                _p(doc, f"Marca: {ins.marca}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.modelo:
-                _p(doc, f"Modelo: {ins.modelo}", left=10, space_after=0)
+                _p(doc, f"Modelo: {ins.modelo}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.numero_serie:
-                _p(doc, f"Serial #: {ins.numero_serie}", left=10, space_after=0)
+                _p(doc, f"Serial #: {ins.numero_serie}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.data_ultima_calibracao:
-                _p(doc, f"Data da última calibração: {_dt(ins.data_ultima_calibracao)}", left=10, space_after=0)
+                _p(doc, f"Data da última calibração: {_dt(ins.data_ultima_calibracao)}",
+                   align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             periodicidade = ins.get_periodicidade_calibracao_display() if ins.periodicidade_calibracao else ""
             if periodicidade:
-                _p(doc, f"Validade: {periodicidade}", left=10, space_after=0)
+                _p(doc, f"Validade: {periodicidade}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.entidade_calibracao:
-                _p(doc, f"Entidade Calibração: {ins.entidade_calibracao}", left=10, space_after=0)
+                _p(doc, f"Entidade Calibração: {ins.entidade_calibracao}",
+                   align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.software_analise:
-                _p(doc, "Softwares de Análises", left=10, space_before=2, space_after=0)
-                _p(doc, ins.software_analise, left=10, space_after=2)
+                _p(doc, "Softwares de Análises", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
+                _p(doc, ins.software_analise, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
     else:
-        _p(doc, "Não informada.", left=10)
+        _p(doc, "Não informada.", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
+    _blank(doc)
 
     # ---- 5. Normatização + tabela ISO ----
     _titulo(doc, "5. Normatização")
     if normas:
         for n in normas:
             texto = " - ".join(x for x in [n.codigo, n.nome] if x)
-            _p(doc, texto, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10, space_after=0)
+            _p(doc, texto, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     else:
-        _p(doc, "Não informada.", left=10)
+        _p(doc, "Não informada.", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _tabela_iso(doc)
+    _blank(doc)
 
     # ---- 6. Glossário ----
-    _titulo(doc, "6. Glossário Técnico")
-    for n, sigla, texto in GLOSSARIO:
-        p = doc.add_paragraph()
+    # No modelo, o título usa SemEspaamento com override 1,15 e after=12 pt.
+    _titulo(doc, "6. Glossário Técnico", style="SemEspaamento", space_after=12, line_spacing=1.15)
+    for i, (n, sigla, texto) in enumerate(GLOSSARIO):
+        p = doc.add_paragraph(style="SemEspaamento")
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.left_indent = Mm(10)
-        p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.line_spacing = 1.15
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+        # Sem override de line_spacing: herda 1,0 do estilo SemEspaamento.
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
+        if i < len(GLOSSARIO) - 1:
+            _blank(doc, style="SemEspaamento")
+    _blank(doc, style="SemEspaamento")
 
     # ---- 7. Definição da Técnica (GERADO dos dados do relatório + texto da técnica) ----
-    _titulo(doc, "7. Definição da Técnica")
-    # 7.0 Parágrafos montados a partir dos dados do relatório (banco).
-    for par in _paragrafos_gerados(rel, _escopo(rel)):
-        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    # 7.1/7.2 Descrição fixa da técnica (cadastro da tecnologia), quando houver.
+    # Mesmo padrão do item 6: título 1,15 + after=12 pt; corpo simples (1,0).
+    _titulo(doc, "7. Definição da Técnica", style="SemEspaamento", space_after=12, line_spacing=1.15)
+
+    definicao_paragrafos = list(_paragrafos_gerados(rel, _escopo(rel)))
     for campo in ((tec.definicao_tecnica or ""), (getattr(tec, "definicao_fluxo_trabalho", "") or "")):
         for par in campo.strip().splitlines():
             if par.strip():
-                _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+                definicao_paragrafos.append(par.strip())
+
+    for i, par in enumerate(definicao_paragrafos):
+        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10,
+           style="SemEspaamento", line_spacing=None)
+        if i < len(definicao_paragrafos) - 1:
+            _blank(doc, style="SemEspaamento")
+    _blank(doc, style="SemEspaamento")
 
     # ---- 8. Considerações + assinatura ----
-    _titulo(doc, "8. Considerações Importantes")
-    for par in CONSIDERACOES:
-        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    # O título 8 força 1,15, mas NÃO tem after=12; o modelo usa uma linha em branco após o título.
+    _titulo(doc, "8. Considerações Importantes", style="SemEspaamento", line_spacing=1.15)
+    _blank(doc, style="SemEspaamento")
+
+    consideracoes = list(CONSIDERACOES)
     if (rel.consideracoes_finais or "").strip():
-        for par in rel.consideracoes_finais.splitlines():
-            if par.strip():
-                _p(doc, par.strip(), align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+        consideracoes.extend(par.strip() for par in rel.consideracoes_finais.splitlines() if par.strip())
+
+    for i, par in enumerate(consideracoes):
+        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10,
+           style="SemEspaamento", line_spacing=None)
+        if i < len(consideracoes) - 1:
+            _blank(doc, style="SemEspaamento")
 
     _p(doc, "Atenciosamente,", left=10, space_before=8)
     for a in (analistas or ["Analista"]):
