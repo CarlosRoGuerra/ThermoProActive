@@ -147,7 +147,7 @@ def _p(container, text="", *, bold=False, italic=False, size=12, align=None,
         pf.first_line_indent = Mm(-hanging)
     pf.space_after = Pt(space_after)
     pf.space_before = Pt(space_before)
-    pf.line_spacing = 1.5
+    pf.line_spacing = 1.3
     if text:
         _fmt_run(p.add_run(text), bold=bold, italic=italic, size=size, color=color)
     return p
@@ -195,31 +195,33 @@ def _timbrado(section, prestador):
     except Exception:
         pass
 
-    # Dados do prestador à direita (cinza).
     l1, l2 = _montar_endereco(prestador)
     ie = f" | IE {prestador.inscricao_estadual}" if getattr(prestador, "inscricao_estadual", "") else ""
-    linhas = [
-        (prestador.nome, dict(bold=True, size=12, color=CINZA)),
-        (f"CNPJ {prestador.cnpj}{ie}", dict(size=9, color=CINZA2)),
-        (l1, dict(size=8, color=CINZA2)),
-        (l2, dict(size=8, color=CINZA2)),
-        (prestador.telefone, dict(size=8, color=CINZA2)),
-        (prestador.email, dict(size=8, color=CINZA2)),
-    ]
-    primeiro = dir_.paragraphs[0]
-    for i, (txt, fmt) in enumerate([(t, f) for t, f in linhas if t]):
-        p = primeiro if i == 0 else dir_.add_paragraph()
+
+    def _linha_cinza(container, txt, fmt, primeiro=None):
+        p = primeiro if primeiro is not None else container.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p.paragraph_format.space_after = Pt(0)
         p.paragraph_format.line_spacing = 1.1
         _fmt_run(p.add_run(txt), **fmt)
+        return p
 
-    # Linha azul de margem a margem, logo abaixo do timbrado.
+    # ACIMA da linha azul (na tabela, ao lado da logo): razão social + CNPJ | IE.
+    _linha_cinza(dir_, prestador.nome, dict(bold=True, size=12, color=CINZA), primeiro=dir_.paragraphs[0])
+    _linha_cinza(dir_, f"CNPJ {prestador.cnpj}{ie}", dict(size=9, color=CINZA2))
+
+    # LINHA AZUL de margem a margem, logo abaixo do CNPJ | IE (como no PDF).
     linha = header.add_paragraph()
     linha.paragraph_format.space_before = Pt(1)
-    linha.paragraph_format.space_after = Pt(0)
+    linha.paragraph_format.space_after = Pt(2)
     linha.paragraph_format.line_spacing = 1.0
     _bottom_border(linha, color_hex="1D4ED8", size="8")
+
+    # ABAIXO da linha azul: endereço / telefone / e-mail (direita, cinza).
+    for txt, fmt in [(l1, dict(size=8, color=CINZA2)), (l2, dict(size=8, color=CINZA2)),
+                     (prestador.telefone, dict(size=8, color=CINZA2)), (prestador.email, dict(size=8, color=CINZA2))]:
+        if txt:
+            _linha_cinza(header, txt, fmt)
 
 
 # --------------------------------- Tabela ISO --------------------------------
@@ -363,7 +365,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     normal.font.size = Pt(12)
     normal.font.color.rgb = PRETO
     # Entrelinhas 1.15 em toda a carta (pedido do cliente).
-    normal.paragraph_format.line_spacing = 1.5
+    normal.paragraph_format.line_spacing = 1.3
 
     # Página A4 + margens do modelo (topo 35 reserva o cabeçalho).
     sec = doc.sections[0]
@@ -393,6 +395,9 @@ def construir_carta_docx(rel, prestador) -> Document:
 
     # ---- Número (centralizado, barra cinza de margem a margem) ----
     pnum = _p(doc, rel.numero, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=12, space_after=12)
+    # Entrelinhas simples na barra: o texto fica centralizado na altura do
+    # sombreamento e os espaços de 12pt acima/abaixo ficam simétricos.
+    pnum.paragraph_format.line_spacing = 1.0
     _shade_par(pnum, "CCCCCC")
 
     # ---- 1. Objetivo ----
@@ -455,7 +460,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.left_indent = Mm(10)
         p.paragraph_format.space_after = Pt(2)
-        p.paragraph_format.line_spacing = 1.5
+        p.paragraph_format.line_spacing = 1.3
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
         _fmt_run(p.add_run(f" – {texto}"))
 
