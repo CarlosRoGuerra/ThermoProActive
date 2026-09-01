@@ -774,7 +774,6 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <PaginaInterna cab={cab}>
-          <p className="mb-4 text-right text-sm font-semibold text-rose-700">Seção B — KPI’s Dashboard</p>
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
             <div>
               <h3 className="mb-2 text-sm font-bold text-slate-800">Status das Condições</h3>
