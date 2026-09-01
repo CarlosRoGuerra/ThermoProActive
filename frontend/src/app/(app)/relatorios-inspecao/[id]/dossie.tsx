@@ -31,8 +31,13 @@ type Cabecalho = {
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
 };
-type Dist = { rotulo: string; total: number };
-type SecaoB = { condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[]; equip_monitorados: number; anomalias_diagnosticadas: number };
+type Dist = { rotulo: string; total: number; percentual: number };
+type DiagnosticoMedio = { velocidade: number | null; aceleracao: number | null; temperatura: number | null };
+type SecaoB = {
+  condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[];
+  equip_monitorados: number; anomalias_diagnosticadas: number;
+  media_anomalias_por_equipamento: number; diagnostico_medio: DiagnosticoMedio;
+};
 type LinhaC = { tag: string; equipamento: string; condicao: string };
 type GrupoC = { area: string; setor: string; linhas: LinhaC[] };
 type AvalLinha = { rotulo: string; pred_q: string | null; pred_v: string | null; emerg_q: string | null; emerg_v: string | null };
@@ -149,7 +154,9 @@ function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: 
           <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100">
             <div className="h-4 rounded" style={{ width: `${(d.total / max) * 100}%`, background: corFn?.(d.rotulo) ?? hue }} />
           </div>
-          <span className="w-6 shrink-0 text-right tabular-nums font-medium text-slate-700">{d.total}</span>
+          <span className="w-16 shrink-0 text-right tabular-nums font-medium text-slate-700">
+            {d.total} <span className="text-slate-400">({d.percentual}%)</span>
+          </span>
         </div>
       ))}
     </div>
@@ -779,6 +786,10 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                   <p className="text-3xl font-bold text-rose-700">{b.anomalias_diagnosticadas}</p>
                   <p className="text-xs text-slate-500">Anomalias diagnosticadas</p>
                 </div>
+                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-3xl font-bold text-slate-800">{b.media_anomalias_por_equipamento}</p>
+                  <p className="text-xs text-slate-500">Média de anomalias / equipamento</p>
+                </div>
               </div>
             </div>
             <div>
@@ -789,6 +800,31 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
               <h3 className="mb-2 text-sm font-bold text-slate-800">Status das Anomalias</h3>
               <Barras dados={b.anomalias} hue="#7c5cbf" />
             </div>
+            {(b.diagnostico_medio.velocidade != null || b.diagnostico_medio.aceleracao != null || b.diagnostico_medio.temperatura != null) && (
+              <div>
+                <h3 className="mb-2 text-sm font-bold text-slate-800">Média dos Valores de Diagnóstico</h3>
+                <div className="flex gap-4">
+                  {b.diagnostico_medio.velocidade != null && (
+                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.velocidade}</p>
+                      <p className="text-xs text-slate-500">Velocidade RMS (mm/s)</p>
+                    </div>
+                  )}
+                  {b.diagnostico_medio.aceleracao != null && (
+                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.aceleracao}</p>
+                      <p className="text-xs text-slate-500">Aceleração RMS (g)</p>
+                    </div>
+                  )}
+                  {b.diagnostico_medio.temperatura != null && (
+                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.temperatura}°C</p>
+                      <p className="text-xs text-slate-500">Temperatura medida</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </PaginaInterna>
 

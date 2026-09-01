@@ -1,4 +1,5 @@
 from collections import defaultdict
+from decimal import Decimal
 
 from django.db.models import Count, Sum
 from django.utils import timezone
@@ -299,6 +300,8 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                       "item__equipamento__tag", "id")
         )
         comp_tally, anom_tally = {}, {}
+        soma_vel = soma_acel = soma_temp = Decimal("0")
+        n_vel = n_acel = n_temp = 0
         secao_d = []
         for a in achados_qs:
             # Achado sem conteúdo técnico (sem componente E sem anomalia) NÃO vira
@@ -311,6 +314,15 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             anom_cat = a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "Outros")
             comp_tally[comp_cat] = comp_tally.get(comp_cat, 0) + 1
             anom_tally[anom_cat] = anom_tally.get(anom_cat, 0) + 1
+            if a.velocidade_global is not None:
+                soma_vel += a.velocidade_global
+                n_vel += 1
+            if a.aceleracao_global is not None:
+                soma_acel += a.aceleracao_global
+                n_acel += 1
+            if a.temperatura_medida is not None:
+                soma_temp += a.temperatura_medida
+                n_temp += 1
 
             eq = a.item.equipamento
             setor = eq.setor
@@ -355,7 +367,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             })
 
         def distribuicao(tally):
-            return [{"rotulo": k, "total": v} for k, v in sorted(tally.items(), key=lambda x: -x[1])]
+            total = sum(tally.values()) or 1
+            return [
+                {"rotulo": k, "total": v, "percentual": round(v * 100 / total, 1)}
+                for k, v in sorted(tally.items(), key=lambda x: -x[1])
+            ]
 
         # Glossário: TODAS as condições cadastradas (todos os GRs, OK, PDP…) — é uma
         # referência para o leitor, não só as usadas neste relatório. Descrição vem
@@ -424,6 +440,16 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "equip_monitorados": len(equipamentos_ids),
                 # Bate exatamente com o nº de folhas da Seção D.
                 "anomalias_diagnosticadas": len(secao_d),
+                # Média de anomalias por equipamento monitorado (KPI "aderência").
+                "media_anomalias_por_equipamento": (
+                    round(len(secao_d) / len(equipamentos_ids), 2) if equipamentos_ids else 0
+                ),
+                # Média dos valores de diagnóstico — só preenche o que a tecnologia mediu.
+                "diagnostico_medio": {
+                    "velocidade": round(soma_vel / n_vel, 2) if n_vel else None,
+                    "aceleracao": round(soma_acel / n_acel, 2) if n_acel else None,
+                    "temperatura": round(soma_temp / n_temp, 1) if n_temp else None,
+                },
             },
             "secao_c": {
                 "total": total_linhas,
