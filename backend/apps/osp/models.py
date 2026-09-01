@@ -95,6 +95,18 @@ class Acompanhamento(models.TextChoices):
     RETORNO_INFO = "RETORNO_INFO", "Retorno de informação"
 
 
+class ResultadoConfirmacao(models.TextChoices):
+    """
+    Se a abertura da máquina confirmou o diagnóstico da preditiva — alimenta o
+    KPI "Taxa de Acerto do Diagnóstico" (Seção B). Preenchido pela equipe de
+    manutenção depois da corretiva, junto com `descricao_corretiva`.
+    """
+
+    PENDENTE = "PENDENTE", "Aguardando confirmação"
+    CONFIRMADO = "CONFIRMADO", "Confirmado — diagnóstico correto"
+    NAO_CONFIRMADO = "NAO_CONFIRMADO", "Não confirmado — diagnóstico divergente"
+
+
 #: Status que indicam OSP ainda em aberto (não permite duplicar para o mesmo equipamento).
 STATUS_ABERTOS = {
     StatusOSP.ABERTA,
@@ -191,6 +203,11 @@ class OrdemServico(TimeStampedModel):
     descricao_corretiva = models.TextField(
         "Descrição da corretiva executada", blank=True,
         help_text="O que a equipe de manutenção efetivamente fez.",
+    )
+    resultado_confirmacao = models.CharField(
+        "Confirmação do diagnóstico", max_length=15, choices=ResultadoConfirmacao.choices,
+        default=ResultadoConfirmacao.PENDENTE,
+        help_text="A abertura da máquina confirmou o que a preditiva apontou?",
     )
 
     # --- Avaliação de Resultados (tabela verde da Seção D) -------------------

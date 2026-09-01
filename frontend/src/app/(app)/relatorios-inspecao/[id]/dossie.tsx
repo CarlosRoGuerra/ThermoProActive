@@ -34,9 +34,12 @@ type Cabecalho = {
 type Dist = { rotulo: string; total: number; percentual: number };
 type DiagnosticoMedio = { velocidade: number | null; aceleracao: number | null; temperatura: number | null };
 type SecaoB = {
-  condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[];
+  condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[]; alarmes: Dist[];
   equip_monitorados: number; anomalias_diagnosticadas: number;
   media_anomalias_por_equipamento: number; diagnostico_medio: DiagnosticoMedio;
+  custo_evitado: string | number;
+  taxa_acerto_diagnostico: number | null; diagnosticos_avaliados: number;
+  mtbf_dias: number | null; cobertura_ativos_criticos: number | null;
 };
 type LinhaC = { tag: string; equipamento: string; condicao: string };
 type GrupoC = { area: string; setor: string; linhas: LinhaC[] };
@@ -617,24 +620,26 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" icon={Printer} onClick={imprimir}>Impressão simples</Button>
+          {/* Relatório Final = Capa + Seção A (Carta) + B (KPIs) + C (Equipamentos) + D (OSPs),
+              num único documento — em PDF (impressão) ou .docx, o mesmo conteúdo nos dois formatos. */}
+          <span className="text-xs font-medium text-fg-subtle">Relatório Final:</span>
           <Link
             href={`/imprimir/${relatorioId}`}
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-fg shadow-xs transition-colors hover:bg-accent-hover"
           >
-            <Printer className="h-4 w-4" /> Imprimir / PDF (com nº de página)
+            <Printer className="h-4 w-4" /> PDF (com nº de página)
           </Link>
-          {/* Documento independente (não faz parte do relatório): baixa a carta em .docx */}
           <button
             type="button"
             onClick={() =>
               downloadFile(
-                `/relatorios-inspecao/${relatorioId}/carta-docx/`,
-                `Carta_${cab.numero}_${cab.empresa}.docx`.replace(/[\\/:*?"<>|]/g, "-"),
-              ).catch(() => alert("Não foi possível gerar a carta ao cliente."))
+                `/relatorios-inspecao/${relatorioId}/relatorio-final-docx/`,
+                `Relatorio_Final_${cab.numero}_${cab.empresa}.docx`.replace(/[\\/:*?"<>|]/g, "-"),
+              ).catch(() => alert("Não foi possível gerar o relatório final em .docx."))
             }
             className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-fg-muted shadow-xs transition-colors hover:bg-surface-muted hover:text-fg"
           >
-            <FileText className="h-4 w-4" /> Carta ao Cliente (.docx)
+            <FileText className="h-4 w-4" /> .docx
           </button>
         </div>
       </div>
@@ -825,6 +830,40 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </div>
               </div>
             )}
+            {b.alarmes.length > 0 && (
+              <div>
+                <h3 className="mb-2 text-sm font-bold text-slate-800">Status dos Tipos de Alarmes</h3>
+                <Barras dados={b.alarmes} hue="#c9401f" />
+              </div>
+            )}
+            <div>
+              <h3 className="mb-2 text-sm font-bold text-slate-800">Indicadores de Gestão</h3>
+              <div className="flex flex-wrap gap-4">
+                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-3xl font-bold text-emerald-700">{moeda(b.custo_evitado)}</p>
+                  <p className="text-xs text-slate-500">Custo evitado</p>
+                </div>
+                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-3xl font-bold text-slate-800">
+                    {b.taxa_acerto_diagnostico != null ? `${b.taxa_acerto_diagnostico}%` : "—"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Taxa de acerto do diagnóstico
+                    {b.diagnosticos_avaliados > 0 && ` (${b.diagnosticos_avaliados} avaliados)`}
+                  </p>
+                </div>
+                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-3xl font-bold text-slate-800">{b.mtbf_dias ?? "—"}</p>
+                  <p className="text-xs text-slate-500">MTBF (dias, estimado)</p>
+                </div>
+                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
+                  <p className="text-3xl font-bold text-slate-800">
+                    {b.cobertura_ativos_criticos != null ? `${b.cobertura_ativos_criticos}%` : "—"}
+                  </p>
+                  <p className="text-xs text-slate-500">Cobertura de ativos críticos</p>
+                </div>
+              </div>
+            </div>
           </div>
         </PaginaInterna>
 

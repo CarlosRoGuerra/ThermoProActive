@@ -70,6 +70,7 @@ export function OspForm({ ospId }: { ospId?: number }) {
     titulo: "", grau_risco: "", componente: "", anomalia: "", recomendacao: "",
     observacao: "", amplitude_velocidade: "", amplitude_aceleracao: "",
     descricao_corretiva: "", status: "ABERTA", acompanhamento: "ABERTA",
+    resultado_confirmacao: "PENDENTE",
   });
   const [roi, setRoi] = useState<Campos>({});
   const [carregando, setCarregando] = useState(editando);
@@ -114,6 +115,7 @@ export function OspForm({ ospId }: { ospId?: number }) {
           descricao_corretiva: (o.descricao_corretiva as string) ?? "",
           status: o.status ?? "ABERTA",
           acompanhamento: (o.acompanhamento as string) ?? "ABERTA",
+          resultado_confirmacao: (o.resultado_confirmacao as string) ?? "PENDENTE",
         });
         const r: Campos = {};
         for (const p of ["pred", "emerg"]) {
@@ -157,6 +159,7 @@ export function OspForm({ ospId }: { ospId?: number }) {
         descricao_corretiva: campos.descricao_corretiva,
         status: campos.status,
         acompanhamento: campos.acompanhamento,
+        resultado_confirmacao: campos.resultado_confirmacao,
       };
       body.amplitude_velocidade =
         campos.amplitude_velocidade === "" ? null : Number(campos.amplitude_velocidade);
@@ -428,6 +431,23 @@ export function OspForm({ ospId }: { ospId?: number }) {
               value={campos.descricao_corretiva}
               onChange={(e) => set("descricao_corretiva", e.target.value)}
             />
+          </Field>
+          <Field
+            label="Confirmação do diagnóstico"
+            className="sm:col-span-2"
+          >
+            <Select
+              value={campos.resultado_confirmacao}
+              onChange={(e) => set("resultado_confirmacao", e.target.value)}
+            >
+              <option value="PENDENTE">Aguardando confirmação</option>
+              <option value="CONFIRMADO">Confirmado — diagnóstico correto</option>
+              <option value="NAO_CONFIRMADO">Não confirmado — diagnóstico divergente</option>
+            </Select>
+            <p className="mt-1 text-xs text-fg-subtle">
+              A abertura da máquina confirmou o que a preditiva apontou? Alimenta o KPI
+              &quot;Taxa de Acerto do Diagnóstico&quot; do relatório.
+            </p>
           </Field>
         </div>
       </Card>

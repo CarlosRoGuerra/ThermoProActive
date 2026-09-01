@@ -287,6 +287,8 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "retorno": o.retorno_investimento,
             }
 
+        from apps.osp.models import ResultadoConfirmacao
+
         # --- Achados: apuração (Seção B) E folhas (Seção D) da MESMA lista —
         #     itera TODOS os achados, garantindo que a contagem bata com as folhas.
         achados_qs = (
@@ -299,9 +301,19 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             .order_by("item__equipamento__setor__area__nome", "item__equipamento__setor__nome",
                       "item__equipamento__tag", "id")
         )
-        comp_tally, anom_tally = {}, {}
+        # Nível de alarme (KPI "Status dos Tipos de Alarmes"): reagrupa o GR já
+        # existente em 3 níveis gerenciais — não é um catálogo novo, só uma leitura
+        # diferente da mesma severidade (mesma normalização de sigla usada em
+        # OrdemServico.gerar_de_achado, "GR-4" → "GR4").
+        NIVEL_ALARME = {
+            "GR1": "Nível 3 — Crítico", "GR2": "Nível 2 — Alerta",
+            "GR3": "Nível 1 — Aviso", "GR4": "Nível 1 — Aviso",
+        }
+        comp_tally, anom_tally, alarme_tally = {}, {}, {}
         soma_vel = soma_acel = soma_temp = Decimal("0")
         n_vel = n_acel = n_temp = 0
+        custo_evitado = Decimal("0")
+        diagnosticos_avaliados = diagnosticos_confirmados = 0
         secao_d = []
         for a in achados_qs:
             # Achado sem conteúdo técnico (sem componente E sem anomalia) NÃO vira
@@ -323,11 +335,22 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             if a.temperatura_medida is not None:
                 soma_temp += a.temperatura_medida
                 n_temp += 1
+            if a.condicao_id:
+                sigla_norm = (a.condicao.sigla or "").strip().upper().replace("-", "").replace(" ", "")
+                nivel = NIVEL_ALARME.get(sigla_norm)
+                if nivel:
+                    alarme_tally[nivel] = alarme_tally.get(nivel, 0) + 1
 
             eq = a.item.equipamento
             setor = eq.setor
             area = setor.area if setor else None
             osp = getattr(a, "osp", None)
+            if osp is not None:
+                custo_evitado += osp.retorno_investimento
+                if osp.resultado_confirmacao != ResultadoConfirmacao.PENDENTE:
+                    diagnosticos_avaliados += 1
+                    if osp.resultado_confirmacao == ResultadoConfirmacao.CONFIRMADO:
+                        diagnosticos_confirmados += 1
             # Número do relatório: "sequencial do cliente / sequencial global do BD".
             osp_num = (
                 f"{osp.sequencial_cliente}/{osp.sequencial_global}"
@@ -372,6 +395,40 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 {"rotulo": k, "total": v, "percentual": round(v * 100 / total, 1)}
                 for k, v in sorted(tally.items(), key=lambda x: -x[1])
             ]
+
+        # --- MTBF (proxy) — tempo médio, em dias, entre OSPs consecutivas do
+        # mesmo equipamento, olhando TODO o histórico do cliente (não só este
+        # relatório: 1 OSP isolada não tem "intervalo"). Sem um cadastro de
+        # parada/falha real, é a melhor aproximação com os dados existentes.
+        from apps.osp.models import OrdemServico as _OSP
+        datas_por_equip: dict[int, list] = defaultdict(list)
+        for eq_id, criado in _OSP.objects.filter(cliente=cliente).values_list("equipamento_id", "criado_em"):
+            datas_por_equip[eq_id].append(criado)
+        intervalos_dias = []
+        for datas in datas_por_equip.values():
+            datas.sort()
+            intervalos_dias.extend(
+                (b - a).total_seconds() / 86400 for a, b in zip(datas, datas[1:])
+            )
+        mtbf_dias = round(sum(intervalos_dias) / len(intervalos_dias), 1) if intervalos_dias else None
+
+        # --- Cobertura de Ativos Preditivos — % dos equipamentos criticidade "A"
+        # (crítico ao processo) do cliente que já entraram em alguma rota/coleta,
+        # em qualquer tecnologia, não só a deste relatório.
+        from apps.cadastros.models import CriticidadeEquip, Equipamento
+        equipamentos_criticos_ids = set(
+            Equipamento.objects.filter(setor__area__cliente=cliente, criticidade=CriticidadeEquip.A)
+            .values_list("id", flat=True)
+        )
+        if equipamentos_criticos_ids:
+            ja_monitorados = set(
+                ItemInspecao.objects.filter(
+                    carregamento__cliente=cliente, equipamento_id__in=equipamentos_criticos_ids
+                ).values_list("equipamento_id", flat=True).distinct()
+            )
+            cobertura_ativos = round(len(ja_monitorados) * 100 / len(equipamentos_criticos_ids), 1)
+        else:
+            cobertura_ativos = None
 
         # Glossário: TODAS as condições cadastradas (todos os GRs, OK, PDP…) — é uma
         # referência para o leitor, não só as usadas neste relatório. Descrição vem
@@ -450,6 +507,22 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     "aceleracao": round(soma_acel / n_acel, 2) if n_acel else None,
                     "temperatura": round(soma_temp / n_temp, 1) if n_temp else None,
                 },
+                # Status dos tipos de alarme (GR reagrupado em 3 níveis gerenciais).
+                "alarmes": distribuicao(alarme_tally),
+                # Custo evitado (R$): soma do ROI (emergencial − preditivo) das OSPs
+                # deste relatório que já têm avaliação de resultados lançada.
+                "custo_evitado": custo_evitado,
+                # Taxa de acerto do diagnóstico — só entre as OSPs já confirmadas
+                # (ou não) pela manutenção; null enquanto nenhuma foi avaliada.
+                "taxa_acerto_diagnostico": (
+                    round(diagnosticos_confirmados * 100 / diagnosticos_avaliados, 1)
+                    if diagnosticos_avaliados else None
+                ),
+                "diagnosticos_avaliados": diagnosticos_avaliados,
+                # MTBF em dias (proxy — ver nota acima) e cobertura de ativos críticos
+                # (%) calculados sobre TODO o histórico do cliente, não só este relatório.
+                "mtbf_dias": mtbf_dias,
+                "cobertura_ativos_criticos": cobertura_ativos,
             },
             "secao_c": {
                 "total": total_linhas,
@@ -477,6 +550,33 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         buf.seek(0)
 
         base = f"Carta_{rel.numero}_{rel.cliente.nome}"
+        seguro = "".join(c if c.isalnum() or c in "-_." else "_" for c in base)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="{seguro}.docx"'
+        return resp
+
+    @action(detail=True, methods=["get"], url_path="relatorio-final-docx")
+    def relatorio_final_docx(self, request, pk=None):
+        """Relatório Final (Capa + Seções A-D) como .docx — mesmo conteúdo do PDF."""
+        from io import BytesIO
+
+        from django.http import HttpResponse
+
+        from apps.cadastros.models import Empresa
+
+        from .relatorio_docx import construir_relatorio_final_docx
+
+        rel = self.get_object()
+        prestador = Empresa.objects.ativos().order_by("id").first()
+        doc = construir_relatorio_final_docx(rel, prestador)
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+        base = f"Relatorio_Final_{rel.numero}_{rel.cliente.nome}"
         seguro = "".join(c if c.isalnum() or c in "-_." else "_" for c in base)
         resp = HttpResponse(
             buf.getvalue(),

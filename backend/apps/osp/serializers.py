@@ -14,6 +14,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     grau_risco_display = serializers.CharField(source="get_grau_risco_display", read_only=True)
     acompanhamento_display = serializers.CharField(source="get_acompanhamento_display", read_only=True)
     grau_risco_descricao = serializers.CharField(read_only=True)
+    resultado_confirmacao_display = serializers.CharField(source="get_resultado_confirmacao_display", read_only=True)
     prazo_dias = serializers.IntegerField(read_only=True)
     total_preditiva = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     total_emergencial = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -48,6 +49,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "planejado_em", "planejado_por", "planejado_por_nome",
             "executado_em", "executado_por", "executado_por_nome",
             "finalizado_por", "finalizado_por_nome", "descricao_corretiva",
+            "resultado_confirmacao", "resultado_confirmacao_display",
             # Avaliação de Resultados
             "pred_mao_obra_h", "pred_mao_obra_valor",
             "pred_terceirizado_h", "pred_terceirizado_valor",
