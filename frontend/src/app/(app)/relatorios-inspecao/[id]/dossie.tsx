@@ -562,6 +562,42 @@ function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: 
   );
 }
 
+/* Glossário Técnico (abreviações fixas + condições cadastradas no relatório).
+   Cada metade do documento (Relatório Final e Carta ao Cliente) é lida de
+   forma independente, então CADA UMA carrega o seu próprio glossário — não é
+   compartilhado nem só a Carta tem. `titulo` deixa numerar como item da carta
+   ("6. Glossário Técnico") ou como página avulsa do Relatório Final. */
+function GlossarioConteudo({ cab, titulo = "Glossário Técnico", subPrefixo }: {
+  cab: Cabecalho; titulo?: string; subPrefixo?: string;
+}) {
+  return (
+    <>
+      <h3 className="text-sm font-bold text-slate-800">{titulo}</h3>
+      <p className="mt-1 text-sm font-semibold text-slate-700">{subPrefixo}1. Das abreviações</p>
+      <dl className="mb-2 ml-2 text-sm text-slate-600">
+        {ABREVIACOES.map(([sigla, desc], k) => (
+          <div key={k} className="flex gap-2 py-0.5">
+            <dt className="w-20 shrink-0 font-semibold text-slate-700">{sigla}</dt>
+            <dd>{desc}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <p className="mt-1 text-sm font-semibold text-slate-700">{subPrefixo}2. Das condições apropriadas</p>
+      {cab.glossario.length ? (
+        <dl className="mb-3 ml-2 text-sm text-slate-600">
+          {cab.glossario.map((g, k) => (
+            <div key={k} className="flex gap-2 py-0.5">
+              <dt className="w-20 shrink-0 font-semibold text-slate-700">{g.sigla}</dt>
+              <dd>{g.descricao}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
+    </>
+  );
+}
+
 /* Contra-capa (divisória de seção) — MESMO modelo físico da capa (gabarito
    AVSMD_Contra-Capa): logo vertical do prestador (15mm), ícone da tecnologia
    (30×30mm, topo/direita), nome da seção à direita em Segoe UI 22pt negrito
@@ -732,6 +768,12 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
     <div className="print-area space-y-4 text-slate-800">
         {/* ===================== CAPA (folha única, gabarito AVSMD_Capa) ===================== */}
         <CapaRelatorio cab={cab} />
+
+        {/* Glossário do Relatório Final — cada metade do documento tem o seu
+            próprio (a Carta ao Cliente, no final, tem o dela no item 6). */}
+        <PaginaInterna cab={cab}>
+          <GlossarioConteudo cab={cab} />
+        </PaginaInterna>
 
         {/* Contracapa da Seção B */}
         <Contracapa titulo={"KPI’s\nDashboard’s"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
@@ -1073,28 +1115,7 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
             </div>
           )}
 
-          <h3 className="text-sm font-bold text-slate-800">6. Glossário Técnico</h3>
-          <p className="mt-1 text-sm font-semibold text-slate-700">6.1. Das abreviações</p>
-          <dl className="mb-2 ml-2 text-sm text-slate-600">
-            {ABREVIACOES.map(([sigla, desc], k) => (
-              <div key={k} className="flex gap-2 py-0.5">
-                <dt className="w-20 shrink-0 font-semibold text-slate-700">{sigla}</dt>
-                <dd>{desc}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <p className="mt-1 text-sm font-semibold text-slate-700">6.2. Das condições apropriadas</p>
-          {cab.glossario.length ? (
-            <dl className="mb-3 ml-2 text-sm text-slate-600">
-              {cab.glossario.map((g, k) => (
-                <div key={k} className="flex gap-2 py-0.5">
-                  <dt className="w-20 shrink-0 font-semibold text-slate-700">{g.sigla}</dt>
-                  <dd>{g.descricao}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
+          <GlossarioConteudo cab={cab} titulo="6. Glossário Técnico" subPrefixo="6." />
 
           <h3 className="text-sm font-bold text-slate-800">7. Definição da Técnica</h3>
           <p className="mb-2 text-justify text-sm text-slate-600">{paragrafoEscopo1}</p>
