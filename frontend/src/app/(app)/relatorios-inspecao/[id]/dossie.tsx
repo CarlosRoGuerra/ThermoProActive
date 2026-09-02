@@ -115,6 +115,130 @@ function corCondicao(c: string) {
   return CORES[c.replace(/[^A-Za-z0-9]/g, "").toUpperCase()] ?? { bg: "#94a3b8", fg: "#fff" };
 }
 
+/* ---------------------- Paleta dos KPIs (Seção B) --------------------------
+   Skill dataviz — paleta validada (script validate_palette.js), não "a olho".
+   Só para os gráficos da Seção B: a Seção D (badge de GR da OSP, via
+   corCondicao acima) está TRAVADA dimensionalmente por pedido do cliente —
+   não mexer nela sem pedido explícito. */
+const STATUS_KPI = { critical: "#d03b3b", serious: "#ec835a", warning: "#fab219", good: "#0ca30c" };
+const VERDE_OK_KPI = "#008300"; // categórica slot 6 — distinto do status "good" (ΔE 9.7, validado)
+const CINZA_KPI = "#898781";
+const CATEGORICAS_KPI = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+
+function corStatusGR(rotuloBruto: string): string {
+  const r = rotuloBruto.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (r === "GR1") return STATUS_KPI.critical;
+  if (r === "GR2") return STATUS_KPI.serious;
+  if (r === "GR3") return STATUS_KPI.warning;
+  if (r === "GR4") return STATUS_KPI.good;
+  if (r === "OK" || r === "GR0") return VERDE_OK_KPI;
+  return CINZA_KPI;
+}
+function corAlarmeKPI(rotulo: string): string {
+  if (rotulo.includes("Crítico")) return STATUS_KPI.critical;
+  if (rotulo.includes("Alerta")) return STATUS_KPI.serious;
+  if (rotulo.includes("Aviso")) return STATUS_KPI.warning;
+  return CINZA_KPI;
+}
+const ORDEM_SEVERIDADE_GR = ["GR1", "GR2", "GR3", "GR4", "OK", "GR0"];
+function ordenarPorSeveridade(itens: Dist[]): Dist[] {
+  const rank = (r: string) => {
+    const idx = ORDEM_SEVERIDADE_GR.indexOf(r.replace(/[^A-Za-z0-9]/g, "").toUpperCase());
+    return idx === -1 ? ORDEM_SEVERIDADE_GR.length : idx;
+  };
+  return [...itens].sort((a, z) => rank(a.rotulo) - rank(z.rotulo));
+}
+const ORDEM_ALARME = ["Nível 3", "Nível 2", "Nível 1"];
+function ordenarAlarmes(itens: Dist[]): Dist[] {
+  return [...itens].sort(
+    (a, z) => ORDEM_ALARME.findIndex((p) => a.rotulo.startsWith(p)) - ORDEM_ALARME.findIndex((p) => z.rotulo.startsWith(p)),
+  );
+}
+/** Séries categóricas (identidade, não severidade): até 6 cores fixas da paleta;
+ * o resto dobra em "Outros" cinza — nunca gera uma 9ª cor (teto da escada de séries). */
+type Segmento = { rotulo: string; total: number; percentual: number; cor: string };
+function comCoresCategoricas(itens: Dist[], max = 6): Segmento[] {
+  const principais = itens.slice(0, max).map((it, i) => ({ ...it, cor: CATEGORICAS_KPI[i % CATEGORICAS_KPI.length] }));
+  const resto = itens.slice(max);
+  if (!resto.length) return principais;
+  const total = resto.reduce((s, r) => s + r.total, 0);
+  const percentual = Math.round(resto.reduce((s, r) => s + r.percentual, 0) * 10) / 10;
+  return [...principais, { rotulo: "Outros", total, percentual, cor: CINZA_KPI }];
+}
+
+/** Barra empilhada horizontal (parte-do-todo) — marca ≤24px, gap de 2px entre
+ * segmentos (a cor da página faz a separação, nunca uma borda), rótulo interno
+ * só quando cabe (≥8%); o resto fica só na legenda, nunca cortado. */
+function BarraEmpilhada({ segmentos }: { segmentos: Segmento[] }) {
+  const visiveis = segmentos.filter((s) => s.percentual > 0);
+  if (!visiveis.length) return <p className="text-xs text-slate-400">Sem dados.</p>;
+  return (
+    <div className="flex h-6 w-full gap-0.5 overflow-hidden rounded-md">
+      {visiveis.map((s, i) => (
+        <div
+          key={i}
+          title={`${s.rotulo}: ${s.total} (${s.percentual}%)`}
+          style={{ width: `${s.percentual}%`, background: s.cor }}
+          className="flex min-w-[2px] items-center justify-center"
+        >
+          {s.percentual >= 8 && <span className="truncate px-1 text-[9px] font-semibold text-white">{s.percentual}%</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Legenda — sempre presente p/ 2+ séries; identidade nunca só na cor (texto usa
+ * tokens de tinta, nunca a cor da série). */
+function LegendaKPI({ segmentos }: { segmentos: Segmento[] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      {segmentos.map((s, i) => (
+        <div key={i} className="flex items-center gap-1.5 text-[10px]">
+          <span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: s.cor }} />
+          <span className="font-medium text-slate-700">{s.rotulo}</span>
+          <span className="text-slate-400">{s.total} · {s.percentual}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GraficoDistribuicao({ titulo, segmentos }: { titulo: string; segmentos: Segmento[] }) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-bold text-slate-800">{titulo}</h3>
+      <BarraEmpilhada segmentos={segmentos} />
+      <LegendaKPI segmentos={segmentos} />
+    </div>
+  );
+}
+
+/** Cartão de indicador único — valor em destaque (figuras proporcionais, não
+ * tabulares — reservadas a colunas), rótulo em caixa normal sem dois-pontos. */
+function StatTile({ valor, rotulo, cor = "#0b0b0b" }: { valor: ReactNode; rotulo: string; cor?: string }) {
+  return (
+    <div className="min-w-[34mm] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
+      <p className="text-2xl font-semibold leading-tight" style={{ color: cor }}>{valor}</p>
+      <p className="mt-0.5 text-[10px] text-slate-500">{rotulo}</p>
+    </div>
+  );
+}
+
+/** Medidor (valor único vs. limite) — trilho é um degrau mais claro da MESMA
+ * rampa do preenchimento (azul sequencial), nunca uma pizza de 2 fatias. */
+function Medidor({ valor, meta }: { valor: number; meta?: number }) {
+  const pct = Math.min(100, Math.max(0, valor));
+  return (
+    <div className="relative h-3 w-full overflow-hidden rounded-full" style={{ background: "#cde2fb" }}>
+      <div className="h-full rounded-full transition-[width]" style={{ width: `${pct}%`, background: "#2a78d6" }} />
+      {meta != null && (
+        <div className="absolute top-[-2px] bottom-[-2px] w-[2px]" style={{ left: `${Math.min(100, meta)}%`, background: "#52514e" }} />
+      )}
+    </div>
+  );
+}
+
 /** Normaliza a descrição do grau de risco para o padrão visual do cliente.
  * Exemplos:
  * "Grau de Risco BAIXO" -> "Risco Baixo"
@@ -146,27 +270,6 @@ const ABREVIACOES: [string, string][] = [
   ["LA", "Lado Acoplado."],
   ["LOA", "Lado Oposto ao Acoplado."],
 ];
-
-/* ------------------------------- Barras ----------------------------------- */
-function Barras({ dados, corFn, hue = "#3b6ea5" }: { dados: Dist[]; corFn?: (r: string) => string; hue?: string }) {
-  if (dados.length === 0) return <p className="text-xs text-slate-400">Sem dados.</p>;
-  const max = Math.max(1, ...dados.map((d) => d.total));
-  return (
-    <div className="space-y-1.5">
-      {dados.map((d) => (
-        <div key={d.rotulo} className="flex items-center gap-2 text-xs">
-          <span className="w-44 shrink-0 whitespace-normal break-words leading-snug text-slate-600" title={d.rotulo}>{d.rotulo}</span>
-          <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100">
-            <div className="h-4 rounded" style={{ width: `${(d.total / max) * 100}%`, background: corFn?.(d.rotulo) ?? hue }} />
-          </div>
-          <span className="w-16 shrink-0 text-right tabular-nums font-medium text-slate-700">
-            {d.total} <span className="text-slate-400">({d.percentual}%)</span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /* Fonte do modelo do cliente (OSP). */
 const FONTE_OSP = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
@@ -800,95 +903,78 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
 
         {/* ========================= SEÇÃO B — KPIs ========================= */}
         <PaginaInterna cab={cab}>
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Status das Condições</h3>
-              <Barras dados={b.condicoes} corFn={(r) => corCondicao(r).bg} />
+          <div className="space-y-6">
+            {/* Indicadores-chave (stat tiles) */}
+            <div className="flex flex-wrap gap-3">
+              <StatTile valor={b.equip_monitorados} rotulo="Equipamentos monitorados" />
+              <StatTile valor={b.anomalias_diagnosticadas} rotulo="Anomalias diagnosticadas" cor={STATUS_KPI.critical} />
+              <StatTile valor={b.media_anomalias_por_equipamento} rotulo="Média de anomalias / equipamento" />
+              <StatTile valor={moeda(b.custo_evitado)} rotulo="Custo evitado" cor={STATUS_KPI.good} />
+              {b.mtbf_dias != null && <StatTile valor={`${b.mtbf_dias} d`} rotulo="MTBF estimado" />}
             </div>
-            <div>
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Equipamentos × Anomalias</h3>
-              <div className="flex gap-4">
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-slate-800">{b.equip_monitorados}</p>
-                  <p className="text-xs text-slate-500">Equipamentos monitorados</p>
+
+            {/* Medidores (valor vs. limite) */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <div className="mb-1.5 flex items-baseline justify-between">
+                  <h3 className="text-sm font-bold text-slate-800">Taxa de acerto do diagnóstico</h3>
+                  <span className="text-lg font-semibold text-slate-800">
+                    {b.taxa_acerto_diagnostico != null ? `${b.taxa_acerto_diagnostico}%` : "—"}
+                  </span>
                 </div>
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-rose-700">{b.anomalias_diagnosticadas}</p>
-                  <p className="text-xs text-slate-500">Anomalias diagnosticadas</p>
+                {b.taxa_acerto_diagnostico != null ? (
+                  <>
+                    <Medidor valor={b.taxa_acerto_diagnostico} meta={90} />
+                    <p className="mt-1 text-[10px] text-slate-400">{b.diagnosticos_avaliados} OSP(s) avaliada(s) · meta ≥ 90%</p>
+                  </>
+                ) : <p className="text-xs text-slate-400">Nenhum diagnóstico confirmado ainda.</p>}
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-baseline justify-between">
+                  <h3 className="text-sm font-bold text-slate-800">Cobertura de ativos críticos</h3>
+                  <span className="text-lg font-semibold text-slate-800">
+                    {b.cobertura_ativos_criticos != null ? `${b.cobertura_ativos_criticos}%` : "—"}
+                  </span>
                 </div>
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-slate-800">{b.media_anomalias_por_equipamento}</p>
-                  <p className="text-xs text-slate-500">Média de anomalias / equipamento</p>
-                </div>
+                {b.cobertura_ativos_criticos != null ? (
+                  <Medidor valor={b.cobertura_ativos_criticos} />
+                ) : <p className="text-xs text-slate-400">Nenhum equipamento criticidade A cadastrado.</p>}
               </div>
             </div>
-            <div>
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Status dos Componentes</h3>
-              <Barras dados={b.componentes} hue="#3b6ea5" />
+
+            {/* Distribuições (parte-do-todo) */}
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <GraficoDistribuicao
+                titulo="Status das Condições"
+                segmentos={ordenarPorSeveridade(b.condicoes).map((s) => ({ ...s, cor: corStatusGR(s.rotulo) }))}
+              />
+              {b.alarmes.length > 0 && (
+                <GraficoDistribuicao
+                  titulo="Status dos Tipos de Alarmes"
+                  segmentos={ordenarAlarmes(b.alarmes).map((s) => ({ ...s, cor: corAlarmeKPI(s.rotulo) }))}
+                />
+              )}
+              <GraficoDistribuicao titulo="Status dos Componentes" segmentos={comCoresCategoricas(b.componentes)} />
+              <GraficoDistribuicao titulo="Status das Anomalias" segmentos={comCoresCategoricas(b.anomalias)} />
             </div>
-            <div>
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Status das Anomalias</h3>
-              <Barras dados={b.anomalias} hue="#7c5cbf" />
-            </div>
+
+            {/* Médias de diagnóstico */}
             {(b.diagnostico_medio.velocidade != null || b.diagnostico_medio.aceleracao != null || b.diagnostico_medio.temperatura != null) && (
               <div>
                 <h3 className="mb-2 text-sm font-bold text-slate-800">Média dos Valores de Diagnóstico</h3>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-3">
                   {b.diagnostico_medio.velocidade != null && (
-                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.velocidade}</p>
-                      <p className="text-xs text-slate-500">Velocidade RMS (mm/s)</p>
-                    </div>
+                    <StatTile valor={b.diagnostico_medio.velocidade} rotulo="Velocidade RMS (mm/s)" />
                   )}
                   {b.diagnostico_medio.aceleracao != null && (
-                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.aceleracao}</p>
-                      <p className="text-xs text-slate-500">Aceleração RMS (g)</p>
-                    </div>
+                    <StatTile valor={b.diagnostico_medio.aceleracao} rotulo="Aceleração RMS (g)" />
                   )}
                   {b.diagnostico_medio.temperatura != null && (
-                    <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                      <p className="text-3xl font-bold text-slate-800">{b.diagnostico_medio.temperatura}°C</p>
-                      <p className="text-xs text-slate-500">Temperatura medida</p>
-                    </div>
+                    <StatTile valor={`${b.diagnostico_medio.temperatura}°C`} rotulo="Temperatura medida" />
                   )}
                 </div>
               </div>
             )}
-            {b.alarmes.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-sm font-bold text-slate-800">Status dos Tipos de Alarmes</h3>
-                <Barras dados={b.alarmes} hue="#c9401f" />
-              </div>
-            )}
-            <div>
-              <h3 className="mb-2 text-sm font-bold text-slate-800">Indicadores de Gestão</h3>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-emerald-700">{moeda(b.custo_evitado)}</p>
-                  <p className="text-xs text-slate-500">Custo evitado</p>
-                </div>
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-slate-800">
-                    {b.taxa_acerto_diagnostico != null ? `${b.taxa_acerto_diagnostico}%` : "—"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Taxa de acerto do diagnóstico
-                    {b.diagnosticos_avaliados > 0 && ` (${b.diagnosticos_avaliados} avaliados)`}
-                  </p>
-                </div>
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-slate-800">{b.mtbf_dias ?? "—"}</p>
-                  <p className="text-xs text-slate-500">MTBF (dias, estimado)</p>
-                </div>
-                <div className="flex-1 rounded-lg bg-slate-50 p-4 text-center">
-                  <p className="text-3xl font-bold text-slate-800">
-                    {b.cobertura_ativos_criticos != null ? `${b.cobertura_ativos_criticos}%` : "—"}
-                  </p>
-                  <p className="text-xs text-slate-500">Cobertura de ativos críticos</p>
-                </div>
-              </div>
-            </div>
           </div>
         </PaginaInterna>
 
