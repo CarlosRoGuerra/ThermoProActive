@@ -202,7 +202,16 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         ] if p)
         _cli_l2 = " – ".join(p for p in [cliente.cep, cliente.cidade_uf] if p)
         carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
-        analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
+        _analistas_por_id = {c.analista_id: c.analista for c in carregs if c.analista_id}
+        analistas = [
+            {
+                "nome": u.nome,
+                "assinatura": (
+                    request.build_absolute_uri(u.assinatura_digital.url) if u.assinatura_digital else None
+                ),
+            }
+            for u in sorted(_analistas_por_id.values(), key=lambda u: u.nome)
+        ]
 
         # Instrumentação com dados de calibração (atrelados ao ID do instrumento).
         instrumentos, vistos = [], set()

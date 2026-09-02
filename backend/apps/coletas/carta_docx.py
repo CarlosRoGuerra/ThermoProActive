@@ -438,7 +438,8 @@ def _dados(rel):
     from apps.cadastros.models import Norma
 
     carregs = list(rel.carregamentos.select_related("instrumento", "analista"))
-    analistas = sorted({c.analista.nome for c in carregs if c.analista_id})
+    _analistas_por_id = {c.analista_id: c.analista for c in carregs if c.analista_id}
+    analistas = sorted(_analistas_por_id.values(), key=lambda u: u.nome)
     instrumentos, vistos = [], set()
     for c in carregs:
         ins = c.instrumento
@@ -690,9 +691,21 @@ def construir_carta_docx(rel, prestador) -> Document:
             _blank(doc, style="SemEspaamento")
 
     _p(doc, "Atenciosamente,", left=10, space_before=8)
-    for a in (analistas or ["Analista"]):
+    for u in analistas:
         _p(doc, "", space_before=10)
-        _p(doc, a, bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT, space_after=0)
+        if u.assinatura_digital:
+            try:
+                p_img = doc.add_paragraph()
+                p_img.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                p_img.paragraph_format.space_after = Pt(0)
+                p_img.add_run().add_picture(u.assinatura_digital.path, height=Mm(15))
+            except Exception:
+                pass
+        _p(doc, u.nome, bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT, space_after=0)
+        _p(doc, "Analista em Manutenção Preditiva", size=8, align=WD_ALIGN_PARAGRAPH.RIGHT)
+    if not analistas:
+        _p(doc, "", space_before=10)
+        _p(doc, "Analista", bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT, space_after=0)
         _p(doc, "Analista em Manutenção Preditiva", size=8, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     return doc

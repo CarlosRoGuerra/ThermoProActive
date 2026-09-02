@@ -6,6 +6,7 @@ import { ArrowLeft, FileText, Phone, Printer, Save } from "lucide-react";
 import { api, downloadFile } from "@/lib/api";
 import { tecnologiaTipo, type TecnologiaTipo } from "@/lib/inspecoes";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
+import { CartaCorpo } from "@/app/carta/[id]/carta";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -26,7 +27,8 @@ type Cabecalho = {
   prestador: Prestador | null;
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
   endereco_linha1: string; endereco_linha2: string;
-  logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null; analistas: string[];
+  logomarca: string | null; numero: string; tecnologia: string; tecnologia_imagem: string | null;
+  analistas: { nome: string; assinatura: string | null }[];
   definicao_tecnica: string; definicao_fluxo_trabalho: string; definicao_legenda_imagem: string; pontos_medicao_imagem: string | null;
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
@@ -111,63 +113,6 @@ const CORES: Record<string, { bg: string; fg: string }> = {
 };
 function corCondicao(c: string) {
   return CORES[c.replace(/[^A-Za-z0-9]/g, "").toUpperCase()] ?? { bg: "#94a3b8", fg: "#fff" };
-}
-
-/* --------------------------- Tabela ISO-10816-1 ---------------------------- */
-/* Mesma tabela/coloração do gerador .docx da Carta (carta_docx.py ISO_VEL/_SEV),
-   reproduzida aqui para a Carta ao Cliente ficar fiel nos dois formatos. */
-const ISO_VEL: [number, number][] = [
-  [0.28, 0.02], [0.45, 0.03], [0.71, 0.04], [1.12, 0.06], [1.8, 0.1], [2.8, 0.16],
-  [4.5, 0.25], [7.1, 0.4], [11.2, 0.62], [18.0, 1.0], [28.0, 1.56], [45.0, 2.51],
-];
-const ISO_CLASSES = ["I", "II", "III", "IV"] as const;
-const ISO_ZONAS: Record<(typeof ISO_CLASSES)[number], [number, number, number]> = {
-  I: [0.71, 1.8, 4.5], II: [1.12, 2.8, 7.1], III: [1.8, 4.5, 11.2], IV: [2.8, 7.1, 18.0],
-};
-const ISO_SEV = [
-  { rotulo: "Bom", fill: "#22c55e", cor: "#fff" },
-  { rotulo: "Satisfatório", fill: "#a3e635", cor: "#1f2937" },
-  { rotulo: "Alerta", fill: "#f59e0b", cor: "#1f2937" },
-  { rotulo: "Perigo", fill: "#ef4444", cor: "#fff" },
-];
-function severidadeIso(v: number, classe: (typeof ISO_CLASSES)[number]) {
-  const [a, b, c] = ISO_ZONAS[classe];
-  if (v <= a) return ISO_SEV[0];
-  if (v <= b) return ISO_SEV[1];
-  if (v <= c) return ISO_SEV[2];
-  return ISO_SEV[3];
-}
-
-/* ------------------ Parágrafos gerados do item "Definição da Técnica" ----------
-   Mesma lógica de carta_docx.py `_paragrafos_gerados`/`_escopo` — texto derivado
-   dos dados do próprio relatório (nº de equipamentos, setores, áreas, anomalias). */
-function listaEnumerada(itens: string[]): string {
-  if (itens.length <= 1) return itens[0] ?? "";
-  return itens.slice(0, -1).join(", ") + " e " + itens[itens.length - 1];
-}
-function paragrafosGerados(
-  tecnologia: string, totalEquip: number, grupos: GrupoC[], anomalias: Dist[], condicoes: Dist[],
-): [string, string] {
-  const nSetores = grupos.length;
-  const nAreas = new Set(grupos.map((g) => g.area)).size;
-  const eq = totalEquip === 1 ? "1 equipamento" : `${totalEquip} equipamentos`;
-  const st = nSetores === 1 ? "1 setor" : `${nSetores} setores`;
-  const ar = nAreas === 1 ? "1 área" : `${nAreas} áreas`;
-  const p1 = `Neste relatório aplicou-se a técnica de ${tecnologia}, contemplando ${eq} monitorado(s) em ${st} (${ar}), com o auxílio da instrumentação descrita no item 4.`;
-
-  const n = anomalias.reduce((soma, a) => soma + a.total, 0);
-  if (n === 0) {
-    return [p1, "A partir das medições realizadas, não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas neste ciclo."];
-  }
-  const base = n === 1 ? "foi diagnosticada 1 anomalia" : `foram diagnosticadas ${n} anomalias`;
-  const tipos = listaEnumerada(anomalias.map((a) => a.rotulo));
-  const trechoTipos = tipos ? `, do(s) tipo(s): ${tipos}` : "";
-  const grItens = condicoes.filter((c) => /^gr-?[1-4]$/i.test(c.rotulo));
-  const trechoGr = grItens.length
-    ? ` A distribuição por Grau de Risco foi — ${grItens.map((g) => `${g.rotulo}: ${g.total}`).join("; ")}.`
-    : "";
-  const p2 = `A partir das medições realizadas, ${base}${trechoTipos}. Cada anomalia foi classificada conforme os Graus de Risco descritos no item 6 e convertida em Ordem de Serviço Preditiva na Seção D.${trechoGr}`;
-  return [p1, p2];
 }
 
 /** Normaliza a descrição do grau de risco para o padrão visual do cliente.
@@ -598,119 +543,6 @@ function GlossarioConteudo({ cab, titulo = "Glossário Técnico", subPrefixo }: 
   );
 }
 
-/* Itens 1–7 (Objetivo, Datas, Conteúdo, Instrumentação, Normatização+ISO,
-   Glossário, Definição da Técnica) — o corpo de referência da carta, SEM o
-   fechamento (item 8, Considerações + assinatura, que é exclusivo de quem
-   está sendo endereçado). Cada metade do documento (Relatório Final e Carta
-   ao Cliente) usa este mesmo bloco, para não ficar cada uma com pedaços
-   diferentes do mesmo conteúdo de referência. */
-function ConteudoBaseCarta({ cab, tipoTec, paragrafoEscopo1, paragrafoEscopo2 }: {
-  cab: Cabecalho; tipoTec: TecnologiaTipo; paragrafoEscopo1: string; paragrafoEscopo2: string;
-}) {
-  return (
-    <>
-      <h3 className="text-sm font-bold text-slate-800">1. Objetivo do Relatório</h3>
-      <p className="mb-3 text-justify text-sm text-slate-600">
-        Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de: <em>{cab.tecnologia}</em>.
-      </p>
-
-      <h3 className="text-sm font-bold text-slate-800">2. Data(s) da(s) Execução(ões) da(s) Atividade(s)</h3>
-      <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-        <li>Finalização das medições em campo — {ddmmaaaa(cab.data_termino)}</li>
-        <li>Finalização das análises — {ddmmaaaa(cab.data_finalizacao)}</li>
-      </ul>
-
-      <h3 className="text-sm font-bold text-slate-800">3. Conteúdo do Relatório</h3>
-      <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-        <li>Seção A — Carta ao Cliente</li><li>Seção B — KPI’s Dashboard</li>
-        <li>Seção C — Relação de Equipamentos Contemplados</li><li>Seção D — Ordens de Serviços Preditivos</li>
-      </ul>
-
-      <h3 className="text-sm font-bold text-slate-800">4. Instrumentação Utilizada</h3>
-      {cab.instrumentos.length ? (
-        <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-          {cab.instrumentos.map((i, k) => (
-            <li key={k}>
-              {[i.tipo, i.marca, i.modelo].filter(Boolean).join(" · ")}
-              {i.numero_serie && ` · Serial ${i.numero_serie}`}
-              {i.software_analise && ` · Software ${i.software_analise}`}
-              <br />
-              <span className="text-xs text-slate-500">
-                Calibração: {ddmmaaaa(i.data_ultima_calibracao)}
-                {i.proxima_calibracao && ` · válida até ${ddmmaaaa(i.proxima_calibracao)}`}
-                {i.periodicidade && ` · ${i.periodicidade}`}
-                {i.entidade_calibracao && ` · Entidade: ${i.entidade_calibracao}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
-
-      <h3 className="text-sm font-bold text-slate-800">5. Normatização</h3>
-      {cab.normas.length ? (
-        <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-          {cab.normas.map((n, k) => <li key={k}>{[n.codigo, n.nome].filter(Boolean).join(" — ")}</li>)}
-        </ul>
-      ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
-      {tipoTec === "vibracao" && (
-        <div className="my-3 overflow-x-auto">
-          <table className="w-full border-collapse text-[7.5pt]">
-            <thead>
-              <tr>
-                <th colSpan={2 + ISO_CLASSES.length} className="border border-slate-300 bg-white p-1 text-center text-[9pt] font-bold text-rose-700">
-                  Norma ISO-20816-3 — Severidade · Faixas de Velocidade e Classes de Máquina
-                </th>
-              </tr>
-              <tr className="bg-slate-100">
-                <th className="border border-slate-300 p-1">V [mm/s] RMS</th>
-                <th className="border border-slate-300 p-1">V [in/s] Pico</th>
-                {ISO_CLASSES.map((cl) => <th key={cl} className="border border-slate-300 p-1">Classe {cl}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {ISO_VEL.map(([mm, pol], i) => (
-                <tr key={i}>
-                  <td className="border border-slate-300 p-1 text-center font-semibold">{mm.toFixed(2)}</td>
-                  <td className="border border-slate-300 p-1 text-center font-semibold">{pol.toFixed(2)}</td>
-                  {ISO_CLASSES.map((cl) => {
-                    const sev = severidadeIso(mm, cl);
-                    return (
-                      <td key={cl} className="border border-slate-300 p-1 text-center font-semibold" style={{ background: sev.fill, color: sev.cor }}>
-                        {sev.rotulo}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <GlossarioConteudo cab={cab} titulo="6. Glossário Técnico" subPrefixo="6." />
-
-      <h3 className="text-sm font-bold text-slate-800">7. Definição da Técnica</h3>
-      <p className="mb-2 text-justify text-sm text-slate-600">{paragrafoEscopo1}</p>
-      <p className="mb-3 text-justify text-sm text-slate-600">{paragrafoEscopo2}</p>
-      {cab.definicao_tecnica && cab.definicao_tecnica.split(/\n+/).filter((p) => p.trim()).map((par, k) => (
-        <p key={k} className="mb-3 text-justify text-sm text-slate-600">{par}</p>
-      ))}
-      {cab.definicao_fluxo_trabalho && (
-        <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-          {cab.definicao_fluxo_trabalho.split(/\n+/).filter((l) => l.trim()).map((linha, k) => <li key={k}>{linha}</li>)}
-        </ul>
-      )}
-      {cab.pontos_medicao_imagem && (
-        <div className="my-3 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cab.pontos_medicao_imagem} alt="Pontos de medição" className="mx-auto max-h-64" />
-          {cab.definicao_legenda_imagem && <p className="mt-1 text-xs text-slate-500">{cab.definicao_legenda_imagem}</p>}
-        </div>
-      )}
-    </>
-  );
-}
-
 /* Contra-capa (divisória de seção) — MESMO modelo físico da capa (gabarito
    AVSMD_Contra-Capa): logo vertical do prestador (15mm), ícone da tecnologia
    (30×30mm, topo/direita), nome da seção à direita em Segoe UI 22pt negrito
@@ -807,8 +639,13 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           .print-area > * { margin-top: 0 !important; }
           .no-print { display: none !important; }
 
-          .print-area > section { break-after: page; page-break-after: always; }
-          .print-area > section:last-child { break-after: auto; page-break-after: auto; }
+          /* CartaCorpo (reaproveitado da rota /carta/[id]) embrulha suas 5 folhas
+             num <div className="carta-doc">, então NÃO são filhas diretas do
+             .print-area — precisam do seletor à parte para quebrar página aqui
+             também (a versão paged.js, "Imprimir / PDF", casa por classe .pagina
+             independente da profundidade, então não precisa deste ajuste). */
+          .print-area > section, .print-area .carta-doc > section { break-after: page; page-break-after: always; }
+          .print-area > section:last-child, .print-area .carta-doc > section:last-child { break-after: auto; page-break-after: auto; }
           .evitar-quebra { break-inside: avoid; page-break-inside: avoid; }
 
           /* Capa/contracapas ocupam a folha inteira. */
@@ -873,21 +710,89 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
   const { cabecalho: cab, secao_b: b, secao_c: c, secao_d: osps } = d;
   const tipoTec = tecnologiaTipo(cab.tecnologia);
   const ospsValidas = osps.filter(temConteudoOsp);
-  const [paragrafoEscopo1, paragrafoEscopo2] = paragrafosGerados(
-    cab.tecnologia, c.total, c.grupos, b.anomalias, b.condicoes,
-  );
-  
+
   return (
     <div className="print-area space-y-4 text-slate-800">
         {/* ===================== CAPA (folha única, gabarito AVSMD_Capa) ===================== */}
         <CapaRelatorio cab={cab} />
 
-        {/* Itens 1–7 (Objetivo, Datas, Conteúdo, Instrumentação, Normatização+ISO,
-            Glossário, Definição da Técnica) — o Relatório Final tem os seus
-            próprios, iguais aos da Carta ao Cliente completa no final do
-            documento; cada metade é lida de forma independente. */}
+        {/* ========================= SEÇÃO A — CARTA ========================= */}
         <PaginaInterna cab={cab}>
-          <ConteudoBaseCarta cab={cab} tipoTec={tipoTec} paragrafoEscopo1={paragrafoEscopo1} paragrafoEscopo2={paragrafoEscopo2} />
+          <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
+            <p className="text-sm font-semibold text-rose-700">Seção A — Carta ao Cliente</p>
+            <BlocoCliente cab={cab} />
+          </div>
+
+          <h3 className="text-sm font-bold text-slate-800">1. Objetivo do Relatório</h3>
+          <p className="mb-3 text-justify text-sm text-slate-600">Apresentar os resultados das análises técnicas de: <em>{cab.tecnologia}</em>.</p>
+
+          <h3 className="text-sm font-bold text-slate-800">2. Datas da Execução</h3>
+          <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
+            <li>Data de execução (medições em campo): {ddmmaaaa(cab.data_inicio)}{cab.data_inicio !== cab.data_termino ? ` a ${ddmmaaaa(cab.data_termino)}` : ""}</li>
+            <li>Data de finalização do relatório: {ddmmaaaa(cab.data_finalizacao)}</li>
+          </ul>
+
+          <h3 className="text-sm font-bold text-slate-800">3. Conteúdo do Relatório</h3>
+          <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
+            <li>Seção A — Carta ao Cliente</li><li>Seção B — KPI’s Dashboard</li>
+            <li>Seção C — Relação de Equipamentos Contemplados</li><li>Seção D — Ordens de Serviços Preditivos</li>
+          </ul>
+
+          <h3 className="text-sm font-bold text-slate-800">4. Instrumentação Utilizada</h3>
+          {cab.instrumentos.length ? (
+            <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
+              {cab.instrumentos.map((i, k) => (
+                <li key={k}>
+                  {[i.tipo, i.marca, i.modelo].filter(Boolean).join(" · ")}
+                  {i.numero_serie && ` · Serial ${i.numero_serie}`}
+                  {i.software_analise && ` · Software ${i.software_analise}`}
+                  <br />
+                  <span className="text-xs text-slate-500">
+                    Calibração: {ddmmaaaa(i.data_ultima_calibracao)}
+                    {i.proxima_calibracao && ` · válida até ${ddmmaaaa(i.proxima_calibracao)}`}
+                    {i.periodicidade && ` · ${i.periodicidade}`}
+                    {i.entidade_calibracao && ` · Entidade: ${i.entidade_calibracao}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
+
+          <h3 className="text-sm font-bold text-slate-800">5. Normatização</h3>
+          {cab.normas.length ? (
+            <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
+              {cab.normas.map((n, k) => <li key={k}>{[n.codigo, n.nome].filter(Boolean).join(" — ")}</li>)}
+            </ul>
+          ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
+
+          <GlossarioConteudo cab={cab} titulo="6. Glossário Técnico" />
+
+          <h3 className="text-sm font-bold text-slate-800">7. Considerações Importantes</h3>
+          <p className="text-justify text-sm text-slate-600">
+            Os critérios das análises são técnicos, associados à experiência do analista. Cada equipamento tem
+            seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
+            Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
+          </p>
+          {cab.consideracoes_finais.trim() && (
+            <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
+          )}
+          <div className="mt-10 text-right">
+            <p className="text-sm text-slate-600">Atenciosamente,</p>
+            <div className="mt-8 flex flex-wrap justify-end gap-8">
+              {(cab.analistas.length ? cab.analistas : [{ nome: "Analista", assinatura: null }]).map((analista) => (
+                <div key={analista.nome} className="w-56 pt-1">
+                  {analista.assinatura ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={analista.assinatura} alt={`Assinatura de ${analista.nome}`} className="mx-auto h-12 object-contain" />
+                  ) : (
+                    <div className="h-12" />
+                  )}
+                  <p className="border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{analista.nome}</p>
+                  <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </PaginaInterna>
 
         {/* Contracapa da Seção B */}
@@ -1143,38 +1048,12 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           </section>
         )}
 
-        {/* Segunda metade do documento: a Carta ao Cliente completa, como bloco
-            próprio (não fundida ao conteúdo das Seções B/C/D acima). */}
+        {/* Segunda metade do documento: a Carta ao Cliente completa — o MESMO
+            componente usado pela rota /carta/[id] (fiel ao modelo Word), não
+            uma reconstrução à parte. Bloco próprio, não fundido ao conteúdo
+            das Seções B/C/D acima. */}
         <Contracapa titulo={"Carta ao\nCliente"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
-
-        {/* ========================= CARTA AO CLIENTE (completa) ========================= */}
-        <PaginaInterna cab={cab}>
-          <BlocoCliente cab={cab} semNumero />
-          <p className="my-4 rounded bg-slate-200 py-1.5 text-center text-sm font-semibold text-slate-800">{cab.numero}</p>
-
-          <ConteudoBaseCarta cab={cab} tipoTec={tipoTec} paragrafoEscopo1={paragrafoEscopo1} paragrafoEscopo2={paragrafoEscopo2} />
-
-          <h3 className="text-sm font-bold text-slate-800">8. Considerações Importantes</h3>
-          <p className="text-justify text-sm text-slate-600">
-            Os critérios das análises são técnicos, associados à experiência do analista. Cada equipamento tem
-            seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
-            Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
-          </p>
-          {cab.consideracoes_finais.trim() && (
-            <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
-          )}
-          <div className="mt-10 text-right">
-            <p className="text-sm text-slate-600">Atenciosamente,</p>
-            <div className="mt-8 flex flex-wrap justify-end gap-8">
-              {(cab.analistas.length ? cab.analistas : ["Analista"]).map((analista) => (
-                <div key={analista} className="w-56 border-t border-slate-400 pt-1">
-                  <p className="text-sm font-semibold text-slate-800">{analista}</p>
-                  <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </PaginaInterna>
+        <CartaCorpo d={d} />
       </div>
   );
 }

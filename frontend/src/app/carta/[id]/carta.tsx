@@ -262,9 +262,15 @@ export function CartaCorpo({ d }: { d: Dossie }) {
         {cab.consideracoes_finais.trim() && <CP><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
         <p style={{ margin: "10mm 0 0 10mm" }}>Atenciosamente,</p>
         <div style={{ marginTop: "18mm", display: "flex", justifyContent: "flex-end", gap: "16mm", flexWrap: "wrap" }}>
-          {(cab.analistas.length ? cab.analistas : ["Analista"]).map((a) => (
-            <div key={a} style={{ textAlign: "center", minWidth: "70mm", borderTop: "0.2mm solid #64748b", paddingTop: "1mm" }}>
-              <p style={{ fontWeight: 700, margin: 0 }}>{a}</p>
+          {(cab.analistas.length ? cab.analistas : [{ nome: "Analista", assinatura: null }]).map((a) => (
+            <div key={a.nome} style={{ textAlign: "center", minWidth: "70mm", paddingTop: "1mm" }}>
+              {a.assinatura ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={a.assinatura} alt={`Assinatura de ${a.nome}`} style={{ height: "12mm", objectFit: "contain", margin: "0 auto" }} />
+              ) : (
+                <div style={{ height: "12mm" }} />
+              )}
+              <p style={{ fontWeight: 700, margin: 0, borderTop: "0.2mm solid #64748b", paddingTop: "1mm" }}>{a.nome}</p>
               <p style={{ fontSize: "8pt", margin: 0 }}>Analista em Manutenção Preditiva</p>
             </div>
           ))}
