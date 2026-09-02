@@ -519,15 +519,10 @@ def _paragrafos_gerados(rel, e):
 
 
 # --------------------------------- Documento ---------------------------------
-def criar_documento_base(prestador) -> Document:
-    """
-    Documento .docx vazio, já com os defaults do modelo Word (Segoe UI 12 pt,
-    entrelinha 1,15), página A4 com as margens da carta e o timbrado do
-    prestador no cabeçalho. Ponto de partida tanto da Carta isolada quanto do
-    Relatório Final (Capa+A+B+C+D) — mesmo papel timbrado nas duas.
-    """
+def construir_carta_docx(rel, prestador) -> Document:
     doc = Document()
 
+    # Defaults do modelo Word: Segoe UI 12 pt e entrelinha 1,15 (w:line=276).
     _configurar_doc_defaults(doc)
     normal = doc.styles["Normal"]
     normal.font.name = FONTE
@@ -561,11 +556,7 @@ def criar_documento_base(prestador) -> Document:
     sec.header_distance, sec.footer_distance = Mm(5), Mm(5)
 
     _timbrado(sec, prestador)
-    return doc
 
-
-def preencher_secao_a(doc: Document, rel) -> None:
-    """Escreve a Carta ao Cliente (Seção A) no documento já preparado."""
     cli = rel.cliente
     analistas, instrumentos, normas = _dados(rel)
     tec = rel.tecnologia
@@ -704,9 +695,4 @@ def preencher_secao_a(doc: Document, rel) -> None:
         _p(doc, a, bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT, space_after=0)
         _p(doc, "Analista em Manutenção Preditiva", size=8, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
-
-def construir_carta_docx(rel, prestador) -> Document:
-    """Carta ao Cliente isolada (Seção A), documento independente."""
-    doc = criar_documento_base(prestador)
-    preencher_secao_a(doc, rel)
     return doc
