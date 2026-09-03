@@ -98,11 +98,14 @@ function TabelaISO10816() {
 
 /* ------------------------------- Blocos base ------------------------------ */
 /* Cabeçalho institucional (papel timbrado) do Word: logo à esquerda + dados do
-   prestador em cinza à direita, largura útil 170mm (margens esq. 25 / dir. 15). */
+   prestador em cinza à direita, largura útil 170mm (margens esq. 25 / dir. 15).
+   Posicionado DENTRO da margem superior reservada (não em fluxo) — mesma
+   geometria do .docx: `header_distance = 5mm`, corpo começa em 35mm fixos,
+   independente da altura que o timbrado ocupar. */
 function Timbrado({ p }: { p: Prestador | null }) {
   if (!p) return null;
   return (
-    <div style={{ width: "170mm", fontFamily: FONTE }}>
+    <div style={{ position: "absolute", left: "25mm", top: "5mm", width: "170mm", fontFamily: FONTE }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         {p.logomarca && (
           <div style={{ width: "62mm", height: "13mm", display: "flex", alignItems: "center", overflow: "hidden" }}>
@@ -126,20 +129,22 @@ function Timbrado({ p }: { p: Prestador | null }) {
   );
 }
 
-/* Folha A4 física da carta (210×297mm, margens 10/15/10/25mm com timbrado em
-   fluxo — top útil ~35mm como no Word). */
+/* Folha A4 física da carta (210×297mm) — MESMAS margens do gerador .docx
+   (`criar_documento_base` em carta_docx.py): topo 35 / direita 15 / baixo 10 /
+   esquerda 25mm. Componente isolado (só usado por CartaCorpo) — não afeta o
+   Relatório Final, que usa PaginaInterna/Timbrado próprios em dossie.tsx. */
 function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
   return (
     <section
       className="pagina"
       style={{
-        width: "210mm", minHeight: "297mm", padding: "10mm 15mm 10mm 25mm", boxSizing: "border-box",
+        position: "relative", width: "210mm", minHeight: "297mm", padding: "35mm 15mm 10mm 25mm", boxSizing: "border-box",
         background: "#fff", fontFamily: FONTE, fontSize: "12pt", color: "#000", lineHeight: 1.15,
         WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
       }}
     >
       <Timbrado p={p} />
-      <div style={{ width: "170mm", marginTop: "3mm" }}>{children}</div>
+      <div style={{ width: "170mm" }}>{children}</div>
     </section>
   );
 }
