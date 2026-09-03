@@ -152,26 +152,26 @@ function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
 /* Título de item numerado (1.–8.), negrito, recuo pendente de 10mm. Sem
  * espaço ACIMA (no .docx `_titulo` sempre usa space_before=0 — o respiro
  * antes do título vem do conteúdo anterior, nunca do título em si).
- * `gap` = espaço ATÉ o primeiro parágrafo: 3,5mm nos itens 1–5 (Normal,
- * herda 10pt-depois); 4,2mm nos itens 6–8 (estilo SemEspaçamento, after=12pt
- * explícito no .docx). */
-function CItem({ n, children, gap = "3.5mm" }: { n: string; children: ReactNode; gap?: string }) {
+ * `gap` = espaço ATÉ o primeiro parágrafo — valor calibrado visualmente
+ * contra o .docx (o cálculo em pt/twips ficava sistematicamente menor do
+ * que o modelo real renderiza), igual nos itens 1–5 e 6–8. */
+function CItem({ n, children, gap = "6mm" }: { n: string; children: ReactNode; gap?: string }) {
   return <p style={{ fontWeight: 700, marginTop: 0, marginBottom: gap, marginLeft: "10mm", textIndent: "-10mm" }}>{n} {children}</p>;
 }
 /* Parágrafo do corpo (justificado, recuo padrão 10mm). Por padrão TIGHT
  * (margin 0 — no .docx, `_p()` sem override usa space_after=0: parágrafos de
  * um mesmo item ficam colados, só a entrelinha 1,15 separa). `solto` é para
  * os itens 6–8 (glossário/definição da técnica/considerações), onde o .docx
- * intercala uma linha em branco (estilo SemEspaçamento, ~4,2mm) entre CADA
+ * intercala uma linha em branco (estilo SemEspaçamento) entre CADA
  * parágrafo — bem mais espaçado que 1–5. */
 function CP({ children, ml = "10mm", solto = false }: { children: ReactNode; ml?: string; solto?: boolean }) {
-  return <p style={{ margin: 0, marginBottom: solto ? "4.2mm" : 0, marginLeft: ml, textAlign: "justify" }}>{children}</p>;
+  return <p style={{ margin: 0, marginBottom: solto ? "7mm" : 0, marginLeft: ml, textAlign: "justify" }}>{children}</p>;
 }
 /* Linha em branco entre itens (só onde 2+ itens dividem a mesma Folha —
  * hoje só a Folha 1, itens 1–4): no .docx é um `_blank()` explícito entre
- * cada item, ~8,5mm (10pt de space-after herdado + a própria entrelinha). */
+ * cada item. */
 function CBlank() {
-  return <div aria-hidden style={{ height: "8.5mm" }} />;
+  return <div aria-hidden style={{ height: "12mm" }} />;
 }
 
 /* ------------------------------ Documento --------------------------------- */
@@ -263,7 +263,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
 
       {/* ---- Folha 3: item 6 (Glossário) ---- */}
       <Folha p={p}>
-        <CItem n="6." gap="4.2mm">Glossário Técnico</CItem>
+        <CItem n="6." gap="7mm">Glossário Técnico</CItem>
         {GLOSSARIO_CARTA.map((g) => (
           <CP key={g.n} solto><b>{g.n}. {g.sigla}</b> – {g.texto}</CP>
         ))}
@@ -271,7 +271,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
 
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
-        <CItem n="7." gap="4.2mm">Definição da Técnica</CItem>
+        <CItem n="7." gap="7mm">Definição da Técnica</CItem>
         {/* Parágrafos gerados a partir dos dados do relatório (banco) */}
         {paragrafosGerados.map((t, k) => <CP key={`g${k}`} solto>{t}</CP>)}
         {/* Descrição fixa da técnica (cadastro da tecnologia), quando houver */}
@@ -281,7 +281,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
 
       {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}
       <Folha p={p}>
-        <CItem n="8." gap="4.2mm">Considerações Importantes</CItem>
+        <CItem n="8." gap="7mm">Considerações Importantes</CItem>
         {CONSIDERACOES_CARTA.map((t, k) => <CP key={k} solto>{t}</CP>)}
         {cab.consideracoes_finais.trim() && <CP solto><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
         <p style={{ margin: "10mm 0 0 10mm" }}>Atenciosamente,</p>
