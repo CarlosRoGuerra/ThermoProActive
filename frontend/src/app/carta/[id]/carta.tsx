@@ -149,13 +149,29 @@ function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
   );
 }
 
-/* Título de item numerado (1.–8.), negrito, recuo pendente de 10mm. */
-function CItem({ n, children }: { n: string; children: ReactNode }) {
-  return <p style={{ fontWeight: 700, marginTop: "4mm", marginBottom: "1.5mm", marginLeft: "10mm", textIndent: "-10mm" }}>{n} {children}</p>;
+/* Título de item numerado (1.–8.), negrito, recuo pendente de 10mm. Sem
+ * espaço ACIMA (no .docx `_titulo` sempre usa space_before=0 — o respiro
+ * antes do título vem do conteúdo anterior, nunca do título em si).
+ * `gap` = espaço ATÉ o primeiro parágrafo: 3,5mm nos itens 1–5 (Normal,
+ * herda 10pt-depois); 4,2mm nos itens 6–8 (estilo SemEspaçamento, after=12pt
+ * explícito no .docx). */
+function CItem({ n, children, gap = "3.5mm" }: { n: string; children: ReactNode; gap?: string }) {
+  return <p style={{ fontWeight: 700, marginTop: 0, marginBottom: gap, marginLeft: "10mm", textIndent: "-10mm" }}>{n} {children}</p>;
 }
-/* Parágrafo do corpo (justificado, recuo padrão 10mm). */
-function CP({ children, ml = "10mm" }: { children: ReactNode; ml?: string }) {
-  return <p style={{ margin: 0, marginBottom: "1mm", marginLeft: ml, textAlign: "justify" }}>{children}</p>;
+/* Parágrafo do corpo (justificado, recuo padrão 10mm). Por padrão TIGHT
+ * (margin 0 — no .docx, `_p()` sem override usa space_after=0: parágrafos de
+ * um mesmo item ficam colados, só a entrelinha 1,15 separa). `solto` é para
+ * os itens 6–8 (glossário/definição da técnica/considerações), onde o .docx
+ * intercala uma linha em branco (estilo SemEspaçamento, ~4,2mm) entre CADA
+ * parágrafo — bem mais espaçado que 1–5. */
+function CP({ children, ml = "10mm", solto = false }: { children: ReactNode; ml?: string; solto?: boolean }) {
+  return <p style={{ margin: 0, marginBottom: solto ? "4.2mm" : 0, marginLeft: ml, textAlign: "justify" }}>{children}</p>;
+}
+/* Linha em branco entre itens (só onde 2+ itens dividem a mesma Folha —
+ * hoje só a Folha 1, itens 1–4): no .docx é um `_blank()` explícito entre
+ * cada item, ~8,5mm (10pt de space-after herdado + a própria entrelinha). */
+function CBlank() {
+  return <div aria-hidden style={{ height: "8.5mm" }} />;
 }
 
 /* ------------------------------ Documento --------------------------------- */
@@ -209,14 +225,17 @@ export function CartaCorpo({ d }: { d: Dossie }) {
         <CItem n="1.">Objetivo do Relatório</CItem>
         <CP>Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:</CP>
         <CP>{cab.tecnologia}</CP>
+        <CBlank />
 
         <CItem n="2.">Data(s) da(s) Execução(ões) da(s) Atividade(s)</CItem>
         <CP>Medições em Campo – {rangeMedicao}</CP>
         <CP>Upload das OSP’s – {ddmmaaaa(cab.data_termino)}</CP>
         <CP>Upload Relatório Completo – {ddmmaaaa(cab.data_finalizacao)}</CP>
+        <CBlank />
 
         <CItem n="3.">Conteúdo do Relatório</CItem>
         {CONTEUDO_CARTA.map((t) => <CP key={t}>{t}</CP>)}
+        <CBlank />
 
         <CItem n="4.">Instrumentação Utilizada</CItem>
         {cab.instrumentos.length ? cab.instrumentos.map((i, k) => (
@@ -244,27 +263,27 @@ export function CartaCorpo({ d }: { d: Dossie }) {
 
       {/* ---- Folha 3: item 6 (Glossário) ---- */}
       <Folha p={p}>
-        <CItem n="6.">Glossário Técnico</CItem>
+        <CItem n="6." gap="4.2mm">Glossário Técnico</CItem>
         {GLOSSARIO_CARTA.map((g) => (
-          <CP key={g.n}><b>{g.n}. {g.sigla}</b> – {g.texto}</CP>
+          <CP key={g.n} solto><b>{g.n}. {g.sigla}</b> – {g.texto}</CP>
         ))}
       </Folha>
 
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
-        <CItem n="7.">Definição da Técnica</CItem>
+        <CItem n="7." gap="4.2mm">Definição da Técnica</CItem>
         {/* Parágrafos gerados a partir dos dados do relatório (banco) */}
-        {paragrafosGerados.map((t, k) => <CP key={`g${k}`}>{t}</CP>)}
+        {paragrafosGerados.map((t, k) => <CP key={`g${k}`} solto>{t}</CP>)}
         {/* Descrição fixa da técnica (cadastro da tecnologia), quando houver */}
-        {introDef.map((t, k) => <CP key={`i${k}`}>{t}</CP>)}
-        {fluxoDef.map((t, k) => <CP key={`f${k}`}>{t}</CP>)}
+        {introDef.map((t, k) => <CP key={`i${k}`} solto>{t}</CP>)}
+        {fluxoDef.map((t, k) => <CP key={`f${k}`} solto>{t}</CP>)}
       </Folha>
 
       {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}
       <Folha p={p}>
-        <CItem n="8.">Considerações Importantes</CItem>
-        {CONSIDERACOES_CARTA.map((t, k) => <CP key={k}>{t}</CP>)}
-        {cab.consideracoes_finais.trim() && <CP><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
+        <CItem n="8." gap="4.2mm">Considerações Importantes</CItem>
+        {CONSIDERACOES_CARTA.map((t, k) => <CP key={k} solto>{t}</CP>)}
+        {cab.consideracoes_finais.trim() && <CP solto><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
         <p style={{ margin: "10mm 0 0 10mm" }}>Atenciosamente,</p>
         <div style={{ marginTop: "18mm", display: "flex", justifyContent: "flex-end", gap: "16mm", flexWrap: "wrap" }}>
           {(cab.analistas.length ? cab.analistas : [{ nome: "Analista", assinatura: null }]).map((a) => (
