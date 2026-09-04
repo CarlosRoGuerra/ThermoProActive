@@ -263,14 +263,6 @@ function descricaoRiscoModelo(v: string) {
   return nome ? `Risco ${nome}` : "";
 }
 
-// 6.1 — abreviações fixas do glossário
-const ABREVIACOES: [string, string][] = [
-  ["O.S.P.", "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada."],
-  ["G.R.", "Grau de Risco — determina o prazo de correção das anomalias detectadas."],
-  ["LA", "Lado Acoplado."],
-  ["LOA", "Lado Oposto ao Acoplado."],
-];
-
 /* Fonte do modelo do cliente (OSP). */
 const FONTE_OSP = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
 
@@ -590,62 +582,6 @@ function PaginaInterna({
   );
 }
 
-/* Bloco de cliente reutilizado na Capa e na Carta */
-function BlocoCliente({ cab, semNumero = false }: { cab: Cabecalho; semNumero?: boolean }) {
-  return (
-    <div className="text-sm font-semibold text-slate-700">
-      {!semNumero && <p className="font-mono text-[#1d4ed8]">{cab.numero}</p>}
-      <p className={semNumero ? "" : "mt-1"}>{cab.empresa}</p>
-      {cab.nome_fantasia && <p className="font-normal text-slate-600">{cab.nome_fantasia}</p>}
-      {cab.cnpj && <p className="font-normal">CNPJ {cab.cnpj}</p>}
-      {cab.endereco_linha1 ? (
-        <>
-          <p className="font-normal">{cab.endereco_linha1}</p>
-          {cab.endereco_linha2 && <p className="font-normal">{cab.endereco_linha2}</p>}
-        </>
-      ) : cab.endereco && <p className="font-normal">{cab.endereco}</p>}
-      {cab.contato && <p className="mt-1">A/C.: {cab.contato}</p>}
-      {cab.departamento && <p className="font-normal text-slate-600">{cab.departamento}</p>}
-    </div>
-  );
-}
-
-/* Glossário Técnico (abreviações fixas + condições cadastradas no relatório).
-   Cada metade do documento (Relatório Final e Carta ao Cliente) é lida de
-   forma independente, então CADA UMA carrega o seu próprio glossário — não é
-   compartilhado nem só a Carta tem. `titulo` deixa numerar como item da carta
-   ("6. Glossário Técnico") ou como página avulsa do Relatório Final. */
-function GlossarioConteudo({ cab, titulo = "Glossário Técnico", subPrefixo }: {
-  cab: Cabecalho; titulo?: string; subPrefixo?: string;
-}) {
-  return (
-    <>
-      <h3 className="text-sm font-bold text-slate-800">{titulo}</h3>
-      <p className="mt-1 text-sm font-semibold text-slate-700">{subPrefixo}1. Das abreviações</p>
-      <dl className="mb-2 ml-2 text-sm text-slate-600">
-        {ABREVIACOES.map(([sigla, desc], k) => (
-          <div key={k} className="flex gap-2 py-0.5">
-            <dt className="w-20 shrink-0 font-semibold text-slate-700">{sigla}</dt>
-            <dd>{desc}</dd>
-          </div>
-        ))}
-      </dl>
-
-      <p className="mt-1 text-sm font-semibold text-slate-700">{subPrefixo}2. Das condições apropriadas</p>
-      {cab.glossario.length ? (
-        <dl className="mb-3 ml-2 text-sm text-slate-600">
-          {cab.glossario.map((g, k) => (
-            <div key={k} className="flex gap-2 py-0.5">
-              <dt className="w-20 shrink-0 font-semibold text-slate-700">{g.sigla}</dt>
-              <dd>{g.descricao}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : <p className="mb-3 ml-2 text-sm text-slate-400">Sem condições no escopo deste relatório.</p>}
-    </>
-  );
-}
-
 /* Contra-capa (divisória de seção) — MESMO modelo físico da capa (gabarito
    AVSMD_Contra-Capa): logo vertical do prestador (15mm), ícone da tecnologia
    (30×30mm, topo/direita), nome da seção à direita em Segoe UI 22pt negrito
@@ -820,83 +756,10 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         <CapaRelatorio cab={cab} />
 
         {/* ========================= SEÇÃO A — CARTA ========================= */}
-        <PaginaInterna cab={cab}>
-          <div className="mb-4 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
-            <p className="text-sm font-semibold text-rose-700">Seção A — Carta ao Cliente</p>
-            <BlocoCliente cab={cab} />
-          </div>
-
-          <h3 className="text-sm font-bold text-slate-800">1. Objetivo do Relatório</h3>
-          <p className="mb-3 text-justify text-sm text-slate-600">Apresentar os resultados das análises técnicas de: <em>{cab.tecnologia}</em>.</p>
-
-          <h3 className="text-sm font-bold text-slate-800">2. Datas da Execução</h3>
-          <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-            <li>Data de execução (medições em campo): {ddmmaaaa(cab.data_inicio)}{cab.data_inicio !== cab.data_termino ? ` a ${ddmmaaaa(cab.data_termino)}` : ""}</li>
-            <li>Data de finalização do relatório: {ddmmaaaa(cab.data_finalizacao)}</li>
-          </ul>
-
-          <h3 className="text-sm font-bold text-slate-800">3. Conteúdo do Relatório</h3>
-          <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-            <li>Seção A — Carta ao Cliente</li><li>Seção B — KPI’s Dashboard</li>
-            <li>Seção C — Relação de Equipamentos Contemplados</li><li>Seção D — Ordens de Serviços Preditivos</li>
-          </ul>
-
-          <h3 className="text-sm font-bold text-slate-800">4. Instrumentação Utilizada</h3>
-          {cab.instrumentos.length ? (
-            <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-              {cab.instrumentos.map((i, k) => (
-                <li key={k}>
-                  {[i.tipo, i.marca, i.modelo].filter(Boolean).join(" · ")}
-                  {i.numero_serie && ` · Serial ${i.numero_serie}`}
-                  {i.software_analise && ` · Software ${i.software_analise}`}
-                  <br />
-                  <span className="text-xs text-slate-500">
-                    Calibração: {ddmmaaaa(i.data_ultima_calibracao)}
-                    {i.proxima_calibracao && ` · válida até ${ddmmaaaa(i.proxima_calibracao)}`}
-                    {i.periodicidade && ` · ${i.periodicidade}`}
-                    {i.entidade_calibracao && ` · Entidade: ${i.entidade_calibracao}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
-
-          <h3 className="text-sm font-bold text-slate-800">5. Normatização</h3>
-          {cab.normas.length ? (
-            <ul className="mb-3 ml-4 list-disc text-sm text-slate-600">
-              {cab.normas.map((n, k) => <li key={k}>{[n.codigo, n.nome].filter(Boolean).join(" — ")}</li>)}
-            </ul>
-          ) : <p className="mb-3 text-sm text-slate-400">Não informada.</p>}
-
-          <GlossarioConteudo cab={cab} titulo="6. Glossário Técnico" />
-
-          <h3 className="text-sm font-bold text-slate-800">7. Considerações Importantes</h3>
-          <p className="text-justify text-sm text-slate-600">
-            Os critérios das análises são técnicos, associados à experiência do analista. Cada equipamento tem
-            seu nível de criticidade para a planta, que deve ser considerado pelo planejamento da manutenção.
-            Toda anomalia detectada deve ser corrigida o mais rápido possível; o prazo sugerido serve como referência.
-          </p>
-          {cab.consideracoes_finais.trim() && (
-            <p className="mt-3 whitespace-pre-line text-justify text-sm text-slate-600">{cab.consideracoes_finais}</p>
-          )}
-          <div className="mt-10 text-right">
-            <p className="text-sm text-slate-600">Atenciosamente,</p>
-            <div className="mt-8 flex flex-wrap justify-end gap-8">
-              {(cab.analistas.length ? cab.analistas : [{ nome: "Analista", assinatura: null }]).map((analista) => (
-                <div key={analista.nome} className="w-56 pt-1">
-                  {analista.assinatura ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={analista.assinatura} alt={`Assinatura de ${analista.nome}`} className="mx-auto h-12 object-contain" />
-                  ) : (
-                    <div className="h-12" />
-                  )}
-                  <p className="border-t border-slate-400 pt-1 text-sm font-semibold text-slate-800">{analista.nome}</p>
-                  <p className="text-xs text-slate-500">Analista em Manutenção Preditiva</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </PaginaInterna>
+        {/* Igual à Carta ao Cliente completa do final (mesmo componente
+            CartaCorpo) — decisão do Carlos: a carta completa aparece duas
+            vezes no documento (aqui e no final), de propósito. */}
+        <CartaCorpo d={d} />
 
         {/* Contracapa da Seção B */}
         <Contracapa titulo={"KPI’s\nDashboard’s"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
