@@ -997,12 +997,8 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           </section>
         )}
 
-        {/* Segunda metade do documento: a Carta ao Cliente completa — o MESMO
-            componente usado pela rota /carta/[id] (fiel ao modelo Word), não
-            uma reconstrução à parte. Bloco próprio, não fundido ao conteúdo
-            das Seções B/C/D acima. */}
-        <Contracapa titulo={"Carta ao\nCliente"} icone={cab.tecnologia_imagem} tecnologia={cab.tecnologia} marca={cab.prestador?.logomarca ?? null} telefone={cab.prestador?.telefone ?? null} />
-        <CartaCorpo d={d} />
+        {/* A última página do relatório é a última OSP — a Carta ao Cliente
+            só aparece no início (Seção A), não se repete aqui no final. */}
       </div>
   );
 }

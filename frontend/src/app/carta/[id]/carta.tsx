@@ -229,7 +229,6 @@ export function CartaCorpo({ d }: { d: Dossie }) {
 
         <CItem n="2.">Data(s) da(s) Execução(ões) da(s) Atividade(s)</CItem>
         <CP>Medições em Campo – {rangeMedicao}</CP>
-        <CP>Upload das OSP’s – {ddmmaaaa(cab.data_termino)}</CP>
         <CP>Upload Relatório Completo – {ddmmaaaa(cab.data_finalizacao)}</CP>
         <CBlank />
 
