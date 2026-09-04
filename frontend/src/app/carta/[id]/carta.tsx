@@ -220,7 +220,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
           {cab.contato && <p style={{ fontWeight: 700, margin: "4mm 0 0 0" }}>A/C.: Sr(a). {cab.contato}</p>}
           {cab.departamento && <p style={{ fontWeight: 700, margin: 0 }}>{cab.departamento}</p>}
         </div>
-        <p style={{ textAlign: "center", fontWeight: 700, margin: "5mm 0" }}>{cab.numero}</p>
+        <div style={{ width: "170mm", background: "#d9d9d9", textAlign: "center", fontWeight: 700, padding: "4mm 0", margin: "5mm 0" }}>{cab.numero}</div>
 
         <CItem n="1.">Objetivo do Relatório</CItem>
         <CP>Este relatório técnico tem como objetivo apresentar os resultados das análises técnicas de:</CP>
