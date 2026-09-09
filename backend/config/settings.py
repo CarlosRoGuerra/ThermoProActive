@@ -52,6 +52,7 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.cadastros",
     "apps.coletas",
+    "apps.servicos",
     "apps.osp",
     "apps.laudos",
     "apps.notificacoes",

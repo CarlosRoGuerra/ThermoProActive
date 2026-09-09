@@ -541,3 +541,111 @@ export interface PortalVisaoGeral {
   equipamentos_atencao: EquipamentoAtencao[];
   historico: PortalHistoricoItem[];
 }
+
+/* ===================== Serviços de campo (Anexo I 2.3.2.8) ===================== */
+
+export type TipoServico = "BALANCEAMENTO" | "ALINHAMENTO";
+
+export interface BalanceamentoPlano {
+  id: number;
+  servico: number;
+  numero: number;
+  descricao: string;
+  massa_teste_g: string | null;
+  angulo_teste: string | null;
+  massa_final_g: string | null;
+  angulo_final: string | null;
+}
+
+export interface BalanceamentoPonto {
+  id: number;
+  servico: number;
+  plano: number | null;
+  numero_mancal: number;
+  direcao: "H" | "V" | "A";
+  direcao_display: string;
+  codigo_ponto: string;
+  /** Falso enquanto o trim run não foi medido — o ponto está em andamento. */
+  completo: boolean;
+  reference_mms: string;
+  reference_fase: string;
+  trial_mms: string | null;
+  trial_fase: string | null;
+  trim_mms: string | null;
+  trim_fase: string | null;
+  // calculados
+  residual_pct: string | null;
+  reducao_pct: string | null;
+  zona_iso: string;
+  criticidade: Criticidade | "";
+  criticidade_display: string;
+  eficaz: boolean;
+  diagnostico: string;
+}
+
+export interface EconomiaEnergetica {
+  id: number;
+  servico: number;
+  // entradas — todas medidas na hora, nenhuma tem valor padrão
+  tensao_v: string;
+  corrente_antes_a: string;
+  corrente_apos_a: string;
+  fator_potencia: string;
+  horas_dia: string;
+  dias_ano: number;
+  custo_kwh: string;
+  // calculados
+  reducao_kw: string | null;
+  economia_kwh_ano: string | null;
+  economia_rs_ano: string | null;
+  payback_meses: string | null;
+  payback_dias: string | null;
+  retorno_ano: string | null;
+  premissas: string[];
+}
+
+export interface ServicoCampo {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  equipamento: number;
+  equipamento_tag: string;
+  equipamento_nome: string;
+  classe_iso: string;
+  tipo: TipoServico;
+  tipo_display: string;
+  osp: number | null;
+  achado: number | null;
+  relatorio: number | null;
+  analista: number;
+  analista_nome: string;
+  instrumento: number | null;
+  data_execucao: string;
+  rotacao_hz: string | null;
+  rotacao_rpm: number | null;
+  custo_servico: string | null;
+  observacoes: string;
+  planos: BalanceamentoPlano[];
+  pontos: BalanceamentoPonto[];
+  economia: EconomiaEnergetica | null;
+  numero_planos: number;
+  reducao_media_pct: string | null;
+  criticidade_final: Criticidade;
+}
+
+export interface ServicoCampoLista {
+  id: number;
+  cliente: number;
+  cliente_nome: string;
+  equipamento: number;
+  equipamento_tag: string;
+  tipo: TipoServico;
+  tipo_display: string;
+  data_execucao: string;
+  rotacao_hz: string | null;
+  rotacao_rpm: number | null;
+  numero_planos: number;
+  reducao_media_pct: string | null;
+  criticidade_final: Criticidade;
+  custo_servico: string | null;
+}

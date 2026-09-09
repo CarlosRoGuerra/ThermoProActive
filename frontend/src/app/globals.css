@@ -41,6 +41,14 @@
   --danger-subtle: #fce9ea;
   --danger-fg: #b41e2f;
 
+  /* Séries dos gráficos de balanceamento (reference / trial / trim).
+     Paleta categórica validada para daltonismo e contraste nos dois temas —
+     não reaproveitar os tokens de status (success/warning/danger), que são
+     reservados para estado e não para identidade de série. */
+  --viz-reference: #4f46e5;
+  --viz-trial: #c8790c;
+  --viz-trim: #0f9d76;
+
   --shimmer: rgb(255 255 255 / 0.65);
 }
 
@@ -77,6 +85,10 @@
     --danger-subtle: rgb(255 86 104 / 0.14);
     --danger-fg: #ff8089;
 
+    --viz-reference: #6f6df6;
+    --viz-trial: #c07f10;
+    --viz-trim: #199e70;
+
     --shimmer: rgb(255 255 255 / 0.06);
   }
 }
@@ -109,6 +121,9 @@
   --danger-subtle: #fce9ea;
   --danger-fg: #b41e2f;
   --shimmer: rgb(255 255 255 / 0.65);
+  --viz-reference: #4f46e5;
+  --viz-trial: #c8790c;
+  --viz-trim: #0f9d76;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -137,6 +152,9 @@
   --danger-subtle: rgb(255 86 104 / 0.14);
   --danger-fg: #ff8089;
   --shimmer: rgb(255 255 255 / 0.06);
+  --viz-reference: #6f6df6;
+  --viz-trial: #c07f10;
+  --viz-trim: #199e70;
 }
 
 @layer base {
