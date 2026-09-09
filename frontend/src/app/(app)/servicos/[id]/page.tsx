@@ -155,6 +155,12 @@ function Planos({
   const [novo, setNovo] = useState({ ...PLANO_VAZIO });
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
+  const [final, setFinal] = useState({ massa_final_g: "", angulo_final: "" });
+
+  /** Próximo número livre — não confia em contagem, que pula quando se apaga um plano. */
+  const proximoNumero =
+    servico.planos.reduce((maior, p) => Math.max(maior, p.numero), 0) + 1;
 
   async function adicionar() {
     setSalvando(true);
@@ -172,11 +178,33 @@ function Planos({
           angulo_final: novo.angulo_final || null,
         },
       });
-      setNovo({ ...PLANO_VAZIO, numero: servico.numero_planos + 2 });
+      setNovo({ ...PLANO_VAZIO });
       setAberto(false);
       await onMudou();
     } catch (e) {
       onErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao salvar o plano.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  /** Massa que ficou na máquina — só se sabe depois do trim run, então é edição. */
+  async function salvarMassaFinal(planoId: number) {
+    setSalvando(true);
+    onErro(null);
+    try {
+      await api(`/balanceamento-planos/${planoId}/`, {
+        method: "PATCH",
+        body: {
+          massa_final_g: final.massa_final_g || null,
+          angulo_final: final.angulo_final || null,
+        },
+      });
+      setEditando(null);
+      setFinal({ massa_final_g: "", angulo_final: "" });
+      await onMudou();
+    } catch (e) {
+      onErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao salvar a massa final.");
     } finally {
       setSalvando(false);
     }
@@ -201,7 +229,7 @@ function Planos({
             size="sm"
             variant="secondary"
             onClick={() => {
-              setNovo({ ...PLANO_VAZIO, numero: servico.numero_planos + 1 });
+              setNovo({ ...PLANO_VAZIO, numero: proximoNumero });
               setAberto(!aberto);
             }}
           >
@@ -237,9 +265,54 @@ function Planos({
                 </dd>
                 <dt className="text-fg-subtle">Massa final</dt>
                 <dd className="tabular-nums text-fg">
-                  {n(p.massa_final_g, 1)} g @ {n(p.angulo_final, 0)}°
+                  {p.massa_final_g != null ? (
+                    `${n(p.massa_final_g, 1)} g @ ${n(p.angulo_final, 0)}°`
+                  ) : podeEditar && editando !== p.id ? (
+                    <button
+                      className="text-accent hover:underline"
+                      onClick={() => {
+                        setEditando(p.id);
+                        setFinal({ massa_final_g: "", angulo_final: "" });
+                      }}
+                    >
+                      lançar massa final
+                    </button>
+                  ) : (
+                    <span className="text-fg-subtle">— g @ —°</span>
+                  )}
                 </dd>
               </dl>
+
+              {editando === p.id && podeEditar && (
+                <div className="mt-2 flex items-end gap-2">
+                  <Field label="Massa final (g)" className="flex-1">
+                    <Input
+                      className="h-8"
+                      type="number"
+                      step="0.1"
+                      inputMode="decimal"
+                      value={final.massa_final_g}
+                      onChange={(e) => setFinal({ ...final, massa_final_g: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Ângulo (°)" className="w-24">
+                    <Input
+                      className="h-8"
+                      type="number"
+                      step="0.1"
+                      inputMode="decimal"
+                      value={final.angulo_final}
+                      onChange={(e) => setFinal({ ...final, angulo_final: e.target.value })}
+                    />
+                  </Field>
+                  <Button size="sm" loading={salvando} onClick={() => salvarMassaFinal(p.id)}>
+                    OK
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditando(null)}>
+                    Cancelar
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -277,6 +350,31 @@ function Planos({
               inputMode="decimal"
               value={novo.angulo_teste}
               onChange={(e) => setNovo({ ...novo, angulo_teste: e.target.value })}
+            />
+          </Field>
+          <div />
+
+          {/* Massa final: normalmente só se sabe depois do trim run. Fica aqui para
+              quando o serviço é lançado no escritório, já concluído, e no card há o
+              "lançar massa final" para o fluxo de campo. */}
+          <Field label="Massa final (g)">
+            <Input
+              type="number"
+              step="0.1"
+              inputMode="decimal"
+              placeholder="opcional"
+              value={novo.massa_final_g}
+              onChange={(e) => setNovo({ ...novo, massa_final_g: e.target.value })}
+            />
+          </Field>
+          <Field label="Ângulo final (°)">
+            <Input
+              type="number"
+              step="0.1"
+              inputMode="decimal"
+              placeholder="opcional"
+              value={novo.angulo_final}
+              onChange={(e) => setNovo({ ...novo, angulo_final: e.target.value })}
             />
           </Field>
           <div className="flex items-end">
