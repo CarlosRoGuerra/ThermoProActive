@@ -1,186 +1,103 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Gauge } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
-import { useClientes } from "@/lib/hierarquia";
-import type { Equipamento, Paginated, ServicoCampo, TipoServico } from "@/lib/types";
-import { Button, Card, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
-import { Combobox } from "@/components/combobox";
+import type { AtividadeCorretiva, Paginated, Rota, TecnologiaCorretiva } from "@/lib/types";
+import { Button, Card, Field, Input, PageHeader, Select } from "@/components/ui";
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+type Instrumento = { id: number; tipo: string; marca: string; modelo: string; numero_serie: string };
+const hoje = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
-export default function NovoServicoPage() {
+export default function NovaAtividadePage() {
   const router = useRouter();
-  const params = useSearchParams();
   const { user } = useAuth();
-  const { opcoes: opcoesClientes } = useClientes();
   const { clienteAtivo } = useClienteAtivo();
-
-  const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
-  const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
-  const [instrumentos, setInstrumentos] = useState<{ id: number; identificacao?: string; tipo: string }[]>([]);
+  const [tecnologias, setTecnologias] = useState<TecnologiaCorretiva[]>([]);
+  const [rotas, setRotas] = useState<Rota[]>([]);
+  const [instrumentos, setInstrumentos] = useState<Instrumento[]>([]);
+  const [tecnologia, setTecnologia] = useState("");
+  const [rota, setRota] = useState("");
+  const [instrumento, setInstrumento] = useState("");
+  const [data, setData] = useState(hoje);
   const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    equipamento: "" as number | "",
-    tipo: "BALANCEAMENTO" as TipoServico,
-    data_execucao: hoje(),
-    rotacao_hz: "",
-    instrumento: "" as number | "",
-    custo_servico: "",
-    observacoes: "",
-  });
-
-  // Vindo do botão "Executar serviço" da OSP: o contexto (qual OSP, qual análise)
-  // chega pela URL. Nenhuma medição vem preenchida — só a identificação.
-  const ospOrigem = params.get("osp");
-  const achadoOrigem = params.get("achado");
+  useEffect(() => {
+    let ativo = true;
+    setRota(""); setRotas([]); setCarregando(true);
+    Promise.all([
+      api<Paginated<TecnologiaCorretiva>>("/tecnologias-analise/?page_size=1000"),
+      clienteAtivo ? api<Paginated<Rota>>(`/rotas/?cliente=${clienteAtivo.id}&page_size=1000`) : Promise.resolve({ results: [] }),
+    ]).then(([t, r]) => {
+      if (ativo) { setTecnologias(t.results.filter((x) => x.tipo_corretiva)); setRotas(r.results); }
+    }).catch(() => { if (ativo) setErro("Não foi possível carregar as tecnologias e rotas."); })
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, [clienteAtivo?.id]);
 
   useEffect(() => {
-    if (clienteAtivo) setCliente(clienteAtivo.id);
-  }, [clienteAtivo]);
+    let ativo = true;
+    setInstrumentos([]); setInstrumento("");
+    if (tecnologia) api<Paginated<Instrumento>>(`/instrumentos/?tecnologias=${tecnologia}&page_size=1000`)
+      .then((d) => { if (ativo) setInstrumentos(d.results); })
+      .catch(() => { if (ativo) setErro("Não foi possível carregar os instrumentos."); });
+    return () => { ativo = false; };
+  }, [tecnologia]);
 
-  useEffect(() => {
-    if (!cliente) return setEquipamentos([]);
-    api<Paginated<Equipamento>>(`/equipamentos/?setor__area__cliente=${cliente}&page_size=1000`)
-      .then((d) => setEquipamentos(d.results))
-      .catch(() => setEquipamentos([]));
-  }, [cliente]);
-
-  useEffect(() => {
-    api<Paginated<{ id: number; tipo: string; identificacao?: string }>>("/instrumentos/?page_size=200")
-      .then((d) => setInstrumentos(d.results))
-      .catch(() => setInstrumentos([]));
-  }, []);
-
-  async function salvar() {
-    if (!cliente || !form.equipamento) {
-      return setErro("Escolha o cliente e o equipamento.");
-    }
-    setSalvando(true);
-    setErro(null);
+  async function carregar() {
+    setSalvando(true); setErro(null);
     try {
-      const criado = await api<ServicoCampo>("/servicos/", {
-        method: "POST",
-        body: {
-          cliente,
-          equipamento: form.equipamento,
-          tipo: form.tipo,
-          data_execucao: form.data_execucao,
-          rotacao_hz: form.rotacao_hz || null,
-          instrumento: form.instrumento || null,
-          custo_servico: form.custo_servico || null,
-          observacoes: form.observacoes,
-          analista: user?.id,
-          osp: ospOrigem ? Number(ospOrigem) : null,
-          achado: achadoOrigem ? Number(achadoOrigem) : null,
+      const atividade = await api<AtividadeCorretiva>("/atividades-corretivas/", {
+        method: "POST", body: {
+          tecnologia: Number(tecnologia), rota: Number(rota), instrumento: Number(instrumento),
+          data_termino_novo: data,
         },
       });
-      router.push(`/servicos/${criado.id}`);
+      router.push(`/servicos/atividades/${atividade.id}`);
     } catch (e) {
-      setErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao salvar.");
+      setErro(e instanceof ApiError ? JSON.stringify(e.data) : "Não foi possível carregar a rota.");
       setSalvando(false);
     }
   }
 
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Novo serviço de campo"
-        description="Identificação da intervenção. As medições são lançadas na folha, no equipamento."
-        icon={Gauge}
-      />
+  if (!user?.is_interno) return <Card>Seu perfil permite consultar as atividades de manutenção corretiva.</Card>;
+  if (!clienteAtivo) return <Card>Ative um cliente no seletor do topo para carregar uma rota.</Card>;
+  const disponiveis = rotas.filter((r) => r.tecnologia === null || r.tecnologia === Number(tecnologia));
+  const valida = disponiveis.some((r) => r.id === Number(rota) && r.qtd_equipamentos > 0);
 
-      <Card className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Cliente">
-            <Combobox value={cliente} onChange={setCliente} options={opcoesClientes} />
-          </Field>
-          <Field label="Equipamento">
-            <Combobox
-              value={form.equipamento}
-              onChange={(v) => setForm({ ...form, equipamento: v })}
-              options={equipamentos.map((e) => ({ id: e.id, label: e.tag, hint: e.nome }))}
-              disabled={!cliente}
-              placeholder={cliente ? "Selecione…" : "Escolha o cliente primeiro"}
-            />
-          </Field>
-          <Field label="Tipo de serviço">
-            <Select
-              value={form.tipo}
-              onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoServico })}
-            >
-              <option value="BALANCEAMENTO">Balanceamento dinâmico em campo</option>
-              <option value="ALINHAMENTO">Alinhamento a laser</option>
-            </Select>
-          </Field>
-          <Field label="Data de execução">
-            <Input
-              type="date"
-              value={form.data_execucao}
-              onChange={(e) => setForm({ ...form, data_execucao: e.target.value })}
-            />
-          </Field>
-          <Field label="Rotação (Hz)">
-            <Input
-              type="number"
-              step="0.01"
-              inputMode="decimal"
-              placeholder="29,74"
-              value={form.rotacao_hz}
-              onChange={(e) => setForm({ ...form, rotacao_hz: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-fg-subtle">
-              {form.rotacao_hz
-                ? `= ${Math.round(Number(form.rotacao_hz) * 60)} RPM`
-                : "A RPM é calculada a partir da frequência."}
-            </p>
-          </Field>
-          <Field label="Instrumento">
-            <Combobox
-              value={form.instrumento}
-              onChange={(v) => setForm({ ...form, instrumento: v })}
-              options={instrumentos.map((i) => ({ id: i.id, label: i.identificacao || i.tipo }))}
-              placeholder="Opcional"
-            />
-          </Field>
-          <Field label="Custo do serviço (R$)">
-            <Input
-              type="number"
-              step="0.01"
-              inputMode="decimal"
-              placeholder="1606,00"
-              value={form.custo_servico}
-              onChange={(e) => setForm({ ...form, custo_servico: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-fg-subtle">Usado no payback. Informado a cada serviço.</p>
-          </Field>
-        </div>
-
-        <Field label="Observações">
-          <Textarea
-            rows={3}
-            value={form.observacoes}
-            onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-          />
-        </Field>
-
-        {erro && <p className="text-sm text-[var(--danger)]">{erro}</p>}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => router.back()}>
-            Cancelar
-          </Button>
-          <Button onClick={salvar} disabled={salvando}>
-            {salvando ? "Salvando…" : "Criar e abrir a folha"}
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
+  return <div className="space-y-5">
+    <Link href="/servicos" className="text-sm text-accent">Voltar para Manutenção corretiva</Link>
+    <PageHeader title="Nova atividade / Carregar rota" description={clienteAtivo.nome_fantasia || clienteAtivo.nome} />
+    <Card>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Tecnologia *"><Select value={tecnologia} disabled={salvando || carregando} onChange={(e) => { setTecnologia(e.target.value); setRota(""); }}>
+          <option value="">Selecione a tecnologia</option>
+          {tecnologias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+        </Select></Field>
+        <Field label="Rota *"><Select value={rota} disabled={!tecnologia || salvando || carregando} onChange={(e) => setRota(e.target.value)}>
+          <option value="">Selecione a rota</option>
+          {disponiveis.map((r) => <option key={r.id} value={r.id}>{r.nome} ({r.qtd_equipamentos} equipamentos)</option>)}
+        </Select></Field>
+        <Field label="Instrumento *"><Select value={instrumento} disabled={!tecnologia || salvando} onChange={(e) => setInstrumento(e.target.value)}>
+          <option value="">{tecnologia && !instrumentos.length ? "Nenhum instrumento compatível cadastrado" : "Selecione o instrumento"}</option>
+          {instrumentos.map((i) => <option key={i.id} value={i.id}>{[i.tipo, i.marca, i.modelo, i.numero_serie].filter(Boolean).join(" — ")}</option>)}
+        </Select></Field>
+        <Field label="Analista"><Input value={user.nome} readOnly disabled /></Field>
+        <Field label="Número do relatório"><Input value="Gerar novo número ao carregar a rota" readOnly disabled /></Field>
+        <Field label="Data de término/ensaio *"><Input type="date" value={data} max={hoje()} disabled={salvando} onChange={(e) => setData(e.target.value)} /></Field>
+      </div>
+      {!carregando && !tecnologias.length && <p className="mt-4 text-sm text-fg-muted">Nenhuma tecnologia corretiva configurada. Em Dados de sistema → Tecnologias de análise, associe a tecnologia a Balanceamento ou Alinhamento a laser.</p>}
+      <p className="mt-4 text-sm text-fg-muted">Informe a data real de execução. Todos os equipamentos da rota serão incluídos na atividade.</p>
+      {erro && <p role="alert" className="mt-4 text-sm text-danger-fg">{erro}</p>}
+    </Card>
+    <Button onClick={carregar} loading={salvando} disabled={carregando || salvando || !tecnologia || !valida || !instrumento || !data || data > hoje()}>Carregar rota</Button>
+  </div>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Gauge, Plus, Trash2, Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -54,6 +54,7 @@ function paraGrafico(p: BalanceamentoPonto): PontoGrafico {
 }
 
 export default function ServicoDetailPage() {
+  const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const podeEditar = !!user?.is_interno;
@@ -62,8 +63,13 @@ export default function ServicoDetailPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
-    setServico(await api<ServicoCampo>(`/servicos/${id}/`));
-  }, [id]);
+    const dados = await api<ServicoCampo>(`/servicos/${id}/`);
+    if (dados.atividade) {
+      router.replace(`/servicos/atividades/${dados.atividade}?item=${dados.item}`);
+      return;
+    }
+    setServico(dados);
+  }, [id, router]);
 
   useEffect(() => {
     carregar().finally(() => setLoading(false));

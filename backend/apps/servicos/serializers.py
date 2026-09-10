@@ -1,4 +1,4 @@
-"""Serializers dos Serviços de Campo — balanceamento e economia energética."""
+"""Serializers de Manutenção corretiva — balanceamento e economia energética."""
 from rest_framework import serializers
 
 from .models import (
@@ -71,6 +71,8 @@ class EconomiaEnergeticaSerializer(serializers.ModelSerializer):
 
 
 class ServicoCampoListSerializer(serializers.ModelSerializer):
+    item = serializers.IntegerField(source="item_id", read_only=True)
+    atividade = serializers.IntegerField(source="item.carregamento_id", read_only=True, default=None)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
@@ -85,11 +87,20 @@ class ServicoCampoListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "cliente", "cliente_nome", "equipamento", "equipamento_tag",
             "tipo", "tipo_display", "data_execucao", "rotacao_hz", "rotacao_rpm",
-            "numero_planos", "reducao_media_pct", "criticidade_final", "custo_servico",
+            "numero_planos", "reducao_media_pct", "criticidade_final", "custo_servico", "item", "atividade",
         ]
 
 
 class ServicoCampoSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        if self.instance and self.instance.item_id:
+            for campo in ("cliente", "equipamento", "tipo", "analista", "instrumento", "relatorio", "data_execucao"):
+                if campo in attrs and attrs[campo] != getattr(self.instance, campo):
+                    raise serializers.ValidationError({campo: "Este vínculo é definido pela atividade corretiva."})
+        return attrs
+
+    item = serializers.IntegerField(source="item_id", read_only=True)
+    atividade = serializers.IntegerField(source="item.carregamento_id", read_only=True, default=None)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     equipamento_nome = serializers.CharField(source="equipamento.nome", read_only=True)
     classe_iso = serializers.CharField(source="equipamento.classe_iso", read_only=True)
@@ -111,7 +122,7 @@ class ServicoCampoSerializer(serializers.ModelSerializer):
         model = ServicoCampo
         fields = [
             "id", "cliente", "cliente_nome", "equipamento", "equipamento_tag",
-            "equipamento_nome", "classe_iso", "tipo", "tipo_display",
+            "equipamento_nome", "classe_iso", "tipo", "tipo_display", "item", "atividade",
             "osp", "achado", "relatorio",
             "analista", "analista_nome", "instrumento",
             "data_execucao", "rotacao_hz", "rotacao_rpm", "custo_servico", "observacoes",

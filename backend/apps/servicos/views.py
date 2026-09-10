@@ -1,6 +1,7 @@
-"""API dos Serviços de Campo — balanceamento dinâmico e economia energética."""
+"""API de Manutenção corretiva — balanceamento dinâmico e economia energética."""
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.accounts.permissions import InternoEditaClienteVisualiza
@@ -23,12 +24,17 @@ from .serializers import (
 
 def escopo_cliente(qs, user, campo_cliente="cliente"):
     """Perfis cliente só enxergam os próprios serviços (Portal — item 2.7)."""
-    if user.is_cliente and user.cliente_id:
+    if user.is_cliente:
         return qs.filter(**{campo_cliente: user.cliente_id})
     return qs
 
 
 class ServicoCampoViewSet(viewsets.ModelViewSet):
+    def perform_destroy(self, instance):
+        if instance.item_id:
+            raise ValidationError("A análise vinculada à rota deve ser preservada.")
+        super().perform_destroy(instance)
+
     permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["cliente", "equipamento", "tipo", "analista", "relatorio", "osp"]
     search_fields = ["equipamento__tag", "equipamento__nome", "observacoes"]

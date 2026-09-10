@@ -146,6 +146,11 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
     fields: [
       { key: "nome", label: "Nome", required: true },
       { key: "sigla", label: "Sigla" },
+      { key: "tipo_corretiva", label: "Análise de manutenção corretiva", type: "escolha", escolhas: [
+        { valor: "", texto: "Não se aplica" },
+        { valor: "BALANCEAMENTO", texto: "Balanceamento" },
+        { valor: "ALINHAMENTO", texto: "Alinhamento a laser" },
+      ] },
       { key: "imagem", label: "Imagem/ícone (capa do relatório)", type: "image" },
       { key: "definicao_tecnica", label: "Definição — texto introdutório (item 7 da carta)", type: "textarea" },
       { key: "definicao_fluxo_trabalho", label: "Definição — etapas do fluxo de trabalho (1 por linha)", type: "textarea" },

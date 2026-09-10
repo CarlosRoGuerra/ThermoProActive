@@ -147,6 +147,11 @@ class AchadoImagemSerializer(serializers.ModelSerializer):
 
 
 class AchadoSerializer(serializers.ModelSerializer):
+    def validate_item(self, value):
+        if value.carregamento.tipo_corretiva:
+            raise serializers.ValidationError("Use a análise vinculada à atividade corretiva.")
+        return value
+
     # Rastreabilidade (somente leitura — vem do item/carregamento/equipamento).
     equipamento_tag = serializers.CharField(source="item.equipamento.tag", read_only=True)
     equipamento_nome = serializers.CharField(source="item.equipamento.nome", read_only=True)
@@ -191,6 +196,11 @@ class AchadoSerializer(serializers.ModelSerializer):
 
 
 class ItemInspecaoSerializer(serializers.ModelSerializer):
+    def validate_carregamento(self, value):
+        if value.tipo_corretiva:
+            raise serializers.ValidationError("Use os equipamentos da atividade corretiva carregada.")
+        return value
+
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     equipamento_nome = serializers.CharField(source="equipamento.nome", read_only=True)
     area_nome = serializers.CharField(source="equipamento.setor.area.nome", read_only=True)
@@ -210,6 +220,13 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
 
 
 class RelatorioSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        if self.instance and self.instance.carregamentos.exclude(tipo_corretiva="").exists():
+            for campo in ("cliente", "tecnologia", "data_termino"):
+                if campo in attrs and attrs[campo] != getattr(self.instance, campo):
+                    raise serializers.ValidationError({campo: "Este relatório pertence a uma atividade corretiva."})
+        return attrs
+
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
     qtd_rotas = serializers.IntegerField(source="carregamentos.count", read_only=True)
@@ -268,6 +285,7 @@ class CarregamentoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Carregamento
         exclude = ["ativo"]
+        read_only_fields = ["tipo_corretiva"]
         extra_kwargs = {
             # analista assume o usuário logado; cliente/tecnologia vêm do relatório
             # na Ação 2 (reaproveitar) e são exigidos na Ação 1 (ver validate).
@@ -278,6 +296,9 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        relatorio = attrs.get("relatorio")
+        if relatorio and relatorio.carregamentos.exclude(tipo_corretiva="").exists():
+            raise serializers.ValidationError({"relatorio": "Relatório vinculado a uma atividade corretiva."})
         if not attrs.get("relatorio"):
             # Ação 1: precisa de cliente, tecnologia e a data de término.
             faltando = [c for c in ("cliente", "tecnologia") if not attrs.get(c)]

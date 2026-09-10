@@ -1,4 +1,4 @@
-"""Admin dos Serviços de Campo — conferência rápida sem passar pelo front."""
+"""Admin de Manutenção corretiva — conferência rápida sem passar pelo front."""
 from django.contrib import admin
 
 from .models import BalanceamentoPlano, BalanceamentoPonto, EconomiaEnergetica, ServicoCampo

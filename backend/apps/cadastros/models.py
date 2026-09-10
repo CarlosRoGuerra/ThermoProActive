@@ -10,6 +10,7 @@ from datetime import date
 from django.db import models
 
 from apps.core.models import BaseModel
+from apps.servicos.choices import TipoServico
 
 
 class EnderecoMixin(models.Model):
@@ -382,6 +383,10 @@ class TecnologiaAnalise(Catalogo):
     """Tecnologias/Tipos de análise — item 2.2.1.6."""
 
     sigla = models.CharField("Sigla", max_length=20, blank=True)
+    # Vínculo explícito com o contrato corretivo; não inferir pelo nome/sigla.
+    tipo_corretiva = models.CharField(
+        "Análise corretiva", max_length=15, blank=True, default="", choices=TipoServico.choices,
+    )
     # Imagem/ícone que identifica a tecnologia (aparece na capa do relatório).
     imagem = models.ImageField("Imagem/ícone", upload_to="tecnologias/", null=True, blank=True)
     # "Definição da Técnica" (item 7 da carta) — campos estruturados por tecnologia.

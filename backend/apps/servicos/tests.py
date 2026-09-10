@@ -1,5 +1,5 @@
 """
-Testes do motor de cálculo dos serviços de campo.
+Testes do motor de cálculo de manutenção corretiva.
 
 Critério de aceitação: reproduzir os números das planilhas que o Fabrício usa hoje.
 Se um destes testes quebrar, o sistema deixou de bater com a planilha dele.

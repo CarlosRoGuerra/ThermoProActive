@@ -27,6 +27,7 @@ from apps.cadastros.models import (
     TipoRecomendacao,
 )
 from apps.core.models import BaseModel, TimeStampedModel
+from apps.servicos.choices import TipoServico
 
 from . import rules, rules_tecnicas
 
@@ -418,6 +419,8 @@ class Carregamento(BaseModel):
     de auditoria vêm do `relatorio` (várias rotas podem compartilhar o mesmo).
     """
 
+    # Snapshot da tecnologia ao abrir a atividade; vazio preserva o fluxo preditivo.
+    tipo_corretiva = models.CharField(max_length=15, blank=True, default="", choices=TipoServico.choices)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="carregamentos")
     tecnologia = models.ForeignKey(
         TecnologiaAnalise, on_delete=models.PROTECT, related_name="carregamentos",

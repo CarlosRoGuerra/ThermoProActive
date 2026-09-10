@@ -578,7 +578,7 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = (
-            Carregamento.objects.ativos()
+            Carregamento.objects.ativos().filter(tipo_corretiva="")
             .select_related("cliente", "tecnologia", "relatorio", "rota", "instrumento", "analista")
             .prefetch_related(
                 "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
@@ -630,7 +630,7 @@ class ItemInspecaoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = (
-            ItemInspecao.objects.ativos()
+            ItemInspecao.objects.ativos().filter(carregamento__tipo_corretiva="")
             .select_related("equipamento__setor__area", "condicao", "carregamento")
             .prefetch_related("achados__imagens")
         )

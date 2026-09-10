@@ -1,5 +1,5 @@
 """
-Motor de cálculo dos Serviços de Campo — Anexo I 2.3.2.8 (Manutenção Corretiva).
+Motor de cálculo de Manutenção corretiva — Anexo I 2.3.2.8 (Manutenção Corretiva).
 
 Substitui as duas planilhas do Fabrício:
   · `Planilha Balanceamentos.xlsx`  → balanceamento dinâmico (1 ou 2 planos)

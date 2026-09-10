@@ -1,5 +1,5 @@
 """
-Serviços de Campo — Anexo I 2.3.2.8 (Manutenção Corretiva).
+Manutenção corretiva — Anexo I 2.3.2.8 (Manutenção Corretiva).
 
 Substitui as planilhas de balanceamento dinâmico e de economia energética do Fabrício.
 Diferente da coleta de rota (app `coletas`), aqui o registro é de uma **intervenção**:
@@ -22,11 +22,7 @@ from apps.coletas.models import Criticidade, Direcao
 from apps.core.models import BaseModel
 
 from . import rules
-
-
-class TipoServico(models.TextChoices):
-    BALANCEAMENTO = "BALANCEAMENTO", "Balanceamento dinâmico em campo"
-    ALINHAMENTO = "ALINHAMENTO", "Alinhamento a laser"
+from .choices import TipoServico
 
 
 class ServicoCampo(BaseModel):
@@ -38,6 +34,10 @@ class ServicoCampo(BaseModel):
     avulso contratado direto.
     """
 
+    item = models.OneToOneField(
+        "coletas.ItemInspecao", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="servico_corretivo",
+    )
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="servicos")
     equipamento = models.ForeignKey(Equipamento, on_delete=models.PROTECT, related_name="servicos")
     tipo = models.CharField("Tipo de serviço", max_length=15, choices=TipoServico.choices)
@@ -79,8 +79,8 @@ class ServicoCampo(BaseModel):
     observacoes = models.TextField("Observações", blank=True)
 
     class Meta(BaseModel.Meta):
-        verbose_name = "Serviço de campo"
-        verbose_name_plural = "Serviços de campo"
+        verbose_name = "Manutenção corretiva"
+        verbose_name_plural = "Manutenções corretivas"
 
     def __str__(self):
         return f"{self.get_tipo_display()} — {self.equipamento.tag} — {self.data_execucao}"

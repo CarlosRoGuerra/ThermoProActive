@@ -71,6 +71,12 @@ const INSPECOES_SUBMENU: { href: string; label: string }[] = [
   { href: "/relatorios-inspecao", label: "Relatório técnico" },
 ];
 
+const CORRETIVA_SUBMENU: { href: string; label: string }[] = [
+  { href: "/servicos#balanceamento", label: "Balanceamento" },
+  { href: "/servicos#alinhamento", label: "Alinhamento a laser" },
+  { href: "/servicos#outros", label: "Outros trabalhos corretivos" },
+];
+
 // Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há
 // um cliente ativo (ver montarNavInterno).
 const NAV_INTERNO: NavItem[] = [
@@ -78,7 +84,7 @@ const NAV_INTERNO: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inspecoes/campo", label: "Inspeções", icon: ClipboardList, children: INSPECOES_SUBMENU },
   { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
-  { href: "/servicos", label: "Serviços de campo", icon: Gauge },
+  { href: "/servicos", label: "Manutenção corretiva", icon: Gauge, children: CORRETIVA_SUBMENU },
   { href: "/laudos", label: "Laudos", icon: FileText },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
   { href: "/cadastros", label: "Dados de sistema", icon: Database, children: DADOS_SISTEMA },
@@ -90,7 +96,7 @@ const NAV_CLIENTE: NavItem[] = [
   { href: "/portal", label: "Início", icon: Home },
   { href: "/inspecoes", label: "Inspeções", icon: ClipboardList },
   { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
-  { href: "/servicos", label: "Serviços de campo", icon: Gauge },
+  { href: "/servicos", label: "Manutenção corretiva", icon: Gauge, children: CORRETIVA_SUBMENU },
   { href: "/equipamentos", label: "Equipamentos", icon: Activity },
   { href: "/laudos", label: "Laudos", icon: FileText },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },

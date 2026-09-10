@@ -1,4 +1,5 @@
 from rest_framework.routers import DefaultRouter
+from .atividades import AtividadeCorretivaViewSet
 
 from .views import (
     BalanceamentoPlanoViewSet,
@@ -8,6 +9,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register("atividades-corretivas", AtividadeCorretivaViewSet, basename="atividadecorretiva")
 router.register("servicos", ServicoCampoViewSet, basename="servicocampo")
 router.register("balanceamento-planos", BalanceamentoPlanoViewSet, basename="balanceamentoplano")
 router.register("balanceamento-pontos", BalanceamentoPontoViewSet, basename="balanceamentoponto")

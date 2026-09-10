@@ -304,6 +304,22 @@ export interface Condicao {
   descricao: string;
 }
 
+export interface TecnologiaCorretiva {
+  id: number;
+  nome: string;
+  tipo_corretiva: TipoServico | "";
+}
+
+export interface ItemCorretivo extends ItemInspecao {
+  analise: number | null;
+  observacoes_analise: string;
+}
+
+export interface AtividadeCorretiva extends Carregamento {
+  tipo_corretiva: TipoServico;
+  itens: ItemCorretivo[];
+}
+
 export interface MedicaoVibracao {
   id: number;
   inspecao: number;
@@ -542,7 +558,7 @@ export interface PortalVisaoGeral {
   historico: PortalHistoricoItem[];
 }
 
-/* ===================== Serviços de campo (Anexo I 2.3.2.8) ===================== */
+/* ===================== Manutenção corretiva (Anexo I 2.3.2.8) ===================== */
 
 export type TipoServico = "BALANCEAMENTO" | "ALINHAMENTO";
 
@@ -605,6 +621,8 @@ export interface EconomiaEnergetica {
 }
 
 export interface ServicoCampo {
+  item: number | null;
+  atividade: number | null;
   id: number;
   cliente: number;
   cliente_nome: string;
@@ -634,6 +652,8 @@ export interface ServicoCampo {
 }
 
 export interface ServicoCampoLista {
+  item: number | null;
+  atividade: number | null;
   id: number;
   cliente: number;
   cliente_nome: string;
