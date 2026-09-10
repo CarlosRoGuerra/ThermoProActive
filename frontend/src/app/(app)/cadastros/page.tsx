@@ -39,6 +39,7 @@ type FieldDef = {
   escolhas?: { valor: string; texto: string }[]; // para type "escolha"
   escopoClienteAtivo?: boolean; // "ref" cujas opções pertencem ao cliente ativo (ex.: áreas)
   maxLength?: number; // limite espelhando o max_length do modelo
+  valorNumerico?: boolean; // "escolha" cujo `valor` é um id/número (ex.: periodicidade em meses) — default: string (CharField choices)
 };
 type CatalogDef = {
   key: string;
@@ -179,6 +180,7 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
           { valor: "24", texto: "Bienal" },
           { valor: "36", texto: "Trienal" },
         ],
+        valorNumerico: true,
       },
       { key: "entidade_calibracao", label: "Entidade de calibração" },
       { key: "software_analise", label: "Software de análise" },
@@ -474,8 +476,12 @@ function CadastrosInner() {
           body[f.key] = Array.isArray(v) ? v : [];
         } else if (f.type === "boolean") {
           body[f.key] = v === "true";
-        } else if (f.type === "escolha" || f.type === "ref") {
+        } else if (f.type === "ref" || (f.type === "escolha" && f.valorNumerico)) {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
+        } else if (f.type === "escolha") {
+          // CharField choices (ex.: tipo_corretiva, categoria_tecnica) — valor já é a
+          // string certa (ou "" pra "não se aplica"); não converter para número.
+          if (editingId !== null || (v !== "" && v !== undefined)) body[f.key] = v ?? "";
         } else if (f.type === "number") {
           if (v !== "" && v !== undefined) body[f.key] = Number(v);
         } else if (f.type === "date") {
@@ -620,9 +626,13 @@ function CadastrosInner() {
                   </button>
                 )}
               </div>
-              <div className="flex flex-wrap items-end gap-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {sel.fields.map((f) => (
-                  <Field key={f.key} label={f.required ? `${f.label} *` : f.label}>
+                  <div
+                    key={f.key}
+                    className={f.type === "textarea" || f.type === "image" ? "sm:col-span-2 lg:col-span-3" : undefined}
+                  >
+                  <Field label={f.required ? `${f.label} *` : f.label}>
                     {f.type === "color" ? (
                       <input
                         type="color"
@@ -709,7 +719,10 @@ function CadastrosInner() {
                       />
                     )}
                   </Field>
+                  </div>
                 ))}
+              </div>
+              <div className="mt-4 flex justify-end">
                 <Button
                   onClick={salvar}
                   loading={saving}
