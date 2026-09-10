@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import InternoEditaClienteVisualiza
 
 from . import rules
+from .analise_balanceamento import validar_servico_balanceamento
 from .models import (
     BalanceamentoPlano,
     BalanceamentoPonto,
@@ -128,6 +129,10 @@ class ServicoCampoViewSet(viewsets.ModelViewSet):
 
 
 class BalanceamentoPlanoViewSet(viewsets.ModelViewSet):
+    def perform_destroy(self, instance):
+        validar_servico_balanceamento(instance.servico)
+        super().perform_destroy(instance)
+
     serializer_class = BalanceamentoPlanoSerializer
     permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["servico"]
@@ -138,6 +143,10 @@ class BalanceamentoPlanoViewSet(viewsets.ModelViewSet):
 
 
 class BalanceamentoPontoViewSet(viewsets.ModelViewSet):
+    def perform_destroy(self, instance):
+        validar_servico_balanceamento(instance.servico)
+        super().perform_destroy(instance)
+
     serializer_class = BalanceamentoPontoSerializer
     permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["servico", "plano", "direcao"]

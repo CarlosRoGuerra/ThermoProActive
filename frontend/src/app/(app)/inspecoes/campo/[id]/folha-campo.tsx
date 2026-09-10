@@ -1,18 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, ClipboardCheck, CopyPlus, Pencil, Plus, Send, Trash2,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { Achado, Carregamento, Condicao, ItemInspecao, Paginated } from "@/lib/types";
 import {
   type AchadoForm, formDeAchado, formVazio, payloadDeForm, tecnologiaTipo,
 } from "@/lib/inspecoes";
 import { AchadoCampos } from "@/components/achado-campos";
-import { Badge, Button, Card, Select, Spinner } from "@/components/ui";
+import { AnaliseBalanceamento } from "@/components/analise-balanceamento";
+import { Badge, Button, Card, Field, Select, Spinner, Textarea } from "@/components/ui";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -82,15 +84,85 @@ function AnaliseModal({
   );
 }
 
+/* ---------------- Análise por equipamento — manutenção corretiva ---------------- */
+// Reaproveita o mesmo painel que hoje vive em /servicos/atividades/[id]?item= — a
+// Análise de campo é o único ponto de entrada, pra balanceamento ou qualquer outra
+// tecnologia corretiva.
+function AnaliseCorretivaItem({
+  carregamentoId, item, podeEditar, onSaved,
+}: {
+  carregamentoId: number;
+  item: ItemInspecao;
+  podeEditar: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const base = `/atividades-corretivas/${carregamentoId}`;
+  const [observacoes, setObservacoes] = useState(item.observacoes_analise ?? "");
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => setObservacoes(item.observacoes_analise ?? ""), [item.id, item.observacoes_analise]);
+
+  if (!item.analise) return <Card>Análise não encontrada nesta atividade.</Card>;
+
+  return (
+    <div className="space-y-3">
+      {erro && <p role="alert" className="text-sm text-danger-fg">{erro}</p>}
+      <Card className="space-y-4">
+        <h2 className="font-semibold text-fg">{item.equipamento_tag} — {item.equipamento_nome}</h2>
+        <p className="text-sm text-fg-muted">Condição: {item.condicao_nome || "Não informada"} · Análise iniciada</p>
+        <p className="text-sm text-fg-muted">
+          A análise está vinculada a este equipamento e à rota atual. O formulário técnico
+          desta tecnologia corretiva estará disponível na próxima fase.
+        </p>
+        <Field label="Observações da atividade neste equipamento">
+          <Textarea
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            disabled={!podeEditar || ocupado}
+            rows={4}
+          />
+        </Field>
+        {podeEditar && (
+          <Button
+            disabled={ocupado}
+            onClick={async () => {
+              setOcupado(true);
+              setErro(null);
+              try {
+                await api(`${base}/itens/${item.id}/analise/`, { method: "PATCH", body: { observacoes } });
+                await onSaved();
+              } catch (e) {
+                setErro(e instanceof ApiError ? e.message : "Não foi possível salvar. Tente novamente.");
+              } finally {
+                setOcupado(false);
+              }
+            }}
+          >
+            Salvar
+          </Button>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 /* ------------------------------- Folha de campo --------------------------- */
 export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const { user } = useAuth();
   const [carreg, setCarreg] = useState<Carregamento | null>(null);
   const [condicoes, setCondicoes] = useState<Condicao[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<{ item: ItemInspecao; achado: Achado | null } | null>(null);
   const [transferindo, setTransferindo] = useState(false);
+  const [analisando, setAnalisando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const itemId = params.get("item");
+  const ehCorretiva = !!carreg?.tipo_corretiva;
+  const podeEditar = !!user?.is_interno && carreg?.status === "EM_CAMPO";
 
   const recarregar = useCallback(async () => {
     const d = await api<Carregamento>(`/carregamentos/${carregamentoId}/`);
@@ -123,6 +195,26 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       await recarregar();
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Erro ao salvar a condição.");
+    }
+  }
+
+  // Manutenção corretiva: "Analisar" cria (se preciso) o ServicoCampo do equipamento
+  // e abre o painel de análise por equipamento (?item=), sem sair da Análise de campo.
+  async function analisarCorretiva(item: ItemInspecao) {
+    if (item.analise) {
+      router.push(`/inspecoes/campo/${carregamentoId}?item=${item.id}`);
+      return;
+    }
+    setAnalisando(true);
+    setMsg(null);
+    try {
+      await api(`/atividades-corretivas/${carregamentoId}/itens/${item.id}/analise/`, { method: "POST" });
+      await recarregar();
+      router.push(`/inspecoes/campo/${carregamentoId}?item=${item.id}`);
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Erro ao iniciar a análise.");
+    } finally {
+      setAnalisando(false);
     }
   }
 
@@ -170,6 +262,40 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
   const pendentes = carreg.itens.filter((i) => i.condicao == null).length;
   const transferida = carreg.status !== "EM_CAMPO";
+
+  // Manutenção corretiva — "Análise por equipamento": mesmo painel de
+  // /servicos/atividades/[id]?item=, agora dentro da Análise de campo.
+  if (ehCorretiva && itemId) {
+    const item = carreg.itens.find((i) => String(i.id) === itemId);
+    return (
+      <div className="space-y-5">
+        <Link
+          href={`/inspecoes/campo/${carregamentoId}`}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Voltar para equipamentos da rota
+        </Link>
+        {!item ? (
+          <Card>Análise não encontrada nesta atividade.</Card>
+        ) : carreg.tipo_corretiva === "BALANCEAMENTO" ? (
+          <AnaliseBalanceamento
+            key={item.id}
+            atividadeId={String(carregamentoId)}
+            item={item}
+            podeEditar={podeEditar}
+            onSaved={recarregar}
+          />
+        ) : (
+          <AnaliseCorretivaItem
+            carregamentoId={carregamentoId}
+            item={item}
+            podeEditar={podeEditar}
+            onSaved={recarregar}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -256,38 +382,60 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                       ))}
                     </Select>
                   </div>
-                  {!transferida && (
+                  {ehCorretiva ? (
                     <>
-                      {geraAcao && (
+                      <Badge tone="neutral">
+                        {item.analise_tecnica ? "Análise salva" : item.analise ? "Análise iniciada" : "Não iniciada"}
+                      </Badge>
+                      {!transferida && (
                         <Button
                           variant="secondary"
                           icon={Plus}
-                          onClick={() => setModal({ item, achado: null })}
+                          disabled={analisando || (!item.analise && (!podeEditar || !item.condicao))}
+                          onClick={() => analisarCorretiva(item)}
                         >
-                          Analisar
+                          {item.analise
+                            ? podeEditar
+                              ? item.analise_tecnica ? "Editar análise" : "Continuar análise"
+                              : "Visualizar análise"
+                            : "Analisar"}
                         </Button>
                       )}
-                      <button
-                        onClick={() => adicionarLinha(item)}
-                        title="Adicionar outra linha deste equipamento"
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
-                      >
-                        <CopyPlus className="h-3.5 w-3.5" /> linha
-                      </button>
-                      <button
-                        onClick={() => removerItem(item)}
-                        title="Remover esta linha"
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-danger-fg transition-colors hover:bg-danger-subtle"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
                     </>
+                  ) : (
+                    !transferida && (
+                      <>
+                        {geraAcao && (
+                          <Button
+                            variant="secondary"
+                            icon={Plus}
+                            onClick={() => setModal({ item, achado: null })}
+                          >
+                            Analisar
+                          </Button>
+                        )}
+                        <button
+                          onClick={() => adicionarLinha(item)}
+                          title="Adicionar outra linha deste equipamento"
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
+                        >
+                          <CopyPlus className="h-3.5 w-3.5" /> linha
+                        </button>
+                        <button
+                          onClick={() => removerItem(item)}
+                          title="Remover esta linha"
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-danger-fg transition-colors hover:bg-danger-subtle"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )
                   )}
                 </div>
               </div>
 
-              {/* Análises registradas neste item */}
-              {item.achados.length > 0 && (
+              {/* Análises registradas neste item (fluxo preditivo) */}
+              {!ehCorretiva && item.achados.length > 0 && (
                 <div className="mt-3 space-y-1.5 border-t border-border pt-3">
                   {item.achados.map((a) => (
                     <div

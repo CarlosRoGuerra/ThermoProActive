@@ -5,12 +5,22 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ImagePlus, Save, Trash2, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { Achado, AchadoImagem, TipoImagemAchado } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import type { Achado, AchadoImagem, ServicoCampo, TipoImagemAchado } from "@/lib/types";
 import {
   type AchadoForm, formDeAchado, payloadDeForm, tecnologiaTipo,
 } from "@/lib/inspecoes";
 import { AchadoCampos } from "@/components/achado-campos";
+import { ServicoCampoPainel } from "@/components/servico-campo-painel";
 import { Badge, Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
+
+// Campos técnicos com validação cruzada de compatibilidade (catálogo × tecnologia) —
+// na manutenção corretiva só são editáveis pela Análise de campo; a Análise final não
+// os envia no PATCH (o backend rejeitaria).
+const CAMPOS_TECNICOS_CORRETIVA = [
+  "tipo_componente", "componente_texto", "detalhe",
+  "tipo_anomalia", "anomalia_texto", "recomendacao", "recomendacao_texto",
+] as const;
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -196,9 +206,11 @@ function Imagens({
 /* ------------------------------- Página ----------------------------------- */
 export function AnaliseFinal({ achadoId }: { achadoId: number }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [achado, setAchado] = useState<Achado | null>(null);
   const [form, setForm] = useState<AchadoForm | null>(null);
   const [numeroOsp, setNumeroOsp] = useState("");
+  const [servico, setServico] = useState<ServicoCampo | null>(null);
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -208,7 +220,16 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     setAchado(a);
     setForm(formDeAchado(a));
     setNumeroOsp(a.numero_osp ?? "");
+    if (a.tipo_corretiva === "BALANCEAMENTO" && a.servico_campo_id) {
+      setServico(await api<ServicoCampo>(`/servicos/${a.servico_campo_id}/`));
+    } else {
+      setServico(null);
+    }
   }, [achadoId]);
+
+  const recarregarServico = useCallback(async () => {
+    if (achado?.servico_campo_id) setServico(await api<ServicoCampo>(`/servicos/${achado.servico_campo_id}/`));
+  }, [achado?.servico_campo_id]);
 
   useEffect(() => {
     setLoading(true);
@@ -227,8 +248,13 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     setMsg(null);
     try {
       // A condição/grau de risco desta análise vai no próprio achado (AchadoCampos).
-      // numero_osp é gerado automaticamente ao confirmar (não editável).
+      // numero_osp é gerado automaticamente ao confirmar (não editável). Na manutenção
+      // corretiva, os campos técnicos (componente/anomalia/recomendação) são editados
+      // só pela Análise de campo — não entram neste PATCH.
       const body: Record<string, unknown> = { ...payloadDeForm(form) };
+      if (achado.tipo_corretiva) {
+        for (const campo of CAMPOS_TECNICOS_CORRETIVA) delete body[campo];
+      }
       if (confirmar) {
         body.confirmada = true;
         body.visivel_cliente = true;
@@ -300,8 +326,23 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
       {/* Campos editáveis da análise (inclui a Condição / grau de risco no topo) */}
       <Card>
         <h2 className="mb-4 text-sm font-semibold text-fg">Análise</h2>
-        <AchadoCampos form={form} setForm={setForm} tipo={tipo} tecnologiaId={achado.tecnologia} />
+        <AchadoCampos
+          form={form}
+          setForm={setForm}
+          tipo={tipo}
+          tecnologiaId={achado.tecnologia}
+          camposTecnicosDesabilitados={!!achado.tipo_corretiva}
+        />
       </Card>
+
+      {/* Manutenção corretiva (balanceamento): reaproveita a interface de Serviços de
+          campo — Planos, Pontos, gráficos e Economia energética. */}
+      {servico && (
+        <Card>
+          <h2 className="mb-4 text-sm font-semibold text-fg">Balanceamento</h2>
+          <ServicoCampoPainel servico={servico} podeEditar={!!user?.is_interno} onMudou={recarregarServico} />
+        </Card>
+      )}
 
       {/* Imagens */}
       <Card>

@@ -156,6 +156,7 @@ def hz_para_rpm(hz) -> int:
 
 @dataclass
 class ResultadoEconomia:
+    reducao_corrente_a: Decimal  # ΔI = corrente antes − corrente depois
     reducao_kw: Decimal          # redução de demanda            (planilha: B9)
     economia_kwh_ano: Decimal    # energia poupada no ano        (não existia na planilha)
     economia_rs_ano: Decimal     # economia financeira no ano    (planilha: B11)
@@ -174,7 +175,7 @@ def calcular_economia(
     horas_dia,
     dias_ano,
     custo_kwh,
-    custo_servico,
+    investimento,
 ) -> ResultadoEconomia:
     """
     Planilha de economia, com as unidades corrigidas e o payback separado do retorno.
@@ -183,11 +184,16 @@ def calcular_economia(
     nenhuma tem valor padrão (ver nota no topo do módulo). Faltando qualquer uma, o
     cálculo levanta erro em vez de assumir.
 
-        reducao_kw       = V × ΔI × FP × √3 / 1000        (B9 — é kW, não "KW/h")
-        economia_kwh_ano = reducao_kw × horas_dia × dias_ano
-        economia_rs_ano  = economia_kwh_ano × custo_kwh   (B11 — custo é R$/kWh)
-        retorno_ano      = economia_rs_ano / custo_servico  (C11 — o "4,67")
-        payback          = custo_servico / economia_rs_ano  (o que C11 NÃO é)
+        reducao_corrente_a = corrente_antes − corrente_depois
+        reducao_kw         = V × ΔI × FP × √3 / 1000        (B9 — é kW, não "KW/h")
+        economia_kwh_ano   = reducao_kw × horas_dia × dias_ano
+        economia_rs_ano    = economia_kwh_ano × custo_kwh   (B11 — custo é R$/kWh)
+        retorno_ano        = economia_rs_ano / investimento  (C11 — o "4,67")
+        payback            = (investimento / economia_rs_ano) × 12 meses
+                              — investimento ÷ economia financeira PERIÓDICA (aqui,
+                              anual), convertido para o período em meses. É o que a
+                              planilha original chamava (errado) de "PayBack" — aquele
+                              número (C11) é o retorno ×/ano, não o payback.
 
     ΔI negativo (corrente subiu após o serviço) é devolvido como economia negativa —
     é informação, não erro: significa que o serviço não reduziu o consumo.
@@ -200,9 +206,10 @@ def calcular_economia(
     economia_kwh_ano = reducao_kw * _d(horas_dia) * _d(dias_ano)
     economia_rs_ano = economia_kwh_ano * _d(custo_kwh)
 
-    custo = _d(custo_servico)
+    custo = _d(investimento)
     payback_dias = payback_meses = retorno_ano = None
-    # Sem economia não há payback — caso real (a corrente subiu), não erro de entrada.
+    # Sem economia não há payback — caso real (a corrente subiu, ou não mudou), não erro
+    # de entrada.
     if economia_rs_ano > 0 and custo > 0:
         retorno_ano = economia_rs_ano / custo
         payback_anos = custo / economia_rs_ano
@@ -217,6 +224,7 @@ def calcular_economia(
     ]
 
     return ResultadoEconomia(
+        reducao_corrente_a=delta_i,
         reducao_kw=reducao_kw,
         economia_kwh_ano=economia_kwh_ano,
         economia_rs_ano=economia_rs_ano,

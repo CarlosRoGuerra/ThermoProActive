@@ -10,14 +10,17 @@ from apps.accounts.permissions import InternoEditaClienteVisualiza
 from apps.cadastros.models import Condicao
 from apps.coletas.models import Carregamento, ItemInspecao, StatusCarregamento
 from apps.coletas.serializers import CarregamentoSerializer, ItemInspecaoSerializer
-from .models import ServicoCampo
+from .models import ServicoCampo, TipoServico
+from .serializers import ServicoCampoSerializer
+from .analise_balanceamento import (
+    AnaliseBalanceamentoSerializer, CabecalhoBalanceamentoSerializer,
+    catalogos_balanceamento, validar_servico_balanceamento,
+)
 
-
-class ItemCorretivoSerializer(ItemInspecaoSerializer):
-    analise = serializers.IntegerField(source="servico_corretivo.pk", read_only=True, default=None)
-    observacoes_analise = serializers.CharField(
-        source="servico_corretivo.observacoes", read_only=True, default="",
-    )
+# Os campos analise/analise_tecnica/observacoes_analise já vêm de
+# ItemInspecaoSerializer (base, coletas/serializers.py) — a Análise de campo unificada
+# usa o mesmo serializer para os dois fluxos, sem precisar de um subtipo aqui.
+ItemCorretivoSerializer = ItemInspecaoSerializer
 
 
 class AtividadeCorretivaSerializer(CarregamentoSerializer):
@@ -103,6 +106,55 @@ class AtividadeCorretivaViewSet(
             ItemInspecao.objects.select_for_update() if editar else ItemInspecao.objects,
             pk=item_id, carregamento=atividade, ativo=True,
         )
+
+    def item_balanceamento(self, item_id, *, editar=False):
+        item = self.item_da_atividade(item_id, editar=editar)
+        if item.carregamento.tipo_corretiva != TipoServico.BALANCEAMENTO:
+            raise serializers.ValidationError("Esta atividade não é de balanceamento.")
+        return item
+
+    @action(detail=True, methods=["get"], url_path=r"itens/(?P<item_id>\d+)/balanceamento/catalogos")
+    def catalogos(self, request, pk=None, item_id=None):
+        item = self.item_balanceamento(item_id)
+        anomalia_id = request.query_params.get("anomalia")
+        if anomalia_id is not None and not anomalia_id.isdecimal():
+            raise serializers.ValidationError({"anomalia": "Informe o identificador da anomalia."})
+        componentes, anomalias, recomendacoes = catalogos_balanceamento(
+            item.carregamento.tecnologia_id, anomalia_id,
+        )
+        if anomalia_id and not anomalias.filter(pk=anomalia_id).exists():
+            raise serializers.ValidationError({"anomalia": "Anomalia incompatível com o balanceamento desta atividade."})
+        return Response({
+            "condicoes": list(Condicao.objects.ativos().values("id", "nome")),
+            "tipos_componente": list(componentes.values("id", "nome")),
+            "tipos_anomalia": list(anomalias.values("id", "nome")),
+            "recomendacoes": list(recomendacoes.values("id", "nome")),
+        })
+
+    @action(detail=True, methods=["get", "patch"], url_path=r"itens/(?P<item_id>\d+)/balanceamento")
+    @transaction.atomic
+    def balanceamento(self, request, pk=None, item_id=None):
+        item = self.item_balanceamento(item_id, editar=request.method == "PATCH")
+        servico = get_object_or_404(ServicoCampo, item=item, ativo=True)
+        contexto = {"item": item}
+        if request.method == "PATCH":
+            validar_servico_balanceamento(servico)
+            tecnica = AnaliseBalanceamentoSerializer(
+                servico.analise_tecnica, data=request.data.get("tecnica", {}),
+                partial=servico.analise_tecnica_id is not None, context=contexto,
+            )
+            cabecalho = CabecalhoBalanceamentoSerializer(data=request.data)
+            tecnica.is_valid(raise_exception=True)
+            cabecalho.is_valid(raise_exception=True)
+            servico.analise_tecnica = tecnica.save(item=item)
+            if "rotacao_hz" in cabecalho.validated_data:
+                servico.rotacao_hz = cabecalho.validated_data["rotacao_hz"]
+            servico.save()
+        return Response({
+            "servico": ServicoCampoSerializer(servico).data,
+            "tecnica": AnaliseBalanceamentoSerializer(servico.analise_tecnica, context=contexto).data
+            if servico.analise_tecnica_id else None,
+        })
 
     @action(detail=True, methods=["patch"], url_path=r"itens/(?P<item_id>\d+)/condicao")
     @transaction.atomic

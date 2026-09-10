@@ -194,7 +194,21 @@ const CATALOGOS_SISTEMA: CatalogDef[] = [
       "periodicidade_display", "proxima_calibracao", "tecnologias_display",
     ],
   },
-  catSimples("tipos-equipamento", "Tipos de equipamento"),
+  {
+    key: "tipos-equipamento",
+    label: "Tipos de equipamento",
+    endpoint: "tipos-equipamento",
+    fields: [
+      { key: "nome", label: "Nome", required: true },
+      { key: "descricao", label: "Descrição" },
+      { key: "categoria_tecnica", label: "Categoria técnica (datasheet específico)", type: "escolha", escolhas: [
+        { valor: "", texto: "Nenhuma — sem dados técnicos específicos" },
+        { valor: "MOTOR_ELETRICO", texto: "Motor elétrico" },
+        { valor: "TRANSFORMADOR", texto: "Transformador" },
+      ] },
+    ],
+    columns: ["nome", "descricao"],
+  },
   catComTecnologias("tipos-componente", "Tipos de componente"),
   catComTecnologias("tipos-anomalia", "Tipos de anomalia"),
   catComTecnologias("tipos-recomendacao", "Tipos de recomendação"),
@@ -262,6 +276,10 @@ function catComTecnologias(endpoint: string, label: string): CatalogDef {
         type: "multiref",
         optionsEndpoint: "tecnologias-analise",
       },
+      ...(endpoint === "tipos-recomendacao" ? [{
+        key: "anomalias", label: "Anomalias compatíveis (balanceamento)",
+        type: "multiref" as const, optionsEndpoint: "tipos-anomalia",
+      }] : []),
     ],
     columns: ["nome", "descricao", "tecnologias_display"],
   };

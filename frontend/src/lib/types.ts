@@ -60,16 +60,63 @@ export interface Equipamento {
   tipo: string; // texto legado (espelha o nome do tipo)
   tipo_equipamento: number | null; // FK ao catálogo "Tipos de equipamento"
   tipo_equipamento_nome: string | null;
+  // Vínculo explícito do catálogo (TipoEquipamento.categoria_tecnica) — não inferido
+  // pelo nome — decide qual card de dados técnicos específicos mostrar na tela.
+  categoria_tecnica: CategoriaTecnica;
   fabricante: string;
   modelo: string;
   numero_serie: string;
   potencia_kw: string | null;
   rotacao_nominal_rpm: number | null;
+  // Placa do motor — preenche a Economia energética do balanceamento automaticamente.
+  tensao_nominal: string | null;
+  fator_potencia_nominal: string | null;
   classe_iso: string;
   classe_iso_display: string;
   criticidade: string; // "" | "A" | "B" | "C"
   criticidade_display: string;
+  // Datasheet técnico específico — null quando o equipamento não tem um ainda (tipo
+  // genérico, ou tipo específico sem o cadastro preenchido). Acesso estruturado pela
+  // própria entidade de equipamento (nested, somente leitura — escrita é por
+  // /dados-tecnicos-motor/ e /dados-tecnicos-transformador/).
+  dados_motor: DadosTecnicosMotor | null;
+  dados_transformador: DadosTecnicosTransformador | null;
   componentes: Componente[];
+}
+
+/** Qual datasheet técnico específico um TipoEquipamento representa (se algum). */
+export type CategoriaTecnica = "" | "MOTOR_ELETRICO" | "TRANSFORMADOR";
+
+export type TipoBase = "" | "RIGIDA" | "FLEXIVEL";
+
+export interface DadosTecnicosMotor {
+  id: number;
+  equipamento: number;
+  potencia_kw: string | null;
+  tensao_v: string | null;
+  corrente_a: string | null;
+  rotacao_rpm: number | null;
+  fator_potencia: string | null;
+  fator_servico: string | null;
+  classe_isolacao: string;
+  rendimento_pct: string | null;
+  rolamento_loa: string;
+  rolamento_la: string;
+  tipo_base: TipoBase;
+  foto_placa: string | null;
+  criado_em: string;
+}
+
+export interface DadosTecnicosTransformador {
+  id: number;
+  equipamento: number;
+  potencia_kva: string | null;
+  tensao_primaria_v: string | null;
+  tensao_secundaria_v: string | null;
+  impedancia_pct: string | null;
+  grupo_ligacao: string;
+  foto_placa: string | null;
+  criado_em: string;
 }
 
 /** Empresa CONTRATADA (prestadora de serviço) — sai no cabeçalho dos relatórios. */
@@ -196,6 +243,11 @@ export interface Achado {
   numero_relatorio: string | null;
   confirmada: boolean;
   visivel_cliente: boolean;
+  // Manutenção corretiva (balanceamento etc.) — quando preenchido, a Análise final
+  // reaproveita o painel de Serviços de campo (servico_campo_id) em vez do formulário
+  // padrão de vibração/termografia.
+  tipo_corretiva: TipoServico | "";
+  servico_campo_id: number | null;
   // Rastreabilidade (somente leitura)
   equipamento_tag: string;
   equipamento_nome: string;
@@ -227,6 +279,10 @@ export interface ItemInspecao {
   data: string;
   achados: Achado[];
   qtd_achados: number;
+  // Manutenção corretiva: estado do ServicoCampo vinculado a este item, se houver.
+  analise: number | null;
+  analise_tecnica: number | null;
+  observacoes_analise: string;
   criado_em: string;
 }
 
@@ -263,6 +319,9 @@ export interface Carregamento {
   status: StatusCarregamento;
   status_display: string;
   transferido_em: string | null;
+  // Vazio = fluxo preditivo normal; preenchido = atividade de manutenção corretiva
+  // (balanceamento, alinhamento) carregada pela mesma tela de Análise de campo.
+  tipo_corretiva: TipoServico | "";
   itens: ItemInspecao[];
   qtd_itens: number;
   qtd_pendentes: number;
@@ -310,10 +369,8 @@ export interface TecnologiaCorretiva {
   tipo_corretiva: TipoServico | "";
 }
 
-export interface ItemCorretivo extends ItemInspecao {
-  analise: number | null;
-  observacoes_analise: string;
-}
+// analise/analise_tecnica/observacoes_analise já vêm da base ItemInspecao.
+export type ItemCorretivo = ItemInspecao;
 
 export interface AtividadeCorretiva extends Carregamento {
   tipo_corretiva: TipoServico;
@@ -580,6 +637,7 @@ export interface BalanceamentoPonto {
   numero_mancal: number;
   direcao: "H" | "V" | "A";
   direcao_display: string;
+  identificacao: string;
   codigo_ponto: string;
   /** Falso enquanto o trim run não foi medido — o ponto está em andamento. */
   completo: boolean;
@@ -610,7 +668,9 @@ export interface EconomiaEnergetica {
   horas_dia: string;
   dias_ano: number;
   custo_kwh: string;
+  investimento: string | null;
   // calculados
+  reducao_corrente_a: string | null;
   reducao_kw: string | null;
   economia_kwh_ano: string | null;
   economia_rs_ano: string | null;
@@ -621,6 +681,7 @@ export interface EconomiaEnergetica {
 }
 
 export interface ServicoCampo {
+  analise_tecnica: number | null;
   item: number | null;
   atividade: number | null;
   id: number;
@@ -630,6 +691,9 @@ export interface ServicoCampo {
   equipamento_tag: string;
   equipamento_nome: string;
   classe_iso: string;
+  // Placa do motor (cadastro do equipamento) — null quando o cadastro não tem o dado.
+  equipamento_tensao_nominal: string | null;
+  equipamento_fator_potencia_nominal: string | null;
   tipo: TipoServico;
   tipo_display: string;
   osp: number | null;
@@ -645,6 +709,9 @@ export interface ServicoCampo {
   observacoes: string;
   planos: BalanceamentoPlano[];
   pontos: BalanceamentoPonto[];
+  // Ponto de medição (mancal+direção) de maior amplitude, escolhido pelo técnico como
+  // foco do balanceamento — só ele pode registrar Trial Run.
+  ponto_foco: number | null;
   economia: EconomiaEnergetica | null;
   numero_planos: number;
   reducao_media_pct: string | null;

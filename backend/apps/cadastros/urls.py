@@ -6,6 +6,8 @@ from .views import (
     ClienteViewSet,
     ComponenteViewSet,
     CondicaoViewSet,
+    DadosTecnicosMotorViewSet,
+    DadosTecnicosTransformadorViewSet,
     EmpresaViewSet,
     EquipamentoViewSet,
     FalhaRecorrenteViewSet,
@@ -30,6 +32,8 @@ router.register("clientes", ClienteViewSet)
 router.register("areas", AreaViewSet)
 router.register("setores", SetorViewSet)
 router.register("equipamentos", EquipamentoViewSet)
+router.register("dados-tecnicos-motor", DadosTecnicosMotorViewSet)
+router.register("dados-tecnicos-transformador", DadosTecnicosTransformadorViewSet)
 router.register("componentes", ComponenteViewSet)
 router.register("instrumentos", InstrumentoViewSet)
 router.register("rotas", RotaViewSet)

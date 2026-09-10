@@ -6,7 +6,9 @@ Hierarquia de localização (item 2.2.1.15–17):
 """
 import calendar
 from datetime import date
+from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.core.models import BaseModel
@@ -167,6 +169,13 @@ class ClasseISO(models.TextChoices):
     IV = "IV", "Classe IV (base flexível)"
 
 
+class TipoBase(models.TextChoices):
+    """Rigidez da base de montagem do motor — decide III × IV acima de 75 kW."""
+
+    RIGIDA = "RIGIDA", "Rígida"
+    FLEXIVEL = "FLEXIVEL", "Flexível"
+
+
 class CriticidadeEquip(models.TextChoices):
     """
     Criticidade do equipamento para o processo produtivo (padrão A/B/C).
@@ -214,6 +223,17 @@ class Equipamento(BaseModel):
     numero_serie = models.CharField("Número de série", max_length=80, blank=True)
     potencia_kw = models.DecimalField("Potência (kW)", max_digits=8, decimal_places=2, null=True, blank=True)
     rotacao_nominal_rpm = models.PositiveIntegerField("Rotação nominal (RPM)", null=True, blank=True)
+    # Dados de placa do motor — cadastrados uma vez, reaproveitados na Economia
+    # energética do balanceamento (evita redigitar a cada serviço nesse mesmo motor).
+    tensao_nominal = models.DecimalField(
+        "Tensão nominal (V)", max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Da placa de identificação do motor.",
+    )
+    fator_potencia_nominal = models.DecimalField(
+        "Fator de potência nominal", max_digits=4, decimal_places=3, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+        help_text="Da placa de identificação do motor.",
+    )
     classe_iso = models.CharField(
         "Classe ISO (vibração)", max_length=3, choices=ClasseISO.choices,
         default=ClasseISO.II, help_text="Define os limiares de severidade da análise de vibração.",
@@ -277,6 +297,134 @@ class Equipamento(BaseModel):
                 )
             visitados.add(atual.pk)
             atual = atual.equipamento_pai
+
+
+class DadosTecnicosMotor(BaseModel):
+    """
+    Datasheet técnico de Motor Elétrico — extensão 1-para-1 de Equipamento (não colunas
+    soltas nullable nele). Um novo tipo no futuro (ex.: compressor) vira outro model
+    igual a este, sem mexer aqui nem em Equipamento.
+
+    Potência/rotação/tensão/FP são campos genéricos que JÁ existem em `Equipamento`
+    (usados pela Economia energética do balanceamento, sessão anterior) — este model
+    tem sua própria versão, mais completa, e sincroniza para lá no save() (motor →
+    equipamento, nunca o contrário). Isso preserva o que a Economia já lê e testa hoje.
+    """
+
+    equipamento = models.OneToOneField(
+        Equipamento, on_delete=models.CASCADE, related_name="dados_motor",
+    )
+    potencia_kw = models.DecimalField(
+        "Potência (kW)", max_digits=8, decimal_places=2, null=True, blank=True,
+    )
+    tensao_v = models.DecimalField(
+        "Tensão (V)", max_digits=8, decimal_places=2, null=True, blank=True,
+    )
+    corrente_a = models.DecimalField(
+        "Corrente (A)", max_digits=8, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    rotacao_rpm = models.PositiveIntegerField("Rotação (RPM)", null=True, blank=True)
+    fator_potencia = models.DecimalField(
+        "Fator de potência (FP)", max_digits=4, decimal_places=3, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
+    )
+    fator_servico = models.DecimalField(
+        "Fator de serviço (FS)", max_digits=4, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Ex.: 1,15 — margem de sobrecarga contínua admissível pela placa.",
+    )
+    classe_isolacao = models.CharField(
+        "Classe de isolação (ISOL)", max_length=4, blank=True,
+        help_text="Convenção da placa (ex.: A, B, E, F, H) — texto livre, não é código fechado.",
+    )
+    rendimento_pct = models.DecimalField(
+        "Rendimento (%)", max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+    )
+    rolamento_loa = models.CharField("Rolamento LOA (lado oposto ao acoplamento)", max_length=40, blank=True)
+    rolamento_la = models.CharField("Rolamento LA (lado do acoplamento)", max_length=40, blank=True)
+    tipo_base = models.CharField(
+        "Tipo de base", max_length=10, blank=True, choices=TipoBase.choices,
+        help_text="Rígida ou flexível — decide a Classe ISO III×IV acima de 75 kW.",
+    )
+    # Preparação para IA/OCR (fase futura, não implementada agora): a foto fica salva
+    # aqui, pronta para alimentar um extrator futuro — a IA nunca grava direto nos
+    # campos acima, só pré-preenche o formulário que o humano revisa e confirma.
+    foto_placa = models.ImageField(
+        "Foto da placa de identificação", upload_to="equipamentos/placas/motor/",
+        null=True, blank=True,
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Dados técnicos — Motor elétrico"
+        verbose_name_plural = "Dados técnicos — Motores elétricos"
+
+    def __str__(self):
+        return f"Motor — {self.equipamento.tag}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Sincroniza motor → equipamento (nunca o contrário) nos campos genéricos que
+        # a Economia energética já lê hoje — ela continua sem saber que este model existe.
+        sincronizar = {}
+        if self.potencia_kw is not None and self.equipamento.potencia_kw != self.potencia_kw:
+            sincronizar["potencia_kw"] = self.potencia_kw
+        if self.rotacao_rpm is not None and self.equipamento.rotacao_nominal_rpm != self.rotacao_rpm:
+            sincronizar["rotacao_nominal_rpm"] = self.rotacao_rpm
+        if self.tensao_v is not None and self.equipamento.tensao_nominal != self.tensao_v:
+            sincronizar["tensao_nominal"] = self.tensao_v
+        if self.fator_potencia is not None and self.equipamento.fator_potencia_nominal != self.fator_potencia:
+            sincronizar["fator_potencia_nominal"] = self.fator_potencia
+
+        from . import rules
+        classe = rules.classificar_classe_iso(self.potencia_kw, self.tipo_base or None)
+        if classe is not None and self.equipamento.classe_iso != classe:
+            sincronizar["classe_iso"] = classe
+
+        if sincronizar:
+            Equipamento.objects.filter(pk=self.equipamento_id).update(**sincronizar)
+            for campo, valor in sincronizar.items():
+                setattr(self.equipamento, campo, valor)
+
+
+class DadosTecnicosTransformador(BaseModel):
+    """
+    Datasheet técnico de Transformador — mesma extensão 1-para-1, campos diferentes
+    (prova que a arquitetura estende sem tocar em DadosTecnicosMotor nem em Equipamento).
+    Lista inicial; "demais dados específicos" futuros entram aqui, sem migrar nada.
+    """
+
+    equipamento = models.OneToOneField(
+        Equipamento, on_delete=models.CASCADE, related_name="dados_transformador",
+    )
+    potencia_kva = models.DecimalField(
+        "Potência (kVA)", max_digits=9, decimal_places=2, null=True, blank=True,
+    )
+    tensao_primaria_v = models.DecimalField(
+        "Tensão primária (V)", max_digits=9, decimal_places=2, null=True, blank=True,
+    )
+    tensao_secundaria_v = models.DecimalField(
+        "Tensão secundária (V)", max_digits=9, decimal_places=2, null=True, blank=True,
+    )
+    impedancia_pct = models.DecimalField(
+        "Impedância (%)", max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    grupo_ligacao = models.CharField(
+        "Grupo de ligação", max_length=20, blank=True, help_text="Ex.: Dyn1.",
+    )
+    foto_placa = models.ImageField(
+        "Foto da placa de identificação", upload_to="equipamentos/placas/transformador/",
+        null=True, blank=True,
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Dados técnicos — Transformador"
+        verbose_name_plural = "Dados técnicos — Transformadores"
+
+    def __str__(self):
+        return f"Transformador — {self.equipamento.tag}"
 
 
 class Componente(BaseModel):
@@ -424,8 +572,26 @@ class Norma(Catalogo):
         return f"{self.codigo} — {self.nome}" if self.codigo else self.nome
 
 
+class CategoriaTecnica(models.TextChoices):
+    """
+    Qual datasheet técnico específico este tipo de equipamento tem (se algum).
+    Vínculo explícito — igual TecnologiaAnalise.tipo_corretiva — nunca inferido pelo
+    nome do catálogo (o usuário digita livremente em "Dados de sistema").
+    """
+
+    MOTOR_ELETRICO = "MOTOR_ELETRICO", "Motor elétrico"
+    TRANSFORMADOR = "TRANSFORMADOR", "Transformador"
+
+
 class TipoEquipamento(Catalogo):
     """Tipo de equipamento/máquina — item 2.2.1.7."""
+
+    categoria_tecnica = models.CharField(
+        "Categoria técnica", max_length=20, blank=True, default="",
+        choices=CategoriaTecnica.choices,
+        help_text="Define qual datasheet técnico específico (motor, transformador…) "
+                   "os equipamentos deste tipo podem ter. Vazio = sem datasheet específico.",
+    )
 
     class Meta(Catalogo.Meta):
         verbose_name = "Tipo de equipamento"
@@ -492,6 +658,10 @@ class TipoRecomendacao(Catalogo):
     tecnologias = models.ManyToManyField(
         TecnologiaAnalise, blank=True, related_name="tipos_recomendacao",
         verbose_name="Tecnologias aplicáveis",
+    )
+    anomalias = models.ManyToManyField(
+        TipoAnomalia, blank=True, related_name="recomendacoes",
+        verbose_name="Anomalias compatíveis",
     )
 
     class Meta(Catalogo.Meta):

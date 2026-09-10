@@ -7,9 +7,10 @@ import { Activity, ArrowLeft, MapPin, Save, Settings } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { useAreasSetores } from "@/lib/hierarquia";
-import type { Equipamento, Paginated } from "@/lib/types";
+import type { CategoriaTecnica, DadosTecnicosMotor, DadosTecnicosTransformador, Equipamento, Paginated } from "@/lib/types";
 import { Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 import { Combobox } from "@/components/combobox";
+import { DadosMotor, DadosTransformador } from "@/components/dados-tecnicos-equipamento";
 
 const CLASSES_ISO = [
   { valor: "I", texto: "Classe I — pequenas máquinas (< 15 kW)" },
@@ -27,16 +28,19 @@ type Form = {
   numero_serie: string;
   potencia_kw: string;
   rotacao_nominal_rpm: string;
+  tensao_nominal: string;
+  fator_potencia_nominal: string;
   classe_iso: string;
   criticidade: string;
 };
 
 const FORM_VAZIO: Form = {
   tag: "", nome: "", tipo_equipamento: "", fabricante: "", modelo: "", numero_serie: "",
-  potencia_kw: "", rotacao_nominal_rpm: "", classe_iso: "II", criticidade: "",
+  potencia_kw: "", rotacao_nominal_rpm: "", tensao_nominal: "", fator_potencia_nominal: "",
+  classe_iso: "II", criticidade: "",
 };
 
-type OpcaoTipo = { id: number; nome: string };
+type OpcaoTipo = { id: number; nome: string; categoria_tecnica: CategoriaTecnica };
 
 function Secao({
   icon: Icon,
@@ -73,6 +77,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   const [pai, setPai] = useState<number | "">("");
   const [candidatosPai, setCandidatosPai] = useState<Equipamento[]>([]);
   const [tiposEquip, setTiposEquip] = useState<OpcaoTipo[]>([]);
+  const [dadosMotor, setDadosMotor] = useState<DadosTecnicosMotor | null>(null);
+  const [dadosTransformador, setDadosTransformador] = useState<DadosTecnicosTransformador | null>(null);
   const [carregando, setCarregando] = useState(editando);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -110,6 +116,23 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
 
   const set = (campo: keyof Form, valor: string) => setForm((f) => ({ ...f, [campo]: valor }));
 
+  // Recarrega só o equipamento (usado pelos cards de dados técnicos ao salvar —
+  // motor/transformador podem ter sincronizado potência/tensão/FP/classe ISO).
+  async function recarregarEquipamento() {
+    if (!editando) return;
+    const e = await api<Equipamento>(`/equipamentos/${equipamentoId}/`);
+    setForm((f) => ({
+      ...f,
+      potencia_kw: e.potencia_kw ? String(e.potencia_kw) : "",
+      rotacao_nominal_rpm: e.rotacao_nominal_rpm ? String(e.rotacao_nominal_rpm) : "",
+      tensao_nominal: e.tensao_nominal ? String(e.tensao_nominal) : "",
+      fator_potencia_nominal: e.fator_potencia_nominal ? String(e.fator_potencia_nominal) : "",
+      classe_iso: e.classe_iso ?? "II",
+    }));
+    setDadosMotor(e.dados_motor);
+    setDadosTransformador(e.dados_transformador);
+  }
+
   // Carrega o equipamento e reconstitui a cascata a partir do setor salvo.
   useEffect(() => {
     if (!editando) return;
@@ -124,9 +147,13 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
           numero_serie: e.numero_serie ?? "",
           potencia_kw: e.potencia_kw ? String(e.potencia_kw) : "",
           rotacao_nominal_rpm: e.rotacao_nominal_rpm ? String(e.rotacao_nominal_rpm) : "",
+          tensao_nominal: e.tensao_nominal ? String(e.tensao_nominal) : "",
+          fator_potencia_nominal: e.fator_potencia_nominal ? String(e.fator_potencia_nominal) : "",
           classe_iso: e.classe_iso ?? "II",
           criticidade: e.criticidade ?? "",
         });
+        setDadosMotor(e.dados_motor);
+        setDadosTransformador(e.dados_transformador);
         setCliente(e.cliente_id ?? "");
         // Descobre a área a partir do setor para preencher o passo intermediário.
         try {
@@ -161,6 +188,9 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
       body.potencia_kw = form.potencia_kw === "" ? null : Number(form.potencia_kw);
       body.rotacao_nominal_rpm =
         form.rotacao_nominal_rpm === "" ? null : Number(form.rotacao_nominal_rpm);
+      body.tensao_nominal = form.tensao_nominal === "" ? null : Number(form.tensao_nominal);
+      body.fator_potencia_nominal =
+        form.fator_potencia_nominal === "" ? null : Number(form.fator_potencia_nominal);
 
       if (editando) {
         await api(`/equipamentos/${equipamentoId}/`, { method: "PATCH", body });
@@ -175,6 +205,10 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   }
 
   const podeSalvar = form.tag.trim() !== "" && form.nome.trim() !== "" && setor !== "";
+  // Vínculo explícito do catálogo (TipoEquipamento.categoria_tecnica) — decide qual
+  // card de dados técnicos específicos mostrar, nunca inferido pelo nome do tipo.
+  const tipoSelecionado = tiposEquip.find((t) => String(t.id) === form.tipo_equipamento);
+  const categoria: CategoriaTecnica = tipoSelecionado?.categoria_tecnica ?? "";
 
   if (carregando) {
     return (
@@ -326,26 +360,58 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         <Secao
           icon={Settings}
           titulo="Dados técnicos"
-          descricao="A classe ISO define os limiares de severidade da análise de vibração."
+          descricao={
+            categoria
+              ? "Potência, rotação, tensão e FP vêm do datasheet específico abaixo — aqui só a classificação geral."
+              : "A classe ISO define os limiares de severidade da análise de vibração."
+          }
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Potência (kW)">
-            <Input
-              type="number"
-              step="0.01"
-              value={form.potencia_kw}
-              onChange={(e) => set("potencia_kw", e.target.value)}
-            />
-          </Field>
-          <Field label="Rotação nominal (RPM)">
-            <Input
-              type="number"
-              value={form.rotacao_nominal_rpm}
-              onChange={(e) => set("rotacao_nominal_rpm", e.target.value)}
-            />
-          </Field>
-          <Field label="Classe ISO (vibração)">
-            <Select value={form.classe_iso} onChange={(e) => set("classe_iso", e.target.value)}>
+          {!categoria && (
+            <>
+              <Field label="Potência (kW)">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.potencia_kw}
+                  onChange={(e) => set("potencia_kw", e.target.value)}
+                />
+              </Field>
+              <Field label="Rotação nominal (RPM)">
+                <Input
+                  type="number"
+                  value={form.rotacao_nominal_rpm}
+                  onChange={(e) => set("rotacao_nominal_rpm", e.target.value)}
+                />
+              </Field>
+              <Field label="Tensão nominal (V)">
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Da placa do motor"
+                  value={form.tensao_nominal}
+                  onChange={(e) => set("tensao_nominal", e.target.value)}
+                />
+              </Field>
+              <Field label="Fator de potência nominal">
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  max="1"
+                  placeholder="Da placa do motor"
+                  value={form.fator_potencia_nominal}
+                  onChange={(e) => set("fator_potencia_nominal", e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+          <Field label={categoria ? "Classe ISO (calculada pelo datasheet abaixo)" : "Classe ISO (vibração)"}>
+            <Select
+              value={form.classe_iso}
+              disabled={categoria === "MOTOR_ELETRICO"}
+              onChange={(e) => set("classe_iso", e.target.value)}
+            >
               {CLASSES_ISO.map((c) => (
                 <option key={c.valor} value={c.valor}>
                   {c.texto}
@@ -363,10 +429,43 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
           </Field>
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
-          A criticidade (padrão A/B/C) indica a importância do equipamento no processo e
-          norteia a periodicidade de monitoramento contratada.
+          {categoria === "MOTOR_ELETRICO"
+            ? "A Classe ISO é calculada automaticamente pela potência e tipo de base informados no datasheet do motor (acima de 75 kW decide entre III e IV) — o campo fica travado aqui."
+            : "A criticidade (padrão A/B/C) indica a importância do equipamento no processo e norteia a periodicidade de monitoramento contratada. Tensão e fator de potência nominais (da placa do motor) preenchem automaticamente a Economia energética do balanceamento — sem eles, o técnico precisa digitar na hora."}
         </p>
       </Card>
+
+      {/* --- Datasheet específico por tipo (Motor Elétrico, Transformador…) --- */}
+      {categoria === "MOTOR_ELETRICO" && !editando && (
+        <Card>
+          <p className="text-sm text-fg-muted">
+            Salve o equipamento primeiro para preencher os dados técnicos do motor.
+          </p>
+        </Card>
+      )}
+      {categoria === "MOTOR_ELETRICO" && editando && (
+        <DadosMotor
+          equipamentoId={equipamentoId!}
+          dados={dadosMotor}
+          podeEditar
+          onMudou={recarregarEquipamento}
+        />
+      )}
+      {categoria === "TRANSFORMADOR" && !editando && (
+        <Card>
+          <p className="text-sm text-fg-muted">
+            Salve o equipamento primeiro para preencher os dados técnicos do transformador.
+          </p>
+        </Card>
+      )}
+      {categoria === "TRANSFORMADOR" && editando && (
+        <DadosTransformador
+          equipamentoId={equipamentoId!}
+          dados={dadosTransformador}
+          podeEditar
+          onMudou={recarregarEquipamento}
+        />
+      )}
 
       {msg && (
         <Card>

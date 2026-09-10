@@ -14,7 +14,10 @@ default silencioso produziria um número plausível que ninguém mediu.
 Os campos calculados (`editable=False`) vêm de `apps.servicos.rules`, testado contra os
 números das planilhas originais. Ver docs/04-DISCOVERY-balanceamento-e-economia.md.
 """
+from decimal import Decimal
+
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.cadastros.models import Cliente, Equipamento, Instrumento
@@ -37,6 +40,10 @@ class ServicoCampo(BaseModel):
     item = models.OneToOneField(
         "coletas.ItemInspecao", on_delete=models.PROTECT, null=True, blank=True,
         related_name="servico_corretivo",
+    )
+    analise_tecnica = models.OneToOneField(
+        "coletas.Achado", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="balanceamento_tecnico", verbose_name="Análise técnica da intervenção",
     )
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="servicos")
     equipamento = models.ForeignKey(Equipamento, on_delete=models.PROTECT, related_name="servicos")
@@ -77,6 +84,14 @@ class ServicoCampo(BaseModel):
         help_text="Informado a cada serviço — não vem de tabela de preço.",
     )
     observacoes = models.TextField("Observações", blank=True)
+
+    # Ponto de medição (mancal+direção) de maior amplitude, escolhido pelo técnico como
+    # foco do balanceamento — só ele recebe Trial Run (ver BalanceamentoPontoSerializer).
+    # Referência por string: BalanceamentoPonto é declarado mais abaixo neste arquivo.
+    ponto_foco = models.ForeignKey(
+        "BalanceamentoPonto", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name="Ponto de foco do balanceamento",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "Manutenção corretiva"
@@ -120,7 +135,11 @@ class BalanceamentoPlano(BaseModel):
     """
 
     servico = models.ForeignKey(ServicoCampo, on_delete=models.CASCADE, related_name="planos")
-    numero = models.PositiveSmallIntegerField("Plano nº", help_text="1 ou 2")
+    # Quantidade de planos é uma escolha fixa (1 ou 2 — nunca uma lista arbitrária de
+    # etapas); o teto é reforçado aqui E no banco (constraint abaixo).
+    numero = models.PositiveSmallIntegerField(
+        "Plano nº", help_text="1 ou 2", validators=[MinValueValidator(1), MaxValueValidator(2)]
+    )
     descricao = models.CharField(
         "Descrição", max_length=120, blank=True, help_text="Ex.: lado acoplamento"
     )
@@ -148,6 +167,10 @@ class BalanceamentoPlano(BaseModel):
             models.UniqueConstraint(
                 fields=["servico", "numero"], name="uniq_plano_por_servico"
             ),
+            models.CheckConstraint(
+                check=models.Q(numero__gte=1) & models.Q(numero__lte=2),
+                name="plano_numero_1_ou_2",
+            ),
         ]
 
     def __str__(self):
@@ -169,6 +192,10 @@ class BalanceamentoPonto(BaseModel):
     )
     numero_mancal = models.PositiveSmallIntegerField("Mancal")
     direcao = models.CharField("Direção", max_length=1, choices=Direcao.choices)
+    identificacao = models.CharField(
+        "Identificação", max_length=120, blank=True,
+        help_text="Ex.: 'Motor — lado livre' (útil quando há mais de um mancal por eixo).",
+    )
 
     # REFERENCE RUN (ANTES) — obrigatório: é a base de toda a curva de redução.
     reference_mms = models.DecimalField("Reference run (mm/s)", max_digits=8, decimal_places=2)
@@ -260,26 +287,50 @@ class EconomiaEnergetica(BaseModel):
     )
 
     # --- Entradas (as células amarelas da planilha) ---
-    tensao_v = models.DecimalField("Tensão do motor (V)", max_digits=9, decimal_places=2)
-    corrente_antes_a = models.DecimalField(
-        "Corrente antes (A)", max_digits=9, decimal_places=2
+    tensao_v = models.DecimalField(
+        "Tensão do motor (V)", max_digits=9, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
     )
-    corrente_apos_a = models.DecimalField("Corrente após (A)", max_digits=9, decimal_places=2)
+    corrente_antes_a = models.DecimalField(
+        "Corrente antes (A)", max_digits=9, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    corrente_apos_a = models.DecimalField(
+        "Corrente após (A)", max_digits=9, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
     fator_potencia = models.DecimalField(
-        "Fator de potência", max_digits=4, decimal_places=3, help_text="Medido no motor."
+        "Fator de potência", max_digits=4, decimal_places=3, help_text="Medido no motor.",
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
     )
     horas_dia = models.DecimalField(
-        "Regime diário de operação (h)", max_digits=4, decimal_places=1
+        "Regime diário de operação (h)", max_digits=4, decimal_places=1,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("24"))],
     )
     dias_ano = models.PositiveSmallIntegerField(
-        "Dias de operação por ano", help_text="Na planilha era fixo em 365."
+        "Dias de operação por ano", help_text="Na planilha era fixo em 365.",
+        validators=[MaxValueValidator(366)],
     )
     custo_kwh = models.DecimalField(
         "Custo da energia (R$/kWh)", max_digits=8, decimal_places=4,
         help_text="Tarifa vigente informada pelo cliente.",
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    # Investimento realizado no serviço — o numerador do Payback. Vive aqui (não em
+    # ServicoCampo.custo_servico, que nunca teve tela própria) para que o técnico
+    # informe junto das demais grandezas da economia, no mesmo formulário.
+    investimento = models.DecimalField(
+        "Investimento realizado (R$)", max_digits=12, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(Decimal("0"))],
+        help_text="Custo do serviço executado — numerador do Payback. Obrigatório na "
+                   "API (exigido pelo serializer); nulo no banco só para registros "
+                   "anteriores a este campo existir.",
     )
 
     # --- Calculados (as células verdes) ---
+    reducao_corrente_a = models.DecimalField(
+        "Redução de corrente (A)", max_digits=9, decimal_places=2, null=True, editable=False
+    )
     reducao_kw = models.DecimalField(
         "Redução de demanda (kW)", max_digits=12, decimal_places=4, null=True, editable=False
     )
@@ -321,11 +372,15 @@ class EconomiaEnergetica(BaseModel):
             horas_dia=self.horas_dia,
             dias_ano=self.dias_ano,
             custo_kwh=self.custo_kwh,
-            custo_servico=self.servico.custo_servico or 0,
+            # Registros anteriores a este campo existir podem não ter investimento
+            # gravado — sem payback calculável, não um erro (mesmo padrão de antes,
+            # quando o valor vinha de ServicoCampo.custo_servico "or 0").
+            investimento=self.investimento if self.investimento is not None else 0,
         )
 
     def save(self, *args, **kwargs):
         r = self._resultado()
+        self.reducao_corrente_a = r.reducao_corrente_a
         self.reducao_kw = r.reducao_kw
         self.economia_kwh_ano = r.economia_kwh_ano
         self.economia_rs_ano = r.economia_rs_ano

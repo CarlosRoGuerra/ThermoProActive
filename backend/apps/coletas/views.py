@@ -5,6 +5,7 @@ from django.db.models import Count, Sum
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -577,8 +578,10 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["data_coleta", "criado_em"]
 
     def get_queryset(self):
+        # Inclui carregamentos de manutenção corretiva (tipo_corretiva preenchido) — a
+        # Análise de campo é o único ponto de entrada para os dois fluxos.
         qs = (
-            Carregamento.objects.ativos().filter(tipo_corretiva="")
+            Carregamento.objects.ativos()
             .select_related("cliente", "tecnologia", "relatorio", "rota", "instrumento", "analista")
             .prefetch_related(
                 "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
@@ -630,7 +633,7 @@ class ItemInspecaoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = (
-            ItemInspecao.objects.ativos().filter(carregamento__tipo_corretiva="")
+            ItemInspecao.objects.ativos()
             .select_related("equipamento__setor__area", "condicao", "carregamento")
             .prefetch_related("achados__imagens")
         )
@@ -654,6 +657,11 @@ class AchadoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["criado_em", "numero_osp"]
 
     def get_queryset(self):
+        # Inclui achados de manutenção corretiva (ex.: análise técnica de balanceamento)
+        # para que apareçam na Análise final — a criação/edição dos campos técnicos
+        # especializados continua restrita a /atividades-corretivas/.../balanceamento
+        # (AchadoSerializer.validate_item bloqueia criar/realocar achados corretivos
+        # por este endpoint genérico).
         qs = (
             Achado.objects.ativos()
             .select_related(
@@ -664,6 +672,17 @@ class AchadoViewSet(viewsets.ModelViewSet):
             .prefetch_related("imagens")
         )
         return escopo_cliente(qs, self.request.user, campo_cliente="item__carregamento__cliente")
+
+    def perform_destroy(self, instance):
+        # Achado de manutenção corretiva é a análise técnica de um ServicoCampo
+        # (OneToOne, on_delete=PROTECT) — remover por aqui derrubaria a exclusão com um
+        # erro de integridade. Mesmo estilo de guarda de ServicoCampoViewSet.perform_destroy.
+        if getattr(instance, "balanceamento_tecnico", None) is not None:
+            raise ValidationError(
+                "Esta análise está vinculada a uma atividade de manutenção corretiva; "
+                "não pode ser removida por aqui."
+            )
+        super().perform_destroy(instance)
 
 
 class AchadoImagemViewSet(viewsets.ModelViewSet):

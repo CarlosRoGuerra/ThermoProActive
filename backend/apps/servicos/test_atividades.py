@@ -85,6 +85,29 @@ class AtividadeCorretivaTest(TestCase):
         self.assertEqual(detalhe["itens"][0]["analise"], servico.pk)
         self.assertEqual(self.api.patch(f"/api/servicos/{servico.pk}/", {"equipamento": self.equipamentos[-1].pk}, format="json").status_code, 400)
 
+    def test_carrega_rota_com_um_unico_equipamento(self):
+        unica = Rota.objects.create(cliente=self.cliente, nome="Só um exaustor", tecnologia=self.tecnologia)
+        unica.equipamentos.add(self.equipamentos[0])
+        a = self.abrir(rota=unica.pk)
+        self.assertEqual(len(a["itens"]), 1)
+        self.assertEqual(a["itens"][0]["equipamento"], self.equipamentos[0].pk)
+        url = self.urls_item(a)
+        self.assertEqual(self.api.patch(url + "/condicao/", {"condicao": self.condicao.pk}, format="json").status_code, 200)
+        resposta = self.api.post(url + "/analise/", {}, format="json")
+        self.assertEqual(resposta.status_code, 200, resposta.data)
+        self.assertEqual(ServicoCampo.objects.count(), 1)
+
+    def test_rejeita_rota_inativa_ou_inexistente(self):
+        self.rota.ativo = False
+        self.rota.save()
+        resposta = self.api.post("/api/atividades-corretivas/", self.payload, format="json")
+        self.assertEqual(resposta.status_code, 400, resposta.data)
+        self.rota.ativo = True
+        self.rota.save()
+        resposta = self.api.post("/api/atividades-corretivas/", {**self.payload, "rota": 999999}, format="json")
+        self.assertEqual(resposta.status_code, 400, resposta.data)
+        self.assertFalse(Carregamento.objects.exists())
+
     def test_mesmo_equipamento_em_outra_atividade_tem_analise_propria(self):
         ids = []
         for _ in range(2):
@@ -140,7 +163,13 @@ class AtividadeCorretivaTest(TestCase):
         self.leitor.save()
         self.assertEqual(self.api.get("/api/atividades-corretivas/").data["count"], 0)
 
-    def test_fluxo_preditivo_preservado_e_separado(self):
+    def test_fluxo_preditivo_preservado_e_analise_de_campo_unificada(self):
+        # A Análise de campo (Inspeções) é o ponto de entrada único para os dois fluxos:
+        # /carregamentos/ e /itens-inspecao/ agora enxergam preditivo E corretivo juntos
+        # (é a mesma "atividade" = Carregamento com tipo_corretiva preenchido). Mas
+        # /atividades-corretivas/ continua sendo a visão especializada, só das corretivas,
+        # e não dá pra criar itens soltos apontando pra uma atividade corretiva pelo
+        # endpoint genérico.
         a = self.abrir()
         resposta = self.api.post("/api/carregamentos/", {
             "cliente": self.cliente.pk, "tecnologia": self.vibracao.pk,
@@ -151,9 +180,12 @@ class AtividadeCorretivaTest(TestCase):
         self.assertEqual(len(preditiva["itens"]), 5)
         self.assertEqual(preditiva["tipo_corretiva"], "")
         listagem = self.api.get("/api/carregamentos/").data
-        self.assertEqual([c["id"] for c in listagem["results"]], [preditiva["id"]])
-        self.assertEqual(self.api.get(f'/api/carregamentos/{a["id"]}/').status_code, 404)
+        self.assertEqual(
+            sorted(c["id"] for c in listagem["results"]), sorted([preditiva["id"], a["id"]]),
+        )
+        self.assertEqual(self.api.get(f'/api/carregamentos/{a["id"]}/').status_code, 200)
         self.assertEqual(self.api.get(f'/api/atividades-corretivas/{preditiva["id"]}/').status_code, 404)
+        self.assertEqual(self.api.get(f'/api/atividades-corretivas/{a["id"]}/').status_code, 200)
         for item in preditiva["itens"]:
             resposta = self.api.patch(f'/api/itens-inspecao/{item["id"]}/', {"condicao": self.condicao.pk}, format="json")
             self.assertEqual(resposta.status_code, 200, resposta.data)

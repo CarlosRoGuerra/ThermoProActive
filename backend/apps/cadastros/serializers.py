@@ -6,6 +6,8 @@ from .models import (
     Cliente,
     Componente,
     Condicao,
+    DadosTecnicosMotor,
+    DadosTecnicosTransformador,
     Empresa,
     Equipamento,
     FalhaRecorrente,
@@ -90,6 +92,18 @@ class ComponenteSerializer(serializers.ModelSerializer):
         fields = ["id", "equipamento", "nome", "criado_em"]
 
 
+class DadosTecnicosMotorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DadosTecnicosMotor
+        exclude = ["ativo"]
+
+
+class DadosTecnicosTransformadorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DadosTecnicosTransformador
+        exclude = ["ativo"]
+
+
 class EquipamentoSerializer(serializers.ModelSerializer):
     componentes = ComponenteSerializer(many=True, read_only=True)
     setor_nome = serializers.CharField(source="setor.nome", read_only=True)
@@ -107,7 +121,17 @@ class EquipamentoSerializer(serializers.ModelSerializer):
     tipo_equipamento_nome = serializers.CharField(
         source="tipo_equipamento.nome", read_only=True, default=None
     )
+    # Qual datasheet técnico específico mostrar na tela (vínculo do catálogo, não
+    # inferido pelo nome do tipo — ver TipoEquipamento.categoria_tecnica).
+    categoria_tecnica = serializers.CharField(
+        source="tipo_equipamento.categoria_tecnica", read_only=True, default=""
+    )
     criticidade_display = serializers.CharField(source="get_criticidade_display", read_only=True)
+    # Acesso estruturado pela entidade de equipamento (nested, só leitura — escrita é
+    # pelos endpoints próprios /dados-tecnicos-motor/ e /dados-tecnicos-transformador/,
+    # mesmo padrão de ServicoCampoSerializer.planos/pontos).
+    dados_motor = DadosTecnicosMotorSerializer(read_only=True)
+    dados_transformador = DadosTecnicosTransformadorSerializer(read_only=True)
 
     class Meta:
         model = Equipamento
@@ -115,10 +139,13 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             "id", "setor", "setor_nome", "area_id", "area_nome", "cliente_id",
             "equipamento_pai", "equipamento_pai_tag", "is_subitem", "nivel",
             "caminho", "qtd_subitens",
-            "tag", "nome", "tipo_equipamento", "tipo_equipamento_nome", "tipo",
+            "tag", "nome", "tipo_equipamento", "tipo_equipamento_nome",
+            "categoria_tecnica", "tipo",
             "fabricante", "modelo", "numero_serie", "potencia_kw",
             "rotacao_nominal_rpm", "classe_iso", "classe_iso_display",
             "criticidade", "criticidade_display",
+            "tensao_nominal", "fator_potencia_nominal",
+            "dados_motor", "dados_transformador",
             "componentes", "criado_em",
         ]
         read_only_fields = ["tipo"]

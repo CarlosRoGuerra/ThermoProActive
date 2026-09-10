@@ -75,14 +75,17 @@ function Marcador({ tipo, x, y, cor }: { tipo: string; x: number; y: number; cor
 
 export function MostradorPolar({
   ponto,
-  maxima,
   tamanho = 280,
 }: {
   ponto: PontoGrafico;
-  maxima: number;
   tamanho?: number;
 }) {
   const corridas = SERIES.map((s) => ({ ...s, dado: ponto[s.chave] })).filter((c) => c.dado);
+  // Escala LOCAL a este ponto — as 3 corridas (reference/trial/trim) do MESMO ponto
+  // precisam ser comparáveis entre si, mas normalizar contra a amplitude de OUTRO
+  // ponto do serviço distorce o raio (ex.: o trim, tipicamente o menor valor, fica
+  // ainda menor e quase some quando o máximo vem de um trial bem maior de outro ponto).
+  const maxima = amplitudeMaxima([ponto]);
 
   return (
     <figure className="m-0">
@@ -115,6 +118,10 @@ export function MostradorPolar({
         <circle cx={0} cy={0} r={R} fill="none" stroke="var(--border)" strokeWidth={2} />
         <line x1={-R} y1={0} x2={R} y2={0} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
         <line x1={0} y1={-R} x2={0} y2={R} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
+        {/* Ponto de origem ANTES das corridas: um balanceamento bem-sucedido deixa o
+            Trim com raio pequeno (perto do centro, por definição — é o resultado
+            esperado); desenhar a origem depois esconderia esse marcador embaixo dela. */}
+        <circle cx={0} cy={0} r={3} fill="var(--fg-subtle)" />
 
         {[
           { t: "0°", x: R + 20, y: 4 },
@@ -143,7 +150,6 @@ export function MostradorPolar({
             </g>
           );
         })}
-        <circle cx={0} cy={0} r={3} fill="var(--fg-subtle)" />
       </svg>
 
       <figcaption className="mt-2 space-y-1">

@@ -30,11 +30,15 @@ export function AchadoCampos({
   setForm,
   tipo,
   tecnologiaId,
+  camposTecnicosDesabilitados = false,
 }: {
   form: AchadoForm;
   setForm: (f: AchadoForm) => void;
   tipo: TecnologiaTipo;
   tecnologiaId: number;
+  // Manutenção corretiva: esses campos só são editáveis pela Análise de campo
+  // (validação cruzada de catálogo × tecnologia) — a Condição continua editável.
+  camposTecnicosDesabilitados?: boolean;
 }) {
   const [componentes, setComponentes] = useState<CatOpt[]>([]);
   const [anomalias, setAnomalias] = useState<CatOpt[]>([]);
@@ -80,7 +84,15 @@ export function AchadoCampos({
       </div>
 
       {/* --- Comum a todas as tecnologias --- */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <fieldset
+        disabled={camposTecnicosDesabilitados}
+        className="grid grid-cols-1 gap-4 border-0 p-0 sm:grid-cols-2"
+      >
+        {camposTecnicosDesabilitados && (
+          <p className="text-xs text-fg-subtle sm:col-span-2">
+            Componente, anomalia e recomendação são editados pela Análise de campo (atividade corretiva).
+          </p>
+        )}
         <Field label="Tipo de componente">
           <Select value={form.tipo_componente} onChange={(e) => set("tipo_componente", e.target.value)}>
             <option value="">— selecione —</option>
@@ -131,6 +143,11 @@ export function AchadoCampos({
         <Field label="Recomendação (texto)">
           <Input value={form.recomendacao_texto} onChange={(e) => set("recomendacao_texto", e.target.value)} />
         </Field>
+      </fieldset>
+
+      {/* Observações fica fora do fieldset: sempre editável no escritório, mesmo na
+          manutenção corretiva (não tem validação cruzada de catálogo). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Observações" className="sm:col-span-2">
           <Textarea
             value={form.observacoes}

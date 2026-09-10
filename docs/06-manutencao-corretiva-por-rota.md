@@ -1,5 +1,8 @@
 # Manutenção corretiva por rota
 
+A tela específica de Balanceamento foi evoluída na
+[fase de análise técnica](07-analise-tecnica-balanceamento.md).
+
 ## Operação
 
 1. Ative o cliente no seletor existente.

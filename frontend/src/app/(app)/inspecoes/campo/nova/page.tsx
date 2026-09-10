@@ -10,7 +10,7 @@ import { useClienteAtivo } from "@/lib/cliente-ativo";
 import type { Carregamento, Paginated, Relatorio, Rota } from "@/lib/types";
 import { Button, Card, Field, Input, Select, Spinner } from "@/components/ui";
 
-type TecOpt = { id: number; nome: string };
+type TecOpt = { id: number; nome: string; tipo_corretiva?: string };
 type InstrumentoOpt = { id: number; tipo: string; marca: string; modelo: string };
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -71,6 +71,16 @@ export default function CarregarRotaPage() {
     return rotas.filter((r) => r.tecnologia === null || r.tecnologia === tid);
   }, [rotas, tecnologia]);
 
+  // Tecnologias de manutenção corretiva (balanceamento, alinhamento a laser) usam o
+  // endpoint /atividades-corretivas/ — mesma rota/equipamentos, formulário técnico
+  // diferente (ver folha-campo.tsx). Exigem rota+instrumento e não têm "outro número".
+  const tecnologiaSel = tecnologias.find((t) => String(t.id) === tecnologia);
+  const ehCorretiva = !!tecnologiaSel?.tipo_corretiva;
+
+  useEffect(() => {
+    if (ehCorretiva) setModoNumero("novo");
+  }, [ehCorretiva]);
+
   async function abrirPicker() {
     if (!clienteAtivo) return;
     if (!tecnologia) {
@@ -103,24 +113,41 @@ export default function CarregarRotaPage() {
       setMsg("Escolha um relatório em “Buscar” ou selecione “Gerar novo número”.");
       return;
     }
+    if (ehCorretiva && (!rota || !instrumento)) {
+      setMsg("Rota e instrumentação são obrigatórias para esta tecnologia.");
+      return;
+    }
     setSalvando(true);
     setMsg(null);
     try {
-      const body =
-        modoNumero === "novo"
-          ? {
-              cliente: clienteAtivo.id,
-              tecnologia: Number(tecnologia),
-              rota: rota === "" ? null : Number(rota),
-              instrumento: instrumento === "" ? null : Number(instrumento),
-              data_termino_novo: dataTermino,
-            }
-          : {
-              relatorio: relatorioSel!.id,
-              rota: rota === "" ? null : Number(rota),
-              instrumento: instrumento === "" ? null : Number(instrumento),
-            };
-      const novo = await api<Carregamento>("/carregamentos/", { method: "POST", body });
+      let novo: Carregamento;
+      if (ehCorretiva) {
+        novo = await api<Carregamento>("/atividades-corretivas/", {
+          method: "POST",
+          body: {
+            tecnologia: Number(tecnologia),
+            rota: Number(rota),
+            instrumento: Number(instrumento),
+            data_termino_novo: dataTermino,
+          },
+        });
+      } else {
+        const body =
+          modoNumero === "novo"
+            ? {
+                cliente: clienteAtivo.id,
+                tecnologia: Number(tecnologia),
+                rota: rota === "" ? null : Number(rota),
+                instrumento: instrumento === "" ? null : Number(instrumento),
+                data_termino_novo: dataTermino,
+              }
+            : {
+                relatorio: relatorioSel!.id,
+                rota: rota === "" ? null : Number(rota),
+                instrumento: instrumento === "" ? null : Number(instrumento),
+              };
+        novo = await api<Carregamento>("/carregamentos/", { method: "POST", body });
+      }
       router.push(`/inspecoes/campo/${novo.id}`);
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Erro ao carregar a rota.");
@@ -139,7 +166,10 @@ export default function CarregarRotaPage() {
   }
 
   const podeSalvar =
-    tecnologia !== "" && !salvando && (modoNumero === "novo" || relatorioSel !== null);
+    tecnologia !== "" &&
+    !salvando &&
+    (modoNumero === "novo" || relatorioSel !== null) &&
+    (!ehCorretiva || (rota !== "" && instrumento !== ""));
 
   return (
     <div className="space-y-5">
@@ -166,7 +196,7 @@ export default function CarregarRotaPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Rota">
+          <Field label={ehCorretiva ? "Rota *" : "Rota"}>
             <Select value={rota} onChange={(e) => setRota(e.target.value)} disabled={!tecnologia}>
               <option value="">{tecnologia ? "— selecione —" : "Escolha a tecnologia primeiro"}</option>
               {rotasFiltradas.map((r) => (
@@ -176,7 +206,7 @@ export default function CarregarRotaPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Instrumentação">
+          <Field label={ehCorretiva ? "Instrumentação *" : "Instrumentação"}>
             <Select
               value={instrumento}
               onChange={(e) => setInstrumento(e.target.value)}
@@ -219,17 +249,19 @@ export default function CarregarRotaPage() {
               />
               Gerar novo número
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-fg">
-              <input
-                type="radio"
-                name="modoNumero"
-                checked={modoNumero === "outro"}
-                onChange={() => setModoNumero("outro")}
-                className="h-4 w-4"
-                style={{ accentColor: "var(--accent)" }}
-              />
-              Utilizar outro número
-            </label>
+            {!ehCorretiva && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-fg">
+                <input
+                  type="radio"
+                  name="modoNumero"
+                  checked={modoNumero === "outro"}
+                  onChange={() => setModoNumero("outro")}
+                  className="h-4 w-4"
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                Utilizar outro número
+              </label>
+            )}
           </div>
 
           {modoNumero === "novo" ? (

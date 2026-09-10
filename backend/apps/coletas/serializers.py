@@ -147,10 +147,27 @@ class AchadoImagemSerializer(serializers.ModelSerializer):
 
 
 class AchadoSerializer(serializers.ModelSerializer):
+    # Campos com validação cruzada de compatibilidade (catálogo × tecnologia,
+    # anomalia × recomendação) na manutenção corretiva — só editáveis pelo endpoint
+    # especializado (/atividades-corretivas/.../balanceamento), nunca por aqui.
+    CAMPOS_TECNICOS_CORRETIVA = [
+        "tipo_componente", "componente_texto", "detalhe",
+        "tipo_anomalia", "anomalia_texto", "recomendacao", "recomendacao_texto",
+    ]
+
     def validate_item(self, value):
         if value.carregamento.tipo_corretiva:
             raise serializers.ValidationError("Use a análise vinculada à atividade corretiva.")
         return value
+
+    def validate(self, attrs):
+        if self.instance and self.instance.item.carregamento.tipo_corretiva:
+            invadidos = [c for c in self.CAMPOS_TECNICOS_CORRETIVA if c in attrs]
+            if invadidos:
+                raise serializers.ValidationError(
+                    "Edite os campos técnicos pela Análise de campo (atividade corretiva)."
+                )
+        return attrs
 
     # Rastreabilidade (somente leitura — vem do item/carregamento/equipamento).
     equipamento_tag = serializers.CharField(source="item.equipamento.tag", read_only=True)
@@ -179,14 +196,28 @@ class AchadoSerializer(serializers.ModelSerializer):
     osp_sequencial = serializers.IntegerField(source="osp.sequencial_cliente", read_only=True, default=None)
     osp_codigo = serializers.IntegerField(source="osp.id", read_only=True, default=None)
     imagens = AchadoImagemSerializer(many=True, read_only=True)
+    # Manutenção corretiva (balanceamento etc.): permite ao front decidir se renderiza o
+    # painel de Serviços de campo (Planos/Pontos/Economia) na Análise final.
+    tipo_corretiva = serializers.CharField(source="item.carregamento.tipo_corretiva", read_only=True)
+    servico_campo_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Achado
         exclude = ["ativo"]
 
+    def get_servico_campo_id(self, obj):
+        from apps.servicos.models import ServicoCampo  # tardio: evita ciclo coletas↔servicos
+        return ServicoCampo.objects.filter(analise_tecnica_id=obj.id).values_list("id", flat=True).first()
+
     def update(self, instance, validated_data):
-        # Ao CONFIRMAR (0→1), gera a OSP da análise (1 por análise).
-        gerar_osp = validated_data.get("confirmada") and not instance.confirmada
+        # Ao CONFIRMAR (0→1), gera a OSP da análise (1 por análise) — exceto para achados
+        # de manutenção corretiva: a OSP relevante já é `ServicoCampo.osp` ("OSP de
+        # origem"), gerar outra aqui duplicaria a OSP da mesma intervenção.
+        gerar_osp = (
+            validated_data.get("confirmada")
+            and not instance.confirmada
+            and not instance.item.carregamento.tipo_corretiva
+        )
         achado = super().update(instance, validated_data)
         if gerar_osp:
             from apps.osp.models import OrdemServico  # tardio: evita ciclo coletas↔osp
@@ -213,6 +244,15 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
     data = serializers.DateField(source="carregamento.data_coleta", read_only=True)
     achados = AchadoSerializer(many=True, read_only=True)
     qtd_achados = serializers.IntegerField(source="achados.count", read_only=True)
+    # Manutenção corretiva: estado do ServicoCampo vinculado a este item (se houver),
+    # para a Análise de campo saber se já existe análise iniciada/salva.
+    analise = serializers.IntegerField(source="servico_corretivo.pk", read_only=True, default=None)
+    analise_tecnica = serializers.IntegerField(
+        source="servico_corretivo.analise_tecnica_id", read_only=True, default=None
+    )
+    observacoes_analise = serializers.CharField(
+        source="servico_corretivo.observacoes", read_only=True, default=""
+    )
 
     class Meta:
         model = ItemInspecao
@@ -259,7 +299,7 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
             "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome",
             "relatorio", "numero", "data_inicio", "data_termino", "data_coleta",
             "rota", "rota_nome", "instrumento", "instrumento_nome",
-            "analista", "analista_nome",
+            "analista", "analista_nome", "tipo_corretiva",
             "status", "status_display", "qtd_itens",
             "pode_transferir", "transferido_em", "criado_em",
         ]

@@ -9,6 +9,8 @@ from .models import (
     Cliente,
     Componente,
     Condicao,
+    DadosTecnicosMotor,
+    DadosTecnicosTransformador,
     Empresa,
     Equipamento,
     FalhaRecorrente,
@@ -31,6 +33,8 @@ from .serializers import (
     ClienteSerializer,
     ComponenteSerializer,
     CondicaoSerializer,
+    DadosTecnicosMotorSerializer,
+    DadosTecnicosTransformadorSerializer,
     EmpresaSerializer,
     EquipamentoSerializer,
     FalhaRecorrenteSerializer,
@@ -106,7 +110,10 @@ class SetorViewSet(BaseCadastroViewSet):
 class EquipamentoViewSet(BaseCadastroViewSet):
     queryset = (
         Equipamento.objects.ativos()
-        .select_related("setor", "setor__area", "setor__area__cliente")
+        .select_related(
+            "setor", "setor__area", "setor__area__cliente",
+            "tipo_equipamento", "dados_motor", "dados_transformador",
+        )
         .prefetch_related("componentes")
     )
     serializer_class = EquipamentoSerializer
@@ -114,6 +121,21 @@ class EquipamentoViewSet(BaseCadastroViewSet):
     filterset_fields = ["setor", "setor__area", "setor__area__cliente", "classe_iso"]
     # Busca por TAG e número de série — como o cliente pediu na reunião.
     search_fields = ["tag", "nome", "fabricante", "modelo", "numero_serie"]
+
+
+class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
+    """Datasheet de Motor Elétrico — acesso estruturado via /equipamentos/{id}/ (nested,
+    somente leitura) e aqui para criar/editar (mesmo padrão de balanceamento-planos)."""
+
+    queryset = DadosTecnicosMotor.objects.ativos().select_related("equipamento")
+    serializer_class = DadosTecnicosMotorSerializer
+    filterset_fields = ["equipamento"]
+
+
+class DadosTecnicosTransformadorViewSet(BaseCadastroViewSet):
+    queryset = DadosTecnicosTransformador.objects.ativos().select_related("equipamento")
+    serializer_class = DadosTecnicosTransformadorSerializer
+    filterset_fields = ["equipamento"]
 
 
 class ComponenteViewSet(BaseCadastroViewSet):

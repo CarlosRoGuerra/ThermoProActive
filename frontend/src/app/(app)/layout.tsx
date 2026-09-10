@@ -13,7 +13,6 @@ import {
   Database,
   Factory,
   FileBarChart,
-  Gauge,
   FileText,
   Home,
   LayoutDashboard,
@@ -71,20 +70,15 @@ const INSPECOES_SUBMENU: { href: string; label: string }[] = [
   { href: "/relatorios-inspecao", label: "Relatório técnico" },
 ];
 
-const CORRETIVA_SUBMENU: { href: string; label: string }[] = [
-  { href: "/servicos#balanceamento", label: "Balanceamento" },
-  { href: "/servicos#alinhamento", label: "Alinhamento a laser" },
-  { href: "/servicos#outros", label: "Outros trabalhos corretivos" },
-];
-
 // Menu da equipe interna. Os filhos de "Clientes" são injetados só quando há
-// um cliente ativo (ver montarNavInterno).
+// um cliente ativo (ver montarNavInterno). A manutenção corretiva (balanceamento,
+// alinhamento etc.) não tem menu próprio — é alcançada por Inspeções → Análise de
+// campo/final, como qualquer outra tecnologia (ver /inspecoes/campo).
 const NAV_INTERNO: NavItem[] = [
   { href: "/clientes", label: "Clientes", icon: Building2 },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inspecoes/campo", label: "Inspeções", icon: ClipboardList, children: INSPECOES_SUBMENU },
   { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
-  { href: "/servicos", label: "Manutenção corretiva", icon: Gauge, children: CORRETIVA_SUBMENU },
   { href: "/laudos", label: "Laudos", icon: FileText },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
   { href: "/cadastros", label: "Dados de sistema", icon: Database, children: DADOS_SISTEMA },
@@ -96,7 +90,6 @@ const NAV_CLIENTE: NavItem[] = [
   { href: "/portal", label: "Início", icon: Home },
   { href: "/inspecoes", label: "Inspeções", icon: ClipboardList },
   { href: "/osps", label: "Ordens de Serviço", icon: Wrench },
-  { href: "/servicos", label: "Manutenção corretiva", icon: Gauge, children: CORRETIVA_SUBMENU },
   { href: "/equipamentos", label: "Equipamentos", icon: Activity },
   { href: "/laudos", label: "Laudos", icon: FileText },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
