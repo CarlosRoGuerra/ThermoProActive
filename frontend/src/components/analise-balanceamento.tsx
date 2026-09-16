@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type { ItemCorretivo, ServicoCampo } from "@/lib/types";
 import { Button, Card, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
-import { PontosMedicao, QuantidadePlanos, SelecaoPontoFoco, TrialRun, TrimRun } from "@/components/balanceamento-medicoes";
+import { PontosMedicao, QuantidadePlanos, TrialRun, TrimRun } from "@/components/balanceamento-medicoes";
 
 type Opcao = { id: number; nome: string };
 type Catalogos = { condicoes: Opcao[]; tipos_componente: Opcao[]; tipos_anomalia: Opcao[]; recomendacoes: Opcao[] };
@@ -110,7 +110,6 @@ export function AnaliseBalanceamento({ atividadeId, item, podeEditar, onSaved }:
     {erro && <p role="alert" className="text-sm text-danger-fg">{erro}</p>}
     <QuantidadePlanos servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} />
     <PontosMedicao servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
-    <SelecaoPontoFoco servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
     <TrialRun servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
     <TrimRun servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
   </div>;

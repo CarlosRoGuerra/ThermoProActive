@@ -85,7 +85,10 @@ class ServicoCampoViewSet(viewsets.ModelViewSet):
                 "numero_mancal": p.numero_mancal,
                 "direcao": p.direcao,
                 "plano": p.plano_id,
-                "reference": {"mms": float(p.reference_mms), "fase": float(p.reference_fase)},
+                "reference": {
+                    "mms": float(p.reference_mms),
+                    "fase": float(p.reference_fase) if p.reference_fase is not None else None,
+                },
                 "trial": (
                     {"mms": float(p.trial_mms), "fase": float(p.trial_fase)}
                     if p.trial_mms is not None and p.trial_fase is not None else None

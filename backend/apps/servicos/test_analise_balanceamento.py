@@ -58,9 +58,24 @@ class AnaliseBalanceamentoTest(TestCase):
         self.assertEqual(resposta.status_code, 200)
         self.assertEqual([x["id"] for x in resposta.data["tipos_componente"]], [self.componente.pk])
         self.assertNotIn(self.anomalia_outra.pk, [x["id"] for x in resposta.data["tipos_anomalia"]])
-        self.assertEqual(resposta.data["recomendacoes"], [])
+        # Sem filtro de anomalia: todas as recomendações da tecnologia aparecem, com ou
+        # sem "anomalias compatíveis" cadastradas (metadado opcional, 2026-09-16).
+        self.assertEqual(
+            {x["id"] for x in resposta.data["recomendacoes"]},
+            {self.recomendacao.pk, self.recomendacao_sem_anomalia.pk},
+        )
         resposta = self.api.get(self.url + f"catalogos/?anomalia={self.anomalia.pk}")
-        self.assertEqual([x["id"] for x in resposta.data["recomendacoes"]], [self.recomendacao.pk])
+        # Com o filtro: a recomendação vinculada a ESTA anomalia aparece, e a sem
+        # vínculo nenhum continua aparecendo (universal) — só a de outra anomalia some.
+        self.assertEqual(
+            {x["id"] for x in resposta.data["recomendacoes"]},
+            {self.recomendacao.pk, self.recomendacao_sem_anomalia.pk},
+        )
+        resposta = self.api.get(self.url + f"catalogos/?anomalia={self.anomalia_alternativa.pk}")
+        self.assertEqual(
+            {x["id"] for x in resposta.data["recomendacoes"]},
+            {self.recomendacao_sem_anomalia.pk},
+        )
         self.assertEqual(self.api.get(self.url + f"catalogos/?anomalia={self.anomalia_outra.pk}").status_code, 400)
         self.assertEqual(self.api.get(self.url + "catalogos/?anomalia=abc").status_code, 400)
 
@@ -95,11 +110,25 @@ class AnaliseBalanceamentoTest(TestCase):
             {"tipo_anomalia": self.anomalia_outra.pk},
             {"tipo_anomalia": self.anomalia_alternativa.pk},
             {"recomendacao": self.recomendacao_outra.pk},
-            {"recomendacao": self.recomendacao_sem_anomalia.pk},
         ]:
             with self.subTest(dados=dados):
                 self.assertEqual(self.salvar(**dados).status_code, 400)
         self.assertFalse(Achado.objects.exists())
+
+    def test_recomendacao_sem_anomalia_vinculada_e_aceita_com_qualquer_anomalia(self):
+        # "Anomalias compatíveis" é metadado opcional (2026-09-16): uma recomendação
+        # sem nenhum vínculo cadastrado não trava o salvamento — vale pra qualquer
+        # anomalia da mesma tecnologia.
+        resposta = self.salvar(recomendacao=self.recomendacao_sem_anomalia.pk)
+        self.assertEqual(resposta.status_code, 200, resposta.data)
+        self.assertEqual(Achado.objects.get().recomendacao_id, self.recomendacao_sem_anomalia.pk)
+        resposta = self.api.patch(
+            self.url,
+            {"tecnica": {"tipo_anomalia": self.anomalia_alternativa.pk}},
+            format="json",
+        )
+        self.assertEqual(resposta.status_code, 200, resposta.data)
+        self.assertEqual(Achado.objects.get().tipo_anomalia_id, self.anomalia_alternativa.pk)
 
     def test_edicao_parcial_valida_combinacao_final_e_nao_duplica(self):
         primeira = self.salvar()

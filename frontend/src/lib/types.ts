@@ -642,7 +642,7 @@ export interface BalanceamentoPonto {
   /** Falso enquanto o trim run não foi medido — o ponto está em andamento. */
   completo: boolean;
   reference_mms: string;
-  reference_fase: string;
+  reference_fase: string | null;
   trial_mms: string | null;
   trial_fase: string | null;
   trim_mms: string | null;

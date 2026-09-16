@@ -15,7 +15,9 @@ from statistics import mean
 # zona D = acima do limite da zona C.
 FAIXAS_ISO_VRMS = {
     "I":   {"A": Decimal("0.71"), "B": Decimal("1.80"), "C": Decimal("4.50")},
-    "II":  {"A": Decimal("1.12"), "B": Decimal("2.80"), "C": Decimal("7.10")},
+    # Limite B/C da Classe II confirmado com o cliente em 2026-09-16 (Guerra IT usa
+    # 4,49 mm/s como o corte, não os 2,80 mm/s da tabela ISO 10816-1 impressa padrão).
+    "II":  {"A": Decimal("1.12"), "B": Decimal("4.49"), "C": Decimal("7.10")},
     "III": {"A": Decimal("1.80"), "B": Decimal("4.50"), "C": Decimal("11.20")},
     "IV":  {"A": Decimal("2.80"), "B": Decimal("7.10"), "C": Decimal("18.00")},
 }

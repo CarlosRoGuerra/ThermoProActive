@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { sugerirPlano } from "@/lib/balanceamento";
 import type { BalanceamentoPonto, ServicoCampo } from "@/lib/types";
 import { Badge, Button, Card, CriticidadeBadge, Field, Input, Select } from "@/components/ui";
 
@@ -19,11 +20,14 @@ const n = (v: string | number | null | undefined, casas = 2) =>
  *    Reference vale para todos os pontos; Trial só para o ponto de foco (maior
  *    amplitude); Trim vale para todos de novo (verifica o resultado geral).
  *
- * `QuantidadePlanos`/`PontosMedicao`/`SelecaoPontoFoco`/`TrialRun`/`TrimRun` cobrem, em
- * ordem, os passos 3-8 da interface pedida (1-2 = informações gerais/rotação, ficam na
- * tela que usa estes componentes; 9-11 = resultado/gráfico/economia, no restante da
- * tela). Todos operam sobre o mesmo `ServicoCampo`, com os mesmos endpoints que já
- * existiam (`/balanceamento-planos/`, `/balanceamento-pontos/`, `/servicos/{id}/`).
+ * `QuantidadePlanos`/`PontosMedicao`/`TrialRun`/`TrimRun` cobrem, em ordem, os passos
+ * 3-8 da interface pedida (1-2 = informações gerais/rotação, ficam na tela que usa
+ * estes componentes; 9-11 = resultado/gráfico/economia, no restante da tela). A seleção
+ * do ponto de foco (passo 5) mora dentro de `PontosMedicao`, como coluna da própria
+ * tabela de pontos — não é mais uma seção separada (pedido do cliente, 2026-09-16, pra
+ * não repetir a mesma lista de pontos duas vezes). Todos operam sobre o mesmo
+ * `ServicoCampo`, com os mesmos endpoints que já existiam (`/balanceamento-planos/`,
+ * `/balanceamento-pontos/`, `/servicos/{id}/`).
  */
 
 /* ===================== 3. Quantidade de planos ===================== */
@@ -120,7 +124,7 @@ export function QuantidadePlanos({
   );
 }
 
-/* ===================== 4. Pontos de medição (+ Reference Run) ===================== */
+/* ===================== 4-5. Pontos de medição + Reference Run + Foco ===================== */
 
 const PONTO_VAZIO = {
   numero_mancal: "",
@@ -128,7 +132,6 @@ const PONTO_VAZIO = {
   identificacao: "",
   plano: "" as number | "",
   reference_mms: "",
-  reference_fase: "",
 };
 
 export function PontosMedicao({
@@ -143,8 +146,26 @@ export function PontosMedicao({
   onErro: (m: string | null) => void;
 }) {
   const [novo, setNovo] = useState({ ...PONTO_VAZIO });
+  const [planoTocado, setPlanoTocado] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [linhaOcupada, setLinhaOcupada] = useState<number | null>(null);
+
+  // Plano sugerido pela posição do mancal digitado — só entra se o técnico ainda não
+  // escolheu manualmente um plano diferente.
+  function planoIdDaSugestao(numeroMancal: string): number | "" {
+    const sugerido = sugerirPlano(Number(numeroMancal));
+    if (sugerido == null) return "";
+    return servico.planos.find((p) => p.numero === sugerido)?.id ?? "";
+  }
+
+  function mudarMancal(valor: string) {
+    setNovo((n) => ({
+      ...n,
+      numero_mancal: valor,
+      plano: planoTocado ? n.plano : planoIdDaSugestao(valor),
+    }));
+  }
 
   async function adicionar() {
     setSalvando(true);
@@ -159,10 +180,10 @@ export function PontosMedicao({
           identificacao: novo.identificacao,
           plano: novo.plano || null,
           reference_mms: novo.reference_mms,
-          reference_fase: novo.reference_fase,
         },
       });
       setNovo({ ...PONTO_VAZIO });
+      setPlanoTocado(false);
       setAberto(false);
       await onMudou();
     } catch (e) {
@@ -172,13 +193,42 @@ export function PontosMedicao({
     }
   }
 
+  async function mudarPlanoLinha(pontoId: number, planoId: number | "") {
+    setLinhaOcupada(pontoId);
+    onErro(null);
+    try {
+      await api(`/balanceamento-pontos/${pontoId}/`, { method: "PATCH", body: { plano: planoId || null } });
+      await onMudou();
+    } catch (e) {
+      onErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao trocar o plano do ponto.");
+    } finally {
+      setLinhaOcupada(null);
+    }
+  }
+
+  async function escolherFoco(pontoId: number) {
+    setLinhaOcupada(pontoId);
+    onErro(null);
+    try {
+      await api(`/servicos/${servico.id}/`, { method: "PATCH", body: { ponto_foco: pontoId } });
+      await onMudou();
+    } catch (e) {
+      onErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao definir o ponto de foco.");
+    } finally {
+      setLinhaOcupada(null);
+    }
+  }
+
+  const doisPlanos = servico.planos.length === 2;
+
   return (
     <Card className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-fg">Pontos de medição — Reference Run</h2>
           <p className="text-xs text-fg-muted">
-            Um ponto por mancal/direção. A referência (antes da massa de teste) vale para todos.
+            Um ponto por mancal/direção. A referência (antes da massa de teste) vale para todos. O
+            foco é o de maior amplitude — só ele recebe o Trial Run e o cálculo da correção.
           </p>
         </div>
         {podeEditar && (
@@ -196,9 +246,9 @@ export function PontosMedicao({
               <tr className="border-b border-border text-left text-xs text-fg-subtle">
                 <th className="py-2 pr-3 font-medium">Ponto</th>
                 <th className="py-2 pr-3 font-medium">Identificação</th>
-                <th className="py-2 pr-3 font-medium">Plano</th>
                 <th className="py-2 pr-3 font-medium">Reference (mm/s)</th>
-                <th className="py-2 font-medium">Fase</th>
+                {doisPlanos && <th className="py-2 pr-3 font-medium">Plano</th>}
+                <th className="py-2 font-medium">Foco</th>
               </tr>
             </thead>
             <tbody>
@@ -206,11 +256,35 @@ export function PontosMedicao({
                 <tr key={p.id} className="border-b border-border last:border-0">
                   <td className="py-2 pr-3 font-medium text-fg">{p.codigo_ponto}</td>
                   <td className="py-2 pr-3 text-fg-muted">{p.identificacao || "—"}</td>
-                  <td className="py-2 pr-3 text-fg-muted">
-                    {servico.planos.find((pl) => pl.id === p.plano)?.numero ?? "—"}
-                  </td>
                   <td className="py-2 pr-3 tabular-nums">{n(p.reference_mms)}</td>
-                  <td className="py-2 tabular-nums text-fg-muted">{n(p.reference_fase, 0)}°</td>
+                  {doisPlanos && (
+                    <td className="py-2 pr-3">
+                      <Select
+                        value={p.plano ?? ""}
+                        disabled={!podeEditar || linhaOcupada === p.id}
+                        onChange={(e) => mudarPlanoLinha(p.id, e.target.value ? Number(e.target.value) : "")}
+                        className="h-8 py-0 text-xs"
+                      >
+                        <option value="">—</option>
+                        {servico.planos.map((pl) => (
+                          <option key={pl.id} value={pl.id}>Plano {pl.numero}</option>
+                        ))}
+                      </Select>
+                    </td>
+                  )}
+                  <td className="py-2">
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="radio"
+                        name={`ponto-foco-${servico.id}`}
+                        checked={servico.ponto_foco === p.id}
+                        disabled={!podeEditar || linhaOcupada === p.id}
+                        onChange={() => escolherFoco(p.id)}
+                        className="h-4 w-4"
+                        style={{ accentColor: "var(--accent)" }}
+                      />
+                    </label>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -225,7 +299,7 @@ export function PontosMedicao({
               type="number"
               inputMode="numeric"
               value={novo.numero_mancal}
-              onChange={(e) => setNovo({ ...novo, numero_mancal: e.target.value })}
+              onChange={(e) => mudarMancal(e.target.value)}
             />
           </Field>
           <Field label="Direção">
@@ -242,17 +316,23 @@ export function PontosMedicao({
               onChange={(e) => setNovo({ ...novo, identificacao: e.target.value })}
             />
           </Field>
-          {servico.planos.length > 0 && (
+          {doisPlanos && (
             <Field label="Plano corrigido por este ponto" className="sm:col-span-2">
               <Select
                 value={novo.plano}
-                onChange={(e) => setNovo({ ...novo, plano: e.target.value ? Number(e.target.value) : "" })}
+                onChange={(e) => {
+                  setPlanoTocado(true);
+                  setNovo({ ...novo, plano: e.target.value ? Number(e.target.value) : "" });
+                }}
               >
                 <option value="">— nenhum (não usado no balanceamento) —</option>
                 {servico.planos.map((p) => (
                   <option key={p.id} value={p.id}>Plano {p.numero}</option>
                 ))}
               </Select>
+              <p className="mt-1 text-[11px] text-fg-subtle">
+                Sugerido pela posição do mancal — pode trocar.
+              </p>
             </Field>
           )}
           <Field label="Reference run (mm/s)">
@@ -264,16 +344,7 @@ export function PontosMedicao({
               onChange={(e) => setNovo({ ...novo, reference_mms: e.target.value })}
             />
           </Field>
-          <Field label="Fase (°)">
-            <Input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              value={novo.reference_fase}
-              onChange={(e) => setNovo({ ...novo, reference_fase: e.target.value })}
-            />
-          </Field>
-          <div className="flex items-end sm:col-span-2">
+          <div className="flex items-end">
             <Button onClick={adicionar} loading={salvando} className="w-full">
               Salvar ponto
             </Button>
@@ -283,75 +354,6 @@ export function PontosMedicao({
 
       {servico.pontos.length === 0 && !aberto && (
         <p className="text-sm text-fg-muted">Nenhum ponto medido ainda.</p>
-      )}
-    </Card>
-  );
-}
-
-/* ===================== 5. Seleção do ponto de foco ===================== */
-
-export function SelecaoPontoFoco({
-  servico,
-  podeEditar,
-  onMudou,
-  onErro,
-}: {
-  servico: ServicoCampo;
-  podeEditar: boolean;
-  onMudou: () => Promise<void>;
-  onErro: (m: string | null) => void;
-}) {
-  const [salvando, setSalvando] = useState(false);
-
-  async function escolher(pontoId: number) {
-    setSalvando(true);
-    onErro(null);
-    try {
-      await api(`/servicos/${servico.id}/`, { method: "PATCH", body: { ponto_foco: pontoId } });
-      await onMudou();
-    } catch (e) {
-      onErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao definir o ponto de foco.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Card className="space-y-3">
-      <div>
-        <h2 className="text-sm font-semibold text-fg">Ponto de foco</h2>
-        <p className="text-xs text-fg-muted">
-          Qual ponto tem a maior amplitude — só ele recebe o Trial Run e o cálculo da correção.
-        </p>
-      </div>
-      {servico.pontos.length === 0 ? (
-        <p className="text-sm text-fg-muted">Cadastre os pontos de medição acima primeiro.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {servico.pontos.map((p) => (
-            <label
-              key={p.id}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                servico.ponto_foco === p.id
-                  ? "border-accent bg-accent-subtle"
-                  : "border-border hover:bg-surface-muted"
-              } ${!podeEditar || salvando ? "cursor-not-allowed opacity-70" : ""}`}
-            >
-              <input
-                type="radio"
-                name={`ponto-foco-${servico.id}`}
-                checked={servico.ponto_foco === p.id}
-                disabled={!podeEditar || salvando}
-                onChange={() => escolher(p.id)}
-                className="h-4 w-4"
-                style={{ accentColor: "var(--accent)" }}
-              />
-              <span className="font-mono font-semibold text-fg">{p.codigo_ponto}</span>
-              {p.identificacao && <span className="text-fg-muted">{p.identificacao}</span>}
-              <span className="ml-auto tabular-nums text-fg-subtle">{n(p.reference_mms)} mm/s</span>
-            </label>
-          ))}
-        </div>
       )}
     </Card>
   );
@@ -371,7 +373,7 @@ export function TrialRun({
   onErro: (m: string | null) => void;
 }) {
   const foco = servico.pontos.find((p) => p.id === servico.ponto_foco) ?? null;
-  const [trial, setTrial] = useState({ mms: foco?.trial_mms ?? "", fase: foco?.trial_fase ?? "" });
+  const [trialMms, setTrialMms] = useState(foco?.trial_mms ?? "");
   const [massas, setMassas] = useState(() =>
     Object.fromEntries(servico.planos.map((p) => [p.id, { massa: p.massa_teste_g ?? "", angulo: p.angulo_teste ?? "" }]))
   );
@@ -387,17 +389,18 @@ export function TrialRun({
   }
 
   const comparativo =
-    trial.mms && foco.reference_mms
-      ? ((Number(trial.mms) - Number(foco.reference_mms)) / Number(foco.reference_mms)) * 100
+    trialMms && foco.reference_mms
+      ? ((Number(trialMms) - Number(foco.reference_mms)) / Number(foco.reference_mms)) * 100
       : null;
 
   async function salvarTrial() {
     setSalvando("trial");
     onErro(null);
     try {
+      // Fase não é medida — o peso de prova é sempre fixado na posição 0°, por convenção.
       await api(`/balanceamento-pontos/${foco!.id}/`, {
         method: "PATCH",
-        body: { trial_mms: trial.mms || null, trial_fase: trial.fase || null },
+        body: { trial_mms: trialMms || null, trial_fase: trialMms ? "0" : null },
       });
       await onMudou();
     } catch (e) {
@@ -436,25 +439,15 @@ export function TrialRun({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Vibração medida (mm/s)">
           <Input
             type="number"
             step="0.01"
             inputMode="decimal"
             disabled={!podeEditar}
-            value={trial.mms}
-            onChange={(e) => setTrial({ ...trial, mms: e.target.value })}
-          />
-        </Field>
-        <Field label="Fase (°)">
-          <Input
-            type="number"
-            step="0.1"
-            inputMode="decimal"
-            disabled={!podeEditar}
-            value={trial.fase}
-            onChange={(e) => setTrial({ ...trial, fase: e.target.value })}
+            value={trialMms}
+            onChange={(e) => setTrialMms(e.target.value)}
           />
         </Field>
         {podeEditar && (
@@ -543,8 +536,8 @@ export function TrimRun({
   onMudou: () => Promise<void>;
   onErro: (m: string | null) => void;
 }) {
-  const [trims, setTrims] = useState<Record<number, { mms: string; fase: string }>>(
-    Object.fromEntries(servico.pontos.map((p) => [p.id, { mms: p.trim_mms ?? "", fase: p.trim_fase ?? "" }]))
+  const [trims, setTrims] = useState<Record<number, string>>(
+    Object.fromEntries(servico.pontos.map((p) => [p.id, p.trim_mms ?? ""]))
   );
   const [massas, setMassas] = useState(() =>
     Object.fromEntries(servico.planos.map((p) => [p.id, { massa: p.massa_final_g ?? "", angulo: p.angulo_final ?? "" }]))
@@ -555,10 +548,10 @@ export function TrimRun({
     setSalvando(`trim-${pontoId}`);
     onErro(null);
     try {
-      const valor = trims[pontoId] ?? { mms: "", fase: "" };
+      const mms = trims[pontoId] ?? "";
       await api(`/balanceamento-pontos/${pontoId}/`, {
         method: "PATCH",
-        body: { trim_mms: valor.mms || null, trim_fase: valor.fase || null },
+        body: { trim_mms: mms || null },
       });
       await onMudou();
     } catch (e) {
@@ -599,7 +592,7 @@ export function TrimRun({
       ) : (
         <div className="space-y-3">
           {servico.pontos.map((p) => {
-            const valor = trims[p.id] ?? { mms: "", fase: "" };
+            const mms = trims[p.id] ?? "";
             return (
               <div key={p.id} className="rounded-lg border border-border p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
@@ -614,25 +607,15 @@ export function TrimRun({
                     </span>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Vibração após correção (mm/s)">
                     <Input
                       type="number"
                       step="0.01"
                       inputMode="decimal"
                       disabled={!podeEditar}
-                      value={valor.mms}
-                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: { ...valor, mms: e.target.value } }))}
-                    />
-                  </Field>
-                  <Field label="Fase (°)">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      inputMode="decimal"
-                      disabled={!podeEditar}
-                      value={valor.fase}
-                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: { ...valor, fase: e.target.value } }))}
+                      value={mms}
+                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: e.target.value }))}
                     />
                   </Field>
                   {podeEditar && (

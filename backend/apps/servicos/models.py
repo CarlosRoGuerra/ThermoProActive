@@ -199,7 +199,12 @@ class BalanceamentoPonto(BaseModel):
 
     # REFERENCE RUN (ANTES) — obrigatório: é a base de toda a curva de redução.
     reference_mms = models.DecimalField("Reference run (mm/s)", max_digits=8, decimal_places=2)
-    reference_fase = models.DecimalField("Reference run — fase (°)", max_digits=5, decimal_places=1)
+    # Opcional (pedido do cliente, 2026-09-16): a fase deixou de ser coletada no
+    # Reference Run — só a amplitude importa. Mantido no modelo pra não perder o
+    # histórico de pontos antigos que já tinham fase medida.
+    reference_fase = models.DecimalField(
+        "Reference run — fase (°)", max_digits=5, decimal_places=1, null=True, blank=True
+    )
 
     # TRIAL RUN — opcional: em máquina com histórico o analista pode pular a corrida de teste.
     trial_mms = models.DecimalField(
@@ -250,7 +255,7 @@ class BalanceamentoPonto(BaseModel):
     @property
     def completo(self) -> bool:
         """Só há resultado depois do trim run — antes disso o ponto está em andamento."""
-        return self.trim_mms is not None and self.trim_fase is not None
+        return self.trim_mms is not None
 
     def save(self, *args, **kwargs):
         if self.completo:

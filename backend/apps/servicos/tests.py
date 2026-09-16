@@ -349,6 +349,22 @@ class ServicoDaPlanilha1PTest(TestCase):
         self.assertEqual(arredondar(ponto.reducao_pct, "0.1"), Decimal("95.5"))
         self.assertEqual(ponto.zona_iso, "A")
 
+    def test_ponto_completo_sem_fase_nenhuma(self):
+        # Pedido do cliente (2026-09-16): fase deixou de ser coletada no Reference e no
+        # Trim Run — um ponto sem fase nenhuma precisa completar e calcular normalmente.
+        servico = self.montar_servico()
+        ponto = BalanceamentoPonto.objects.create(
+            servico=servico, numero_mancal=4, direcao="V",
+            reference_mms="20",
+        )
+        self.assertFalse(ponto.completo)
+        ponto.trim_mms = "1.0"
+        ponto.save()
+        self.assertTrue(ponto.completo)
+        self.assertEqual(arredondar(ponto.reducao_pct, "0.1"), Decimal("95.0"))
+        self.assertIsNone(ponto.reference_fase)
+        self.assertIsNone(ponto.trim_fase)
+
     def test_servico_ignora_pontos_em_andamento_na_media(self):
         servico = self.montar_servico()
         BalanceamentoPonto.objects.create(

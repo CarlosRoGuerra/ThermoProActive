@@ -3,11 +3,11 @@
 import { useMemo, useState } from "react";
 import { Zap } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { PontosMedicao, QuantidadePlanos, SelecaoPontoFoco, TrialRun, TrimRun } from "@/components/balanceamento-medicoes";
+import { PontosMedicao, QuantidadePlanos, TrialRun, TrimRun } from "@/components/balanceamento-medicoes";
 import { pontosUsados } from "@/lib/balanceamento";
 import type { BalanceamentoPonto, EconomiaEnergetica, ServicoCampo } from "@/lib/types";
 import { Badge, Button, Card, Field, Input, StatCard } from "@/components/ui";
-import { AntesDepois, MostradorPolar, type PontoGrafico } from "@/components/balanceamento-graficos";
+import { AntesDepois, type PontoGrafico } from "@/components/balanceamento-graficos";
 
 const n = (v: string | number | null | undefined, casas = 2) =>
   v == null || v === ""
@@ -17,15 +17,15 @@ const n = (v: string | number | null | undefined, casas = 2) =>
 const reais = (v: string | null) =>
   v == null ? "—" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Converte o ponto da API no formato que os gráficos consomem. */
+/** Converte o ponto da API no formato que os gráficos consomem (só amplitude — a fase
+ * deixou de ser coletada). */
 function paraGrafico(p: BalanceamentoPonto): PontoGrafico {
-  const corrida = (mms: string | null, fase: string | null) =>
-    mms != null && fase != null ? { mms: Number(mms), fase: Number(fase) } : null;
+  const corrida = (mms: string | null) => (mms != null ? { mms: Number(mms) } : null);
   return {
     codigo_ponto: p.codigo_ponto,
-    reference: corrida(p.reference_mms, p.reference_fase),
-    trial: corrida(p.trial_mms, p.trial_fase),
-    trim: corrida(p.trim_mms, p.trim_fase),
+    reference: corrida(p.reference_mms),
+    trial: corrida(p.trial_mms),
+    trim: corrida(p.trim_mms),
     reducao_pct: p.reducao_pct != null ? Number(p.reducao_pct) : null,
     zona_iso: p.zona_iso,
     completo: p.completo,
@@ -63,7 +63,6 @@ export function ServicoCampoPainel({
 
       <QuantidadePlanos servico={servico} podeEditar={podeEditar} onMudou={onMudou} />
       <PontosMedicao servico={servico} podeEditar={podeEditar} onMudou={onMudou} onErro={setErro} />
-      <SelecaoPontoFoco servico={servico} podeEditar={podeEditar} onMudou={onMudou} onErro={setErro} />
       <TrialRun servico={servico} podeEditar={podeEditar} onMudou={onMudou} onErro={setErro} />
       <TrimRun servico={servico} podeEditar={podeEditar} onMudou={onMudou} onErro={setErro} />
 
@@ -132,32 +131,12 @@ export function ServicoCampoPainel({
         )}
       </Card>
 
-      {/* Gráfico — um mostrador por ponto usado (nunca um por mancal do equipamento) */}
+      {/* Gráfico — só os pontos usados (nunca um por mancal do equipamento) */}
       {pontosGrafico.some((p) => p.reference) && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <Card>
-            <h2 className="mb-4 text-sm font-semibold text-fg">Mostrador de fase</h2>
-            <div className="flex flex-wrap gap-6">
-              {usados.map((ponto, i) => {
-                const plano = planoDoPonto(ponto);
-                return (
-                  <div key={ponto.id}>
-                    <p className="mb-1 text-xs font-medium text-fg-muted">
-                      {plano ? `Plano ${plano.numero} — ` : ""}
-                      {ponto.codigo_ponto}
-                      {ponto.identificacao ? ` — ${ponto.identificacao}` : ""}
-                    </p>
-                    <MostradorPolar ponto={pontosGrafico[i]} tamanho={260} />
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-          <Card>
-            <h2 className="mb-4 text-sm font-semibold text-fg">Antes × Depois</h2>
-            <AntesDepois pontos={pontosGrafico} />
-          </Card>
-        </div>
+        <Card>
+          <h2 className="mb-4 text-sm font-semibold text-fg">Evolução da vibração</h2>
+          <AntesDepois pontos={pontosGrafico} />
+        </Card>
       )}
 
       <Economia servico={servico} podeEditar={podeEditar} onMudou={onMudou} onErro={setErro} />
