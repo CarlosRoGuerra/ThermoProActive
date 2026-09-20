@@ -149,7 +149,14 @@ SIMPLE_JWT = {
 
 AUTH_COOKIE_ACCESS = "tpa_access"
 AUTH_COOKIE_REFRESH = "tpa_refresh"
-AUTH_COOKIE_SECURE = not DEBUG
+# Cookies com a flag `Secure` só são guardados pelo navegador sob HTTPS. Num
+# deploy em HTTP puro (VPS acessada por IP, onde o Let's Encrypt não emite
+# certificado) isso faz o login responder 200 e a sessão morrer no request
+# seguinte — parece "sessão expirada", mas o cookie nunca chegou a ser gravado.
+# Esta chave permite baixar a exigência conscientemente nesse cenário; o padrão
+# continua seguro, então nada afrouxa sozinho.
+COOKIES_SECURE = env.bool("COOKIES_SECURE", default=not DEBUG)
+AUTH_COOKIE_SECURE = COOKIES_SECURE
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 CORS_ALLOW_CREDENTIALS = True
 
@@ -211,14 +218,17 @@ CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 if not DEBUG:
-    # Cookies só trafegam sob HTTPS.
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    # HSTS: navegador passa a exigir HTTPS neste domínio (1 ano). Ative após
-    # confirmar que o certificado está funcionando para não se trancar fora.
-    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+    # Cookies só trafegam sob HTTPS (ver COOKIES_SECURE acima).
+    SESSION_COOKIE_SECURE = COOKIES_SECURE
+    CSRF_COOKIE_SECURE = COOKIES_SECURE
+    if COOKIES_SECURE:
+        # HSTS: navegador passa a exigir HTTPS neste domínio (1 ano). Ative após
+        # confirmar que o certificado está funcionando para não se trancar fora.
+        # Sem TLS o cabeçalho seria ignorado de qualquer forma — e mandá-lo num
+        # deploy HTTP só atrapalha uma futura migração para HTTPS.
+        SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+        SECURE_HSTS_PRELOAD = True
     # Cabeçalhos de proteção adicionais.
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
