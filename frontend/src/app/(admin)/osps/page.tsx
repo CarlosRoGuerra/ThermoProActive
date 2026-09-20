@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Clock, Plus, TriangleAlert, Wrench } from "lucide-react";
 import {
   Alert,
@@ -87,7 +88,8 @@ type Filtro = "abertas" | "vencidas" | "todas";
 
 export default function OspsPage() {
   const toast = useToast();
-  const { pode } = usePermissoes();
+  const { pode, podeEditar } = usePermissoes();
+  const router = useRouter();
   const { clienteAtivo } = useClienteAtivo();
   const { opcoes: opcoesClientes } = useClientes();
   const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
@@ -338,6 +340,7 @@ export default function OspsPage() {
         getId={(o) => o.id}
         busca={busca}
         camposBusca={(o) => [o.descricao, o.numero_relatorio, o.numero, o.responsavel_nome]}
+        onLinhaClick={podeEditar ? (o) => router.push(`/osps/${o.id}`) : undefined}
         carregando={lista.carregando}
         falha={lista.falha}
         onRetry={lista.recarregar}
