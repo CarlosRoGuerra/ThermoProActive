@@ -1,7 +1,12 @@
 from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 
-from apps.accounts.permissions import InternoEditaClienteVisualiza, MasterEditaDemaisVisualizam
+from apps.accounts.permissions import (
+    InternoEditaClienteVisualiza,
+    InternoOuClienteMasterEdita,
+    MasterEditaDemaisVisualizam,
+)
 
 from .models import (
     Area,
@@ -63,14 +68,75 @@ class CatalogoPagination(PageNumberPagination):
 
 
 class BaseCadastroViewSet(viewsets.ModelViewSet):
-    """Interno edita; cliente apenas lê (item 2.7). Retorna só registros ativos."""
+    """
+    Interno edita; cliente apenas lê (item 2.7). Retorna só registros ativos.
+
+    ESCOPO MULTI-TENANT — `campo_cliente`
+    -------------------------------------
+    `InternoEditaClienteVisualiza` libera leitura a qualquer autenticado, o que
+    é correto para as tabelas de referência (normas, tipos), mas NÃO para dados
+    de cliente: sem filtro, um usuário do Portal listava `/equipamentos/` e
+    `/clientes/` e recebia o parque e os contatos de TODOS os clientes.
+
+    Cada ViewSet que expõe dado de cliente declara `campo_cliente` com o caminho
+    do ORM até o Cliente; para perfis do tipo cliente, o queryset é filtrado
+    pelo cliente vinculado ao usuário. Os catálogos globais deixam `None`.
+
+    Mesma regra já aplicada em coletas/osp/laudos/servicos/relatorios
+    (`escopo_cliente`), agora também aqui.
+    """
 
     permission_classes = [InternoEditaClienteVisualiza]
+
+    #: Caminho do ORM até `cadastros.Cliente`. `None` = tabela global.
+    campo_cliente = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if self.campo_cliente and getattr(user, "is_cliente", False):
+            # Usuário cliente sem vínculo não enxerga nada — falha fechada.
+            if not user.cliente_id:
+                return qs.none()
+            return qs.filter(**{self.campo_cliente: user.cliente_id})
+        return qs
 
     def perform_destroy(self, instance):
         # Soft-delete: preserva histórico técnico (não apaga fisicamente).
         instance.ativo = False
         instance.save(update_fields=["ativo"])
+
+    def perform_create(self, serializer):
+        self._impedir_apontar_para_outro_cliente(serializer.validated_data)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._impedir_apontar_para_outro_cliente(serializer.validated_data, instancia=serializer.instance)
+        serializer.save()
+
+    def _impedir_apontar_para_outro_cliente(self, validated_data, instancia=None):
+        """
+        `get_queryset()` protege LER/EDITAR um registro que já existe. Não impede
+        um Master de cliente CRIAR um novo apontando pra fora da própria empresa
+        (ex.: um Equipamento cujo `setor` é de outro cliente) nem REATRIBUIR um
+        já existente pra lá — nenhum dos dois passa pelo filtro de leitura.
+        Só se aplica a usuário cliente; interno sempre pode apontar pra qualquer
+        cliente (é o trabalho dele cadastrar o parque de qualquer um).
+        """
+        user = self.request.user
+        if not (self.campo_cliente and getattr(user, "is_cliente", False)):
+            return
+        primeiro_campo, _, resto = self.campo_cliente.partition("__")
+        if primeiro_campo not in validated_data:
+            return  # não mudou nesta requisição — o valor atual já foi validado na leitura
+        valor = validated_data[primeiro_campo]
+        pk_valor = getattr(valor, "pk", valor)
+        if resto:
+            ok = valor.__class__.objects.filter(pk=pk_valor, **{resto: user.cliente_id}).exists()
+        else:
+            ok = pk_valor == user.cliente_id
+        if not ok:
+            raise ValidationError({primeiro_campo: "Isso não pertence à sua empresa."})
 
 
 class EmpresaViewSet(BaseCadastroViewSet):
@@ -80,8 +146,18 @@ class EmpresaViewSet(BaseCadastroViewSet):
 
 
 class ClienteViewSet(BaseCadastroViewSet):
-    """Cadastro do tomador de serviço (topo da hierarquia Cliente → Área → Setor)."""
+    """
+    Cadastro do tomador de serviço (topo da hierarquia Cliente → Área → Setor).
 
+    Fica com `InternoEditaClienteVisualiza` (só leitura pro cliente) mesmo após
+    a decisão de 2026-09-18 de liberar escrita pro Master do cliente no parque
+    abaixo: criar/excluir A PRÓPRIA empresa não faz sentido por autoatendimento,
+    e "editar meus dados cadastrais" não foi pedido — só o parque técnico foi
+    (equipamentos, áreas, setores, rotas, OSPs, análises).
+    """
+
+    # O usuário do Portal vê apenas a própria empresa.
+    campo_cliente = "id"
     queryset = Cliente.objects.ativos()
     serializer_class = ClienteSerializer
     pagination_class = CatalogoPagination
@@ -92,6 +168,8 @@ class ClienteViewSet(BaseCadastroViewSet):
 
 
 class AreaViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "cliente"
     queryset = Area.objects.ativos().select_related("cliente")
     serializer_class = AreaSerializer
     pagination_class = CatalogoPagination
@@ -100,6 +178,8 @@ class AreaViewSet(BaseCadastroViewSet):
 
 
 class SetorViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "area__cliente"
     queryset = Setor.objects.ativos().select_related("area", "area__cliente")
     serializer_class = SetorSerializer
     pagination_class = CatalogoPagination
@@ -108,6 +188,8 @@ class SetorViewSet(BaseCadastroViewSet):
 
 
 class EquipamentoViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "setor__area__cliente"
     queryset = (
         Equipamento.objects.ativos()
         .select_related(
@@ -127,18 +209,24 @@ class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
     """Datasheet de Motor Elétrico — acesso estruturado via /equipamentos/{id}/ (nested,
     somente leitura) e aqui para criar/editar (mesmo padrão de balanceamento-planos)."""
 
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "equipamento__setor__area__cliente"
     queryset = DadosTecnicosMotor.objects.ativos().select_related("equipamento")
     serializer_class = DadosTecnicosMotorSerializer
     filterset_fields = ["equipamento"]
 
 
 class DadosTecnicosTransformadorViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "equipamento__setor__area__cliente"
     queryset = DadosTecnicosTransformador.objects.ativos().select_related("equipamento")
     serializer_class = DadosTecnicosTransformadorSerializer
     filterset_fields = ["equipamento"]
 
 
 class ComponenteViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "equipamento__setor__area__cliente"
     queryset = Componente.objects.ativos().select_related("equipamento")
     serializer_class = ComponenteSerializer
     filterset_fields = ["equipamento"]
@@ -235,6 +323,8 @@ class GrupoAcessoViewSet(CatalogoViewSet):
 
 
 class RotaViewSet(BaseCadastroViewSet):
+    permission_classes = [InternoOuClienteMasterEdita]
+    campo_cliente = "cliente"
     queryset = Rota.objects.ativos().select_related("cliente").prefetch_related("equipamentos")
     serializer_class = RotaSerializer
     filterset_fields = ["cliente"]

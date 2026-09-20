@@ -158,6 +158,18 @@ class AchadoSerializer(serializers.ModelSerializer):
     def validate_item(self, value):
         if value.carregamento.tipo_corretiva:
             raise serializers.ValidationError("Use a análise vinculada à atividade corretiva.")
+        # get_queryset() só protege ler/editar um achado que já existe — sem isto,
+        # o Master de um cliente poderia criar (ou realocar) um achado apontando
+        # `item` de OUTRO cliente, vazando o TAG/equipamento dele na resposta.
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            user is not None
+            and user.is_cliente
+            and user.cliente_id
+            and value.carregamento.cliente_id != user.cliente_id
+        ):
+            raise serializers.ValidationError("Isso não pertence à sua empresa.")
         return value
 
     def validate(self, attrs):
@@ -290,8 +302,13 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
     data_inicio = serializers.DateField(source="relatorio.data_inicio", read_only=True, default=None)
     data_termino = serializers.DateField(source="relatorio.data_termino", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    qtd_itens = serializers.IntegerField(source="itens.count", read_only=True)
-    pode_transferir = serializers.BooleanField(read_only=True)
+    # Contagens vêm ANOTADAS pelo ViewSet (uma consulta para a página inteira).
+    # Os métodos abaixo caem para a contagem direta apenas se o serializer for
+    # usado fora daquele queryset — assim nada quebra em outro ponto de uso.
+    qtd_itens = serializers.SerializerMethodField()
+    qtd_pendentes = serializers.SerializerMethodField()
+    qtd_achados = serializers.SerializerMethodField()
+    pode_transferir = serializers.SerializerMethodField()
 
     class Meta:
         model = Carregamento
@@ -300,9 +317,34 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
             "relatorio", "numero", "data_inicio", "data_termino", "data_coleta",
             "rota", "rota_nome", "instrumento", "instrumento_nome",
             "analista", "analista_nome", "tipo_corretiva",
-            "status", "status_display", "qtd_itens",
+            "status", "status_display",
+            "qtd_itens", "qtd_pendentes", "qtd_achados",
             "pode_transferir", "transferido_em", "criado_em",
         ]
+
+    def get_qtd_itens(self, obj) -> int:
+        valor = getattr(obj, "_qtd_itens", None)
+        return obj.itens.count() if valor is None else valor
+
+    def get_qtd_pendentes(self, obj) -> int:
+        """Equipamentos ainda sem condição — é o que trava a transferência."""
+        valor = getattr(obj, "_qtd_pendentes", None)
+        return obj.itens_pendentes.count() if valor is None else valor
+
+    def get_qtd_achados(self, obj) -> int:
+        valor = getattr(obj, "_qtd_achados", None)
+        if valor is not None:
+            return valor
+        from .models import Achado
+
+        return Achado.objects.filter(item__carregamento=obj).count()
+
+    def get_pode_transferir(self, obj) -> bool:
+        """Mesma regra do modelo, sem a consulta extra por linha."""
+        valor = getattr(obj, "_qtd_pendentes", None)
+        if valor is None:
+            return obj.pode_transferir
+        return obj.status == "EM_CAMPO" and valor == 0
 
 
 class CarregamentoSerializer(serializers.ModelSerializer):

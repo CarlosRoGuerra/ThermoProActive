@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
-import { cn } from "./ui";
+import { cn } from "./ds";
 import type { Opcao } from "./combobox";
 
 /**
@@ -108,7 +108,7 @@ export function MultiSelect({
                       <span
                         className={cn(
                           "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
-                          marcada ? "border-accent bg-accent text-accent-fg" : "border-border-strong"
+                          marcada ? "border-primary bg-primary text-primary-fg" : "border-border-strong"
                         )}
                       >
                         {marcada && <Check className="h-3 w-3" />}
@@ -132,14 +132,14 @@ export function MultiSelect({
           {selecionadas.map((o) => (
             <span
               key={o.id}
-              className="inline-flex items-center gap-1 rounded-full bg-accent-subtle px-2.5 py-1 text-xs font-medium text-accent-subtle-fg"
+              className="inline-flex items-center gap-1 rounded-full bg-primary-subtle px-2.5 py-1 text-xs font-medium text-primary-subtle-fg"
             >
               {o.label}
               <button
                 type="button"
                 onClick={() => alternar(o.id)}
                 aria-label={`Remover ${o.label}`}
-                className="rounded-full p-0.5 hover:bg-accent/20"
+                className="rounded-full p-0.5 hover:bg-primary/20"
               >
                 <X className="h-3 w-3" />
               </button>

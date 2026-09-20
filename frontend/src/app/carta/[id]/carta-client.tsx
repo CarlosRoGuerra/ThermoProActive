@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Dossie } from "@/app/(app)/relatorios-inspecao/[id]/dossie";
+import type { Dossie } from "@/features/relatorio-inspecao/dossie";
 import { CartaCorpo } from "./carta";
 
 /* Regras que o paged.js processa: cada folha da carta é uma A4 física (margens

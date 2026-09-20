@@ -20,7 +20,7 @@ def enviar_email(user, titulo: str, mensagem: str) -> bool:
         return False
     try:
         send_mail(
-            subject=f"[ThermoProActive] {titulo}",
+            subject=f"[Pred Ativos] {titulo}",
             message=mensagem,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[user.email],

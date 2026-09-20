@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { DadosTecnicosMotor, DadosTecnicosTransformador, TipoBase } from "@/lib/types";
-import { Button, Card, Field, Input, Select } from "@/components/ui";
+import { Button, Card, Field, Input, Select } from "@/components/ds";
 
 /**
  * Datasheet técnico específico por tipo de equipamento (Motor Elétrico, Transformador).

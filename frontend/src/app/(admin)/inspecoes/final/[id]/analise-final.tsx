@@ -1,0 +1,432 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, FileCheck2, ImagePlus, Save, Trash2, X } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import type { Achado, AchadoImagem, ServicoCampo, TipoImagemAchado } from "@/lib/types";
+import {
+  type AchadoForm, formDeAchado, payloadDeForm, tecnologiaTipo,
+} from "@/lib/inspecoes";
+import { AchadoCampos } from "@/components/achado-campos";
+import { ServicoCampoPainel } from "@/components/servico-campo-painel";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  Field,
+  Input,
+  LoadingState,
+  PageBody,
+  PageHeader,
+  Select,
+  useConfirmacao,
+  useToast,
+} from "@/components/ds";
+
+// Campos técnicos com validação cruzada de compatibilidade (catálogo × tecnologia) —
+// na manutenção corretiva só são editáveis pela Análise de campo; a Análise final não
+// os envia no PATCH (o backend rejeitaria).
+const CAMPOS_TECNICOS_CORRETIVA = [
+  "tipo_componente", "componente_texto", "detalhe",
+  "tipo_anomalia", "anomalia_texto", "recomendacao", "recomendacao_texto",
+] as const;
+
+const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
+
+// Tipos de imagem oferecidos por tecnologia (padrão 800×600).
+const IMAGENS_POR_TIPO: Record<string, { valor: TipoImagemAchado; texto: string }[]> = {
+  termografia: [
+    { valor: "REAL", texto: "Foto real" },
+    { valor: "TERMICA", texto: "Imagem térmica" },
+  ],
+  vibracao: [
+    { valor: "TENDENCIA", texto: "Linha de tendência" },
+    { valor: "ESPECTRO", texto: "Espectro" },
+    { valor: "REAL", texto: "Foto real" },
+  ],
+  outro: [
+    { valor: "REAL", texto: "Foto real" },
+    { valor: "TERMICA", texto: "Imagem térmica" },
+    { valor: "TENDENCIA", texto: "Linha de tendência" },
+    { valor: "ESPECTRO", texto: "Espectro" },
+  ],
+};
+
+/* ------------------------------- Upload de imagens ------------------------ */
+function Imagens({
+  achado, tipoTecnologia, onChange,
+}: {
+  achado: Achado;
+  tipoTecnologia: "vibracao" | "termografia" | "outro";
+  onChange: () => void;
+}) {
+  const toast = useToast();
+  const remocao = useConfirmacao<AchadoImagem>();
+  const [tipo, setTipo] = useState<TipoImagemAchado>(IMAGENS_POR_TIPO[tipoTecnologia][0].valor);
+  const [legenda, setLegenda] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ampliada, setAmpliada] = useState<AchadoImagem | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function medir(file: File): Promise<{ w: number; h: number }> {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Arquivo de imagem inválido."));
+      };
+      img.src = url;
+    });
+  }
+
+  async function enviar(file: File) {
+    setMsg(null);
+    try {
+      const { w, h } = await medir(file);
+      // 800×600 é o MÁXIMO aceitável (a altura pode ser menor, conforme o monitor
+      // ao exportar o gráfico); rejeita só se ultrapassar.
+      if (w > 800 || h > 600) {
+        setMsg(`A imagem deve ter no máximo 800×600px (esta é ${w}×${h}).`);
+        if (inputRef.current) inputRef.current.value = "";
+        return;
+      }
+      setEnviando(true);
+      const fd = new FormData();
+      fd.append("achado", String(achado.id));
+      fd.append("tipo", tipo);
+      fd.append("legenda", legenda);
+      fd.append("arquivo", file);
+      await api("/achados-imagens/", { method: "POST", body: fd });
+      setLegenda("");
+      if (inputRef.current) inputRef.current.value = "";
+      onChange();
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Erro ao enviar a imagem.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function remover(img: AchadoImagem) {
+    try {
+      await api(`/achados-imagens/${img.id}/`, { method: "DELETE" });
+      toast.sucesso("Imagem removida do laudo");
+      onChange();
+    } catch (e) {
+      toast.falha(e, "Não foi possível remover a imagem.");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Tipo de imagem">
+          <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoImagemAchado)}>
+            {IMAGENS_POR_TIPO[tipoTecnologia].map((o) => (
+              <option key={o.valor} value={o.valor}>{o.texto}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Legenda (opcional)">
+          <Input value={legenda} onChange={(e) => setLegenda(e.target.value)} />
+        </Field>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) enviar(f);
+          }}
+        />
+        <Button
+          variant="secondary"
+          icon={ImagePlus}
+          loading={enviando}
+          onClick={() => inputRef.current?.click()}
+        >
+          Anexar imagem
+        </Button>
+        <span className="text-xs text-fg-subtle">Máx. 800×600px.</span>
+      </div>
+      {msg && <p className="text-sm text-danger-fg">{msg}</p>}
+
+      {achado.imagens.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {achado.imagens.map((img) => (
+            <div key={img.id} className="overflow-hidden rounded-lg border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.arquivo}
+                alt={img.tipo_display}
+                onClick={() => setAmpliada(img)}
+                title="Clique para ampliar"
+                className="aspect-[4/3] w-full cursor-zoom-in object-cover transition-opacity hover:opacity-90"
+              />
+              <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                <span className="truncate text-xs text-fg-muted" title={img.legenda || img.tipo_display}>
+                  {img.tipo_display}
+                </span>
+                <button
+                  onClick={() => remocao.pedir(img)}
+                  className="shrink-0 rounded p-1 text-danger-fg transition-colors hover:bg-danger-subtle"
+                  aria-label="Remover imagem"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ConfirmDialog
+        aberto={!!remocao.alvo}
+        onFechar={remocao.cancelar}
+        onConfirmar={() => remocao.executar(remover)}
+        enviando={remocao.enviando}
+        title="Remover esta imagem?"
+        confirmarLabel="Remover imagem"
+        mensagem={
+          <>
+            A imagem <strong>{remocao.alvo?.tipo_display}</strong>
+            {remocao.alvo?.legenda ? ` — ${remocao.alvo.legenda}` : ""} sai do laudo desta análise.
+          </>
+        }
+        detalhe="Ela deixa de aparecer no relatório técnico entregue ao cliente."
+        irreversivel
+      />
+
+      {/* Lightbox: imagem ampliada ao clicar */}
+      {ampliada && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setAmpliada(null)}
+        >
+          <button
+            onClick={() => setAmpliada(null)}
+            className="absolute right-4 top-4 rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Fechar"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={ampliada.arquivo}
+            alt={ampliada.tipo_display}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain shadow-2xl"
+          />
+          {ampliada.legenda && (
+            <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-black/60 px-3 py-1 text-sm text-white">
+              {ampliada.legenda}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------- Página ----------------------------------- */
+export function AnaliseFinal({ achadoId }: { achadoId: number }) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [achado, setAchado] = useState<Achado | null>(null);
+  const [form, setForm] = useState<AchadoForm | null>(null);
+  const [numeroOsp, setNumeroOsp] = useState("");
+  const [servico, setServico] = useState<ServicoCampo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    const a = await api<Achado>(`/achados/${achadoId}/`);
+    setAchado(a);
+    setForm(formDeAchado(a));
+    setNumeroOsp(a.numero_osp ?? "");
+    if (a.tipo_corretiva === "BALANCEAMENTO" && a.servico_campo_id) {
+      setServico(await api<ServicoCampo>(`/servicos/${a.servico_campo_id}/`));
+    } else {
+      setServico(null);
+    }
+  }, [achadoId]);
+
+  const recarregarServico = useCallback(async () => {
+    if (achado?.servico_campo_id) setServico(await api<ServicoCampo>(`/servicos/${achado.servico_campo_id}/`));
+  }, [achado?.servico_campo_id]);
+
+  useEffect(() => {
+    setLoading(true);
+    carregar()
+      .catch(() => setMsg("Não foi possível carregar a análise."))
+      .finally(() => setLoading(false));
+  }, [carregar]);
+
+  // Duas travas DIFERENTES, de propósito (achado real sem OSP era o sintoma):
+  //  · Confirmar → gera a OSP (manutenção precisa saber do problema). Não exige
+  //    imagem: a Análise de campo ainda não tem captura de foto (câmera do celular
+  //    é item pendente), e a análise em si — condição, componente, anomalia,
+  //    recomendação — já é motivo suficiente pra abrir a ordem de serviço.
+  //  · Publicar para o cliente → exige imagem (é o que sai no relatório técnico que
+  //    o cliente vê). Antes as duas ações eram uma só, e por não ter câmera no
+  //    campo, toda análise sem foto ficava presa sem nunca virar OSP.
+  async function salvar(acao: "rascunho" | "confirmar" | "publicar") {
+    if (!form || !achado) return;
+    if (acao === "publicar" && achado.imagens.length === 0) {
+      setMsg("Anexe ao menos uma imagem (800×600) antes de publicar para o cliente.");
+      return;
+    }
+    setSalvando(true);
+    setMsg(null);
+    try {
+      // A condição/grau de risco desta análise vai no próprio achado (AchadoCampos).
+      // numero_osp é gerado automaticamente ao confirmar (não editável). Na manutenção
+      // corretiva, os campos técnicos (componente/anomalia/recomendação) são editados
+      // só pela Análise de campo — não entram neste PATCH.
+      const body: Record<string, unknown> = { ...payloadDeForm(form) };
+      if (achado.tipo_corretiva) {
+        for (const campo of CAMPOS_TECNICOS_CORRETIVA) delete body[campo];
+      }
+      if (acao === "confirmar") {
+        body.confirmada = true;
+      } else if (acao === "publicar") {
+        body.confirmada = true;
+        body.visivel_cliente = true;
+      }
+      await api(`/achados/${achado.id}/`, { method: "PATCH", body });
+      // Volta sempre para a fila de não confirmadas (para pegar a próxima).
+      router.push("/inspecoes/final");
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Erro ao salvar.");
+      setSalvando(false);
+    }
+  }
+
+  if (loading) return <LoadingState variante="formulario" linhas={4} label="Carregando a análise…" />;
+  if (!achado || !form) return <Card><p className="text-sm text-danger-fg">{msg ?? "Análise não encontrada."}</p></Card>;
+
+  const tipo = tecnologiaTipo(achado.tecnologia_nome);
+
+  const infos: [string, string][] = [
+    ["Analista", achado.analista_nome],
+    ["Área", achado.area_nome],
+    ["Setor", achado.setor_nome],
+    ["Tag", achado.equipamento_tag],
+    ["Equipamento", achado.equipamento_nome],
+    ["Tipo de equipamento", achado.tipo_equipamento_nome || "—"],
+    ["Data", ddmmaaaa(achado.data)],
+    ["Tecnologia", achado.tecnologia_nome],
+  ];
+
+  return (
+    <PageBody>
+      <PageHeader
+        icon={FileCheck2}
+        title={`Análise #${achado.id}`}
+        description={`${achado.equipamento_tag} — ${achado.equipamento_nome} · ${achado.tecnologia_nome}. Refine os campos e confirme para abrir a ordem de serviço.`}
+        trilha={[
+          { label: "Inspeções", href: "/inspecoes/campo" },
+          { label: "Análise final", href: "/inspecoes/final" },
+          { label: `#${achado.id}` },
+        ]}
+        selo={
+          achado.visivel_cliente ? (
+            <Badge tone="success">Publicada para o cliente</Badge>
+          ) : achado.confirmada ? (
+            <Badge tone="primary">Confirmada — OSP aberta</Badge>
+          ) : (
+            <Badge tone="warning">Aguardando confirmação</Badge>
+          )
+        }
+      />
+
+      {/* Rastreabilidade (somente leitura) */}
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold text-fg">Rastreabilidade</h2>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+          {infos.map(([k, v]) => (
+            <div key={k}>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-fg-subtle">{k}</dt>
+              <dd className="mt-0.5 truncate text-sm text-fg" title={v}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="mt-4 max-w-xs border-t border-border pt-4">
+          <Field label="OSP | Código">
+            <Input value={numeroOsp} disabled readOnly placeholder="Gerado ao confirmar" />
+          </Field>
+        </div>
+      </Card>
+
+      {/* Campos editáveis da análise (inclui a Condição / grau de risco no topo) */}
+      <Card>
+        <h2 className="mb-4 text-sm font-semibold text-fg">Análise</h2>
+        <AchadoCampos
+          form={form}
+          setForm={setForm}
+          tipo={tipo}
+          tecnologiaId={achado.tecnologia}
+          camposTecnicosDesabilitados={!!achado.tipo_corretiva}
+        />
+      </Card>
+
+      {/* Manutenção corretiva (balanceamento): reaproveita a interface de Serviços de
+          campo — Planos, Pontos, gráficos e Economia energética. */}
+      {servico && (
+        <Card>
+          <h2 className="mb-4 text-sm font-semibold text-fg">Balanceamento</h2>
+          <ServicoCampoPainel servico={servico} podeEditar={!!user?.is_interno} onMudou={recarregarServico} />
+        </Card>
+      )}
+
+      {/* Imagens */}
+      <Card>
+        <h2 className="mb-4 text-sm font-semibold text-fg">
+          Imagens {tipo === "termografia" ? "(real + térmica)" : tipo === "vibracao" ? "(tendência + espectro + real)" : ""}
+        </h2>
+        <Imagens achado={achado} tipoTecnologia={tipo} onChange={carregar} />
+      </Card>
+
+      {msg && <Card><p className="text-sm text-danger-fg">{msg}</p></Card>}
+
+      <div className="flex flex-wrap items-center justify-end gap-3 pb-2">
+        <Button variant="secondary" onClick={() => router.push("/inspecoes/final")}>Cancelar</Button>
+        <Button variant="secondary" onClick={() => salvar("rascunho")} loading={salvando} icon={Save}>
+          Salvar
+        </Button>
+        {!achado.confirmada && (
+          <Button
+            variant="secondary"
+            onClick={() => salvar("confirmar")}
+            loading={salvando}
+            icon={CheckCircle2}
+            title="Gera a ordem de serviço. Não exige imagem — a análise de campo ainda não captura foto."
+          >
+            Confirmar
+          </Button>
+        )}
+        {!achado.visivel_cliente && (
+          <Button
+            onClick={() => salvar("publicar")}
+            loading={salvando}
+            icon={CheckCircle2}
+            title="Exige ao menos uma imagem — é o que aparece no relatório técnico do cliente."
+          >
+            {achado.confirmada ? "Publicar para o cliente" : "Confirmar e publicar"}
+          </Button>
+        )}
+      </div>
+    </PageBody>
+  );
+}

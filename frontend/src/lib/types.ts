@@ -31,6 +31,34 @@ export interface User {
   cliente: number | null;
   cargo: string;
   conselho_classe: string;
+  /** Acesso desligado sem apagar o histórico de trabalho da pessoa. */
+  is_active: boolean;
+  estado: "PENDING_EMAIL_VERIFICATION" | "PENDING_APPROVAL" | "ACTIVE" | "SUSPENDED" | "BLOCKED" | "INACTIVE";
+  email_verificado_em: string | null;
+  exigir_troca_senha: boolean;
+  mfa_obrigatorio: boolean;
+  mfa_ativo: boolean;
+}
+
+/** Pedido comercial do formulário público /portal/cadastro — nunca cria Cliente/User sozinho. */
+export interface SolicitacaoAcesso {
+  id: number;
+  nome: string;
+  email: string;
+  telefone: string;
+  razao_social: string;
+  nome_fantasia: string;
+  cnpj: string;
+  segmento: string;
+  telefone_empresa: string;
+  email_empresa: string;
+  quantidade_equipamentos: number | null;
+  cargo: string;
+  aceitou_termos: boolean;
+  aceita_marketing: boolean;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  status_display: string;
+  criado_em: string;
 }
 
 export type Criticidade = "NORMAL" | "ALERTA" | "CRITICO";
@@ -346,9 +374,15 @@ export interface CarregamentoLista {
   instrumento_nome: string | null;
   analista: number;
   analista_nome: string;
+  /** "" para o fluxo preditivo; BALANCEAMENTO/ALINHAMENTO na manutenção corretiva. */
+  tipo_corretiva: string;
   status: StatusCarregamento;
   status_display: string;
   qtd_itens: number;
+  /** Equipamentos ainda sem condição — é o que trava a transferência. */
+  qtd_pendentes: number;
+  /** Análises (achados) registradas nesta rota. */
+  qtd_achados: number;
   pode_transferir: boolean;
   transferido_em: string | null;
   criado_em: string;
@@ -357,6 +391,8 @@ export interface CarregamentoLista {
 export interface Condicao {
   id: number;
   nome: string;
+  /** Ex.: OK, PDP, PDM, IC, GR0… — vem do backend, já existia lá antes deste campo aparecer aqui. */
+  sigla: string;
   gera_acao: boolean;
   cor: string;
   nivel: number;
@@ -601,6 +637,17 @@ export interface EquipamentoAtencao {
   ocorrencias: number;
 }
 
+/**
+ * Estado atual de um equipamento, consolidado das três origens de medição.
+ * `criticidade` vazia + `medicoes: 0` significa equipamento nunca medido — a
+ * interface mostra "Sem medição", nunca "Normal".
+ */
+export interface EstadoEquipamento {
+  criticidade: Criticidade | "";
+  medicoes: number;
+  ultima_medicao: string | null;
+}
+
 export interface PortalVisaoGeral {
   cliente: { nome: string; unidade_negocio: string; cidade_uf: string } | null;
   indicadores: {
@@ -612,6 +659,8 @@ export interface PortalVisaoGeral {
     laudos_disponiveis: number;
   };
   equipamentos_atencao: EquipamentoAtencao[];
+  /** Mapa TAG do equipamento → estado atual. */
+  estado_equipamentos: Record<string, EstadoEquipamento>;
   historico: PortalHistoricoItem[];
 }
 

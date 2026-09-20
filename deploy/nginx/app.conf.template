@@ -1,5 +1,5 @@
 # ThermoProActive — Nginx reverse proxy (domínio único)
-#   /api,/admin,/static -> Django (gunicorn)   |   /media -> arquivos   |   /  -> Next.js
+#   /api,/django-admin,/static -> Django (gunicorn) | /media -> arquivos | / -> Next.js
 # Este arquivo é um TEMPLATE: o container nginx substitui ${DOMAIN} em build-time
 # (NGINX_ENVSUBST_FILTER=DOMAIN preserva as variáveis internas do nginx como $host).
 
@@ -48,7 +48,7 @@ server {
     }
 
     # --- Admin do Django ---
-    location /admin/ {
+    location /django-admin/ {
         proxy_pass http://backend:8000;
     }
 

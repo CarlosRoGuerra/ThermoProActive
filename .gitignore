@@ -5,6 +5,9 @@ __pycache__/
 venv/
 *.sqlite3
 backend/.env
+# Segredos de produção — o arquivo real vive na VPS e NUNCA é versionado.
+.env.prod
+.env.*.local
 backend/media/
 backend/staticfiles/
 
@@ -14,6 +17,7 @@ node_modules/
 out/
 frontend/.env.local
 npm-debug.log*
+frontend/debug.log
 
 # Sistema
 .DS_Store
@@ -23,3 +27,8 @@ Thumbs.db
 
 # Build do contrato (texto extraído)
 contrato.txt
+
+# Ferramental de agentes (skill packs de terceiros) e artefatos de sessão.
+.agents/
+skills-lock.json
+dossie.json

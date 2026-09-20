@@ -3,195 +3,316 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   Tokens de design — ThermoProActive.
-   Direção: painel operacional denso, claro + escuro.
-   Neutros slate com viés frio (escolhidos, não default); accent indigo;
-   semânticas de criticidade (Normal=esmeralda / Alerta=âmbar / Crítico=vermelho)
-   mapeadas em success/warning/danger — separadas do accent.
-   Um único lugar para ajustar a paleta; os componentes usam só os tokens.
+   ThermoProActive — camada de tokens (fonte única da identidade visual).
+
+   Sobre a marca: o logotipo oficial traz azul-marinho #0B385F e laranja
+   #F0582F. Decisão registrada em 18/09/2026 — a paleta da INTERFACE não segue
+   essas cores: o azure #1257C2 abaixo já está validado em WCAG AA nos 21 pares
+   de cor em uso. O laranja da marca, em especial, NÃO deve virar token: ele fica
+   perto do vermelho de "crítico" e do âmbar de "alerta", e confundiria a leitura
+   de estado. A marca aparece como imagem (public/brand/), não como paleta.
+   --------------------------------------------------------------------------
+   Regras da casa:
+   1. Componente NUNCA escreve cor literal (#hex / rgb). Só token.
+   2. Cor de MARCA (primary) é separada de cor de ESTADO (success/warning/
+      danger/info). Estado nunca é usado como identidade e vice-versa — num
+      produto de monitoramento, confundir os dois é erro de leitura.
+   3. Chrome (sidebar/topbar) tem tokens próprios: é aço escuro nos dois temas,
+      o que separa navegação de conteúdo e dá cara de software de operação.
+   4. Todo estado é comunicado por ícone + texto + forma, nunca só por cor
+      (WCAG 2.2 — 1.4.1 Uso da cor).
    ========================================================================== */
+
 :root {
   color-scheme: light;
 
-  --bg: #eaeef4;
+  /* --- Superfícies e texto ------------------------------------------------ */
+  --bg: #f4f6fa;
   --surface: #ffffff;
-  --surface-muted: #f2f5f9;
-  --border: #dfe4ee;
-  --border-strong: #cbd3e1;
+  --surface-muted: #eef1f7;
+  --surface-raised: #ffffff;
+  --overlay: rgb(9 14 24 / 0.44);
 
-  --fg: #0d1526;
-  --fg-muted: #59627a;
-  --fg-subtle: #8792a5;
+  --border: #dde3ed;
+  --border-strong: #c4cddc;
 
-  --accent: #4f46e5; /* indigo-600 */
-  --accent-2: #6366f1; /* indigo-500 — só para gradiente da marca */
-  --accent-hover: #4338ca; /* indigo-700 */
-  --accent-fg: #ffffff;
-  --accent-subtle: #eaecfe;
-  --accent-subtle-fg: #4036c9;
-  --accent-ring: rgb(79 70 229 / 0.32);
+  --fg: #0b1220;
+  --fg-muted: #515d73;
+  --fg-subtle: #7d8899;
 
+  /* --- Marca -------------------------------------------------------------- */
+  /* Azure calibrado: distinto do esmeralda (ok), do âmbar (atenção) e do
+     vermelho (crítico), para não competir com a semântica de estado. */
+  --primary: #1257c2;
+  --primary-hover: #0f479f;
+  --primary-active: #0c3a83;
+  --primary-fg: #ffffff;
+  --primary-subtle: #e7effc;
+  --primary-subtle-fg: #0e469b;
+  --primary-ring: rgb(18 87 194 / 0.34);
+  --primary-2: #2f78e8; /* só para gradiente da marca */
+
+  /* Secundária estrutural (aço) — chips, realces neutros, séries de apoio. */
+  --secondary: #44566f;
+  --secondary-subtle: #e8ecf2;
+  --secondary-subtle-fg: #33445a;
+
+  /* --- Estado ------------------------------------------------------------- */
   --success: #0f9d76;
-  --success-subtle: #e4f6ef;
-  --success-fg: #0a7a5c;
-  --warning: #c8790c;
-  --warning-subtle: #fbf1e0;
-  --warning-fg: #9c5e08;
-  --danger: #dc2b3f;
-  --danger-subtle: #fce9ea;
-  --danger-fg: #b41e2f;
+  --success-subtle: #e2f5ef;
+  --success-fg: #0a7359;
+  --warning: #c07407;
+  --warning-subtle: #fbf0de;
+  --warning-fg: #935806;
+  --danger: #d92238;
+  --danger-subtle: #fce8ea;
+  --danger-fg: #ae1a2c;
+  --danger-ring: rgb(217 34 56 / 0.3);
+  --info: #0e7490;
+  --info-subtle: #e0f2f7;
+  --info-fg: #0b5c73;
 
-  /* Séries dos gráficos de balanceamento (reference / trial / trim).
-     Paleta categórica validada para daltonismo e contraste nos dois temas —
-     não reaproveitar os tokens de status (success/warning/danger), que são
-     reservados para estado e não para identidade de série. */
-  --viz-reference: #4f46e5;
-  --viz-trial: #c8790c;
-  --viz-trim: #0f9d76;
+  /* --- Chrome (sidebar / topbar) ------------------------------------------ */
+  --chrome: #0d1524;
+  --chrome-muted: #16202f;
+  --chrome-active: rgb(47 120 232 / 0.18);
+  --chrome-fg: #e7ecf5;
+  --chrome-fg-muted: #93a0b6;
+  --chrome-fg-subtle: #8391a7;
+  --chrome-border: #1d2838;
 
-  --shimmer: rgb(255 255 255 / 0.65);
+  /* --- Séries de gráfico -------------------------------------------------- */
+  /* Paleta categórica: identidade de série, nunca estado. Ordem de uso fixa. */
+  --viz-1: #1257c2;
+  --viz-2: #c07407;
+  --viz-3: #0f9d76;
+  --viz-4: #7c4dc4;
+  --viz-5: #0e7490;
+  /* Nomes de domínio do balanceamento (referência / teste / correção). */
+  --viz-reference: var(--viz-1);
+  --viz-trial: var(--viz-2);
+  --viz-trim: var(--viz-3);
+
+  --shimmer: rgb(255 255 255 / 0.62);
 }
 
-/* Tema escuro — segue a preferência do SO por padrão. */
+/* Tema escuro — segue o SO por padrão. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --bg: #080b12;
-    --surface: #111726;
+    --bg: #070b12;
+    --surface: #101724;
     --surface-muted: #171f2f;
-    --border: #232c3f;
-    --border-strong: #2f3b52;
+    --surface-raised: #18202f;
+    --overlay: rgb(3 6 12 / 0.62);
+
+    --border: #222c3e;
+    --border-strong: #2f3a4f;
 
     --fg: #e9edf6;
-    --fg-muted: #98a3b9;
-    --fg-subtle: #647087;
+    --fg-muted: #9aa5ba;
+    --fg-subtle: #69758a;
 
-    --accent: #6f6df6;
-    --accent-2: #8785fb;
-    --accent-hover: #8785fb;
-    --accent-fg: #ffffff;
-    --accent-subtle: rgb(111 109 246 / 0.16);
-    --accent-subtle-fg: #b9b7fd;
-    --accent-ring: rgb(111 109 246 / 0.42);
+    --primary: #4a90f7;
+    --primary-hover: #6ba5f9;
+    --primary-active: #8bb9fb;
+    --primary-fg: #04101f;
+    --primary-subtle: rgb(74 144 247 / 0.16);
+    --primary-subtle-fg: #a8c9fc;
+    --primary-ring: rgb(74 144 247 / 0.46);
+    --primary-2: #6ba5f9;
 
-    --success: #2ad3a0;
-    --success-subtle: rgb(42 211 160 / 0.13);
-    --success-fg: #58e2b6;
+    --secondary: #8494ab;
+    --secondary-subtle: rgb(132 148 171 / 0.16);
+    --secondary-subtle-fg: #b6c1d1;
+
+    --success: #2bd3a0;
+    --success-subtle: rgb(43 211 160 / 0.14);
+    --success-fg: #5fe2ba;
     --warning: #f2a521;
-    --warning-subtle: rgb(242 165 33 / 0.14);
-    --warning-fg: #f7bb52;
-    --danger: #ff5668;
-    --danger-subtle: rgb(255 86 104 / 0.14);
-    --danger-fg: #ff8089;
+    --warning-subtle: rgb(242 165 33 / 0.15);
+    --warning-fg: #f9c45f;
+    --danger: #ff5a6b;
+    --danger-subtle: rgb(255 90 107 / 0.15);
+    --danger-fg: #ff8994;
+    --danger-ring: rgb(255 90 107 / 0.42);
+    --info: #3cbcd8;
+    --info-subtle: rgb(60 188 216 / 0.15);
+    --info-fg: #78d3e8;
 
-    --viz-reference: #6f6df6;
-    --viz-trial: #c07f10;
-    --viz-trim: #199e70;
+    --chrome: #080d16;
+    --chrome-muted: #111a27;
+    --chrome-active: rgb(74 144 247 / 0.2);
+    --chrome-fg: #e7ecf5;
+    --chrome-fg-muted: #93a0b6;
+    --chrome-fg-subtle: #8391a7;
+    --chrome-border: #18212f;
+
+    --viz-1: #4a90f7;
+    --viz-2: #f2a521;
+    --viz-3: #2bd3a0;
+    --viz-4: #a78bfa;
+    --viz-5: #3cbcd8;
 
     --shimmer: rgb(255 255 255 / 0.06);
   }
 }
 
-/* Overrides do toggle explícito — precisam vencer a media query nos dois sentidos. */
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #eaeef4;
-  --surface: #ffffff;
-  --surface-muted: #f2f5f9;
-  --border: #dfe4ee;
-  --border-strong: #cbd3e1;
-  --fg: #0d1526;
-  --fg-muted: #59627a;
-  --fg-subtle: #8792a5;
-  --accent: #4f46e5;
-  --accent-2: #6366f1;
-  --accent-hover: #4338ca;
-  --accent-fg: #ffffff;
-  --accent-subtle: #eaecfe;
-  --accent-subtle-fg: #4036c9;
-  --accent-ring: rgb(79 70 229 / 0.32);
-  --success: #0f9d76;
-  --success-subtle: #e4f6ef;
-  --success-fg: #0a7a5c;
-  --warning: #c8790c;
-  --warning-subtle: #fbf1e0;
-  --warning-fg: #9c5e08;
-  --danger: #dc2b3f;
-  --danger-subtle: #fce9ea;
-  --danger-fg: #b41e2f;
-  --shimmer: rgb(255 255 255 / 0.65);
-  --viz-reference: #4f46e5;
-  --viz-trial: #c8790c;
-  --viz-trim: #0f9d76;
-}
+/* Toggle explícito de tema escuro — precisa vencer a media query. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #080b12;
-  --surface: #111726;
+
+  --bg: #070b12;
+  --surface: #101724;
   --surface-muted: #171f2f;
-  --border: #232c3f;
-  --border-strong: #2f3b52;
+  --surface-raised: #18202f;
+  --overlay: rgb(3 6 12 / 0.62);
+
+  --border: #222c3e;
+  --border-strong: #2f3a4f;
+
   --fg: #e9edf6;
-  --fg-muted: #98a3b9;
-  --fg-subtle: #647087;
-  --accent: #6f6df6;
-  --accent-2: #8785fb;
-  --accent-hover: #8785fb;
-  --accent-fg: #ffffff;
-  --accent-subtle: rgb(111 109 246 / 0.16);
-  --accent-subtle-fg: #b9b7fd;
-  --accent-ring: rgb(111 109 246 / 0.42);
-  --success: #2ad3a0;
-  --success-subtle: rgb(42 211 160 / 0.13);
-  --success-fg: #58e2b6;
+  --fg-muted: #9aa5ba;
+  --fg-subtle: #69758a;
+
+  --primary: #4a90f7;
+  --primary-hover: #6ba5f9;
+  --primary-active: #8bb9fb;
+  --primary-fg: #04101f;
+  --primary-subtle: rgb(74 144 247 / 0.16);
+  --primary-subtle-fg: #a8c9fc;
+  --primary-ring: rgb(74 144 247 / 0.46);
+  --primary-2: #6ba5f9;
+
+  --secondary: #8494ab;
+  --secondary-subtle: rgb(132 148 171 / 0.16);
+  --secondary-subtle-fg: #b6c1d1;
+
+  --success: #2bd3a0;
+  --success-subtle: rgb(43 211 160 / 0.14);
+  --success-fg: #5fe2ba;
   --warning: #f2a521;
-  --warning-subtle: rgb(242 165 33 / 0.14);
-  --warning-fg: #f7bb52;
-  --danger: #ff5668;
-  --danger-subtle: rgb(255 86 104 / 0.14);
-  --danger-fg: #ff8089;
+  --warning-subtle: rgb(242 165 33 / 0.15);
+  --warning-fg: #f9c45f;
+  --danger: #ff5a6b;
+  --danger-subtle: rgb(255 90 107 / 0.15);
+  --danger-fg: #ff8994;
+  --danger-ring: rgb(255 90 107 / 0.42);
+  --info: #3cbcd8;
+  --info-subtle: rgb(60 188 216 / 0.15);
+  --info-fg: #78d3e8;
+
+  --chrome: #080d16;
+  --chrome-muted: #111a27;
+  --chrome-active: rgb(74 144 247 / 0.2);
+  --chrome-fg: #e7ecf5;
+  --chrome-fg-muted: #93a0b6;
+  --chrome-fg-subtle: #8391a7;
+  --chrome-border: #18212f;
+
+  --viz-1: #4a90f7;
+  --viz-2: #f2a521;
+  --viz-3: #2bd3a0;
+  --viz-4: #a78bfa;
+  --viz-5: #3cbcd8;
+
   --shimmer: rgb(255 255 255 / 0.06);
-  --viz-reference: #6f6df6;
-  --viz-trial: #c07f10;
-  --viz-trim: #199e70;
+}
+
+/* ==========================================================================
+   Aliases --accent-* — compatibilidade dos DOCUMENTOS.
+   Os arquivos do Relatório Técnico e do dossiê estão no conteúdo aprovado pelo
+   cliente e usam estes nomes. Apontam para os mesmos tokens de `primary`, então
+   a cor renderizada é idêntica. Não usar em código novo.
+   ========================================================================== */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {
+  --accent: var(--primary);
+  --accent-hover: var(--primary-hover);
+  --accent-fg: var(--primary-fg);
+  --accent-subtle: var(--primary-subtle);
+  --accent-subtle-fg: var(--primary-subtle-fg);
+  --accent-ring: var(--primary-ring);
+  --accent-2: var(--primary-2);
 }
 
 @layer base {
   body {
     @apply bg-bg text-fg antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    /* transição suave ao alternar tema (sem animar a carga inicial de layout) */
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Foco visível consistente (acessibilidade / WCAG). */
-  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-    outline: none;
-    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), 0 0 0 3px var(--accent-ring);
-    border-radius: 0.5rem;
+  /* Hierarquia tipográfica — os componentes de cabeçalho aplicam as classes;
+     estes defaults evitam texto órfão sem estilo em conteúdo solto. */
+  h1, h2, h3, h4 {
+    @apply text-fg;
+    text-wrap: balance;
+  }
+
+  /* Foco visível consistente e sempre perceptível (WCAG 2.4.7 / 2.4.11). */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
   }
 
   ::selection {
-    background: var(--accent-subtle);
-    color: var(--accent-subtle-fg);
+    background: var(--primary-subtle);
+    color: var(--primary-subtle-fg);
+  }
+
+  /* Barras de rolagem discretas, coerentes com o tema. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
   }
 }
 
 @layer components {
-  .input {
+  /* Campo de formulário — base compartilhada por Input/Select/Textarea.
+     Os estados (hover/focus/disabled/erro) fazem parte do token, não da tela. */
+  .field-control {
     @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg
-      shadow-xs outline-none transition placeholder:text-fg-subtle
-      focus:border-accent focus:shadow-focus
-      disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-fg-subtle;
+      shadow-xs outline-none transition-[border-color,box-shadow,background-color] duration-150
+      placeholder:text-fg-subtle
+      hover:border-border-strong
+      focus:border-primary focus:shadow-focus
+      disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-muted disabled:text-fg-subtle;
+  }
+  .field-control[aria-invalid="true"] {
+    @apply border-danger;
+  }
+  .field-control[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px var(--danger-ring);
+  }
+  /* Alias legado (globals antigo) — mesma base. */
+  .input {
+    @apply field-control;
   }
   .label {
     @apply mb-1.5 block text-xs font-medium text-fg-muted;
   }
-  /* Dado numérico/técnico (métricas, TAGs, timestamps): monoespaçado e alinhado. */
+  /* Dado numérico/técnico (métricas, TAGs, timestamps): leitura de instrumento. */
   .data {
     font-family: var(--font-mono), ui-monospace, SFMono-Regular, Consolas, monospace;
     font-variant-numeric: tabular-nums;
+  }
+  /* Área de conteúdo principal — mesma medida em todas as páginas. */
+  .page-shell {
+    @apply mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8;
   }
 }
 
@@ -205,7 +326,16 @@
   background: linear-gradient(90deg, transparent, var(--shimmer), transparent);
 }
 
-/* Respeita quem prefere menos movimento (acessibilidade). */
+/* Link de salto para o conteúdo (primeiro tabbable da página). */
+.skip-link {
+  @apply sr-only;
+}
+.skip-link:focus-visible {
+  @apply not-sr-only fixed left-4 top-4 z-[100] rounded-lg bg-primary px-4 py-2
+    text-sm font-semibold text-primary-fg shadow-lg;
+}
+
+/* Respeita quem prefere menos movimento (WCAG 2.3.3). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -232,9 +362,9 @@
 /* ==========================================================================
    Relatório Técnico — layout de documento A4 para impressão em PDF.
    A tela mostra as folhas empilhadas; a impressão gera uma página por folha.
+   Isto é PAPEL, não interface: tem paleta própria e não segue o tema.
    ========================================================================== */
 .doc {
-  /* O documento é sempre claro: é papel, não interface. */
   color-scheme: light;
   --doc-fg: #111827;
   --doc-muted: #4b5563;
@@ -258,6 +388,61 @@
   line-height: 1.5;
 }
 .doc h1, .doc h2, .doc h3 { color: var(--doc-accent); }
+
+/* ==========================================================================
+   ISOLAMENTO DOS DOCUMENTOS
+   --------------------------------------------------------------------------
+   Os documentos entregues ao cliente (Relatório Técnico em `.doc/.folha` e o
+   dossiê de inspeção em `.print-area/.pagina/.carta-doc`) têm layout aprovado e
+   NÃO podem mudar quando a aplicação muda.
+
+   Isto não é hipótese: ao introduzir a escala tipográfica densa do painel
+   (text-sm 14→13px, text-lg 18→17px), o raio padrão (4→6px) e
+   `text-wrap: balance` nos títulos, essas decisões vazaram para dentro do
+   documento e alteraram a diagramação assinada. As regras abaixo devolvem os
+   valores originais do Tailwind dentro do escopo dos documentos.
+
+   Consequência prática: mexer na escala da interface deixa de ter efeito no
+   papel. Para mudar o documento, edita-se o documento.
+   ========================================================================== */
+.doc .text-xs,
+.print-area .text-xs,
+.carta-doc .text-xs { font-size: 0.75rem; line-height: 1rem; letter-spacing: 0; }
+
+.doc .text-sm,
+.print-area .text-sm,
+.carta-doc .text-sm { font-size: 0.875rem; line-height: 1.25rem; letter-spacing: 0; }
+
+.doc .text-base,
+.print-area .text-base,
+.carta-doc .text-base { font-size: 1rem; line-height: 1.5rem; letter-spacing: 0; }
+
+.doc .text-lg,
+.print-area .text-lg,
+.carta-doc .text-lg { font-size: 1.125rem; line-height: 1.75rem; letter-spacing: 0; }
+
+.doc .text-xl,
+.print-area .text-xl,
+.carta-doc .text-xl { font-size: 1.25rem; line-height: 1.75rem; letter-spacing: 0; }
+
+.doc .text-2xl,
+.print-area .text-2xl,
+.carta-doc .text-2xl { font-size: 1.5rem; line-height: 2rem; letter-spacing: 0; }
+
+.doc .text-3xl,
+.print-area .text-3xl,
+.carta-doc .text-3xl { font-size: 1.875rem; line-height: 2.25rem; letter-spacing: 0; }
+
+/* Raio padrão do Tailwind (0.25rem). O painel usa 0.375rem; o papel, não. */
+.doc .rounded,
+.print-area .rounded,
+.carta-doc .rounded { border-radius: 0.25rem; }
+
+/* Quebra de linha natural: `balance` reequilibra os títulos e muda a
+   diagramação aprovada do documento. */
+.doc h1, .doc h2, .doc h3, .doc h4,
+.print-area h1, .print-area h2, .print-area h3, .print-area h4,
+.carta-doc h1, .carta-doc h2, .carta-doc h3, .carta-doc h4 { text-wrap: wrap; }
 .doc .doc-topo {
   display: flex;
   justify-content: space-between;
@@ -293,7 +478,6 @@
   .doc .folha {
     margin: 0;
     box-shadow: none;
-    /* Cada folha vira uma página física. */
     page-break-after: always;
     break-after: page;
   }

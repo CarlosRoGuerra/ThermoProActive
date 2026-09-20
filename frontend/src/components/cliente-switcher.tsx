@@ -1,46 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Building2, Check, ChevronDown, Clock, Search, X } from "lucide-react";
+import { Building2, Check, ChevronDown, Clock } from "lucide-react";
+import {
+  Avatar,
+  Button,
+  Drawer,
+  EmptyState,
+  SearchInput,
+  cn,
+} from "@/components/ds";
 import { useClienteAtivo, type ClienteAtivo } from "@/lib/cliente-ativo";
 import { useClientes } from "@/lib/hierarquia";
-import { cn } from "./ui";
+import { cnpj as fmtCnpj, normalizar } from "@/lib/format";
 
 /**
- * Seletor de cliente ativo (o "ambiente" de trabalho).
- * Um chip no topo mostra o cliente atual; clicar abre um painel lateral com
- * busca e a lista dos últimos clientes acessados — inspirado no fluxo de
- * "trocar de entidade" do sistema que o cliente usa como referência.
+ * Seletor do cliente em atendimento — o "ambiente" de trabalho da equipe interna.
+ *
+ * Um chip na topbar mostra quem está sendo atendido; clicar abre um painel com
+ * busca e os últimos acessados. Usa o `Drawer` do Design System, e não uma
+ * sobreposição própria: assim herda Esc para fechar, aprisionamento de foco e
+ * devolução do foco ao chip — que a versão anterior, feita à mão, não tinha.
  */
 export function ClienteSwitcher() {
   const { clienteAtivo, recentes, ativar, limpar } = useClienteAtivo();
-  const { clientes } = useClientes();
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState("");
+  // Só busca a lista completa quando o painel abre — são centenas de registros
+  // que não têm por que viajar em cada carregamento de página.
+  const { clientes, carregando } = useClientes(aberto);
 
-  // Trava o scroll do fundo enquanto o painel está aberto.
   useEffect(() => {
-    if (!aberto) return;
-    setBusca("");
-    const antes = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = antes;
-    };
+    if (aberto) setBusca("");
   }, [aberto]);
 
   const resultados = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+    const q = normalizar(busca).trim();
     if (!q) return [];
     return clientes
       .filter((c) =>
-        [c.nome, c.nome_fantasia, c.cnpj, c.cidade_uf]
-          .map((v) => String(v ?? "").toLowerCase())
-          .join(" ")
-          .includes(q)
+        normalizar([c.nome, c.nome_fantasia, c.cnpj, c.cidade_uf].join(" ")).includes(q)
       )
-      .slice(0, 20);
+      .slice(0, 25);
   }, [clientes, busca]);
 
   function escolher(c: {
@@ -53,147 +54,121 @@ export function ClienteSwitcher() {
     setAberto(false);
   }
 
-  const titulo = clienteAtivo
-    ? clienteAtivo.nome_fantasia || clienteAtivo.nome
-    : "Selecionar cliente";
+  const titulo = clienteAtivo ? clienteAtivo.nome_fantasia || clienteAtivo.nome : "Escolher cliente";
 
   return (
     <>
-      {/* Chip no topo */}
       <button
+        type="button"
         onClick={() => setAberto(true)}
+        title="Trocar o cliente em atendimento"
+        aria-haspopup="dialog"
         className={cn(
-          "flex items-center gap-2 rounded-full border py-1 pl-1.5 pr-2.5 text-sm transition-colors",
+          "flex items-center gap-2 rounded-full border py-1 pl-1.5 pr-2.5 text-xs transition-colors",
           clienteAtivo
-            ? "border-accent/30 bg-accent-subtle text-fg hover:bg-accent-subtle/70"
+            ? "border-primary/30 bg-primary-subtle text-fg hover:bg-primary-subtle/70"
             : "border-dashed border-border-strong text-fg-muted hover:bg-surface-muted"
         )}
-        title="Trocar de cliente"
       >
         <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface">
           {clienteAtivo?.logomarca ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={clienteAtivo.logomarca} alt="" className="h-full w-full object-contain" />
+            <Avatar nome={titulo} src={clienteAtivo.logomarca} tamanho="xs" />
           ) : (
-            <Building2 className="h-3.5 w-3.5 text-accent" />
+            <Building2 className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
           )}
         </span>
-        <span className="hidden max-w-[160px] truncate font-medium sm:inline">{titulo}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+        <span className="hidden max-w-40 truncate font-medium sm:inline">{titulo}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
       </button>
 
-      {/* Painel lateral */}
-      <AnimatePresence>
-        {aberto && (
-          <>
-            <motion.div
-              className="fixed inset-0 z-50 bg-fg/30 backdrop-blur-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setAberto(false)}
-            />
-            <motion.aside
-              className="fixed inset-y-0 right-0 z-50 flex w-[340px] max-w-[90vw] flex-col border-l border-border bg-surface shadow-xl"
-              initial={{ x: 360 }}
-              animate={{ x: 0 }}
-              exit={{ x: 360 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <div className="flex items-center justify-between border-b border-border px-4 py-3.5">
-                <h2 className="text-sm font-semibold text-fg">Trocar de cliente</h2>
-                <button
-                  onClick={() => setAberto(false)}
-                  aria-label="Fechar"
-                  className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-surface-muted hover:text-fg"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+      <Drawer
+        aberto={aberto}
+        onFechar={() => setAberto(false)}
+        title="Cliente em atendimento"
+        description="Escolher um cliente filtra estrutura, equipamentos, rotas e inspeções por ele."
+        largura="sm"
+      >
+        <div className="space-y-4">
+          <SearchInput
+            value={busca}
+            onChange={setBusca}
+            label="Buscar cliente"
+            placeholder="Razão social, CNPJ, cidade…"
+            autoFocus
+          />
 
-              {/* Busca */}
-              <div className="border-b border-border p-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
-                  {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
-                  <input
-                    autoFocus
-                    value={busca}
-                    onChange={(e) => setBusca(e.target.value)}
-                    placeholder="Buscar por razão social, CNPJ, cidade…"
-                    className="input pl-9"
+          {busca ? (
+            carregando ? (
+              <p className="py-6 text-center text-sm text-fg-subtle">Buscando…</p>
+            ) : resultados.length === 0 ? (
+              <EmptyState
+                compacto
+                icon={Building2}
+                title="Nenhum cliente encontrado"
+                description={`Nada corresponde a “${busca}”. Verifique a grafia ou busque pelo CNPJ.`}
+              />
+            ) : (
+              <ul className="space-y-1">
+                {resultados.map((c) => (
+                  <LinhaCliente
+                    key={c.id}
+                    cliente={c}
+                    ativo={clienteAtivo?.id === c.id}
+                    onClick={() => escolher(c)}
                   />
-                </div>
-              </div>
+                ))}
+              </ul>
+            )
+          ) : (
+            <>
+              {clienteAtivo && (
+                <section>
+                  <h3 className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
+                    Atendendo agora
+                  </h3>
+                  <ul>
+                    <LinhaCliente cliente={clienteAtivo} ativo onClick={() => setAberto(false)} />
+                  </ul>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    block
+                    className="mt-1 justify-start"
+                    onClick={() => {
+                      limpar();
+                      setAberto(false);
+                    }}
+                  >
+                    Sair do ambiente deste cliente
+                  </Button>
+                </section>
+              )}
 
-              <div className="flex-1 overflow-y-auto p-3">
-                {busca ? (
-                  resultados.length === 0 ? (
-                    <p className="px-1 py-6 text-center text-sm text-fg-subtle">
-                      Nenhum cliente encontrado.
-                    </p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {resultados.map((c) => (
-                        <LinhaCliente
-                          key={c.id}
-                          cliente={c}
-                          ativo={clienteAtivo?.id === c.id}
-                          onClick={() => escolher(c)}
-                        />
-                      ))}
-                    </ul>
-                  )
+              <section>
+                <h3 className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-fg-subtle">
+                  <Clock className="h-3 w-3" aria-hidden="true" /> Últimos acessados
+                </h3>
+                {recentes.length === 0 ? (
+                  <p className="py-3 text-sm text-fg-subtle">
+                    Nenhum ainda. Use a busca acima para escolher um cliente.
+                  </p>
                 ) : (
-                  <>
-                    {clienteAtivo && (
-                      <div className="mb-4">
-                        <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-                          Cliente ativo
-                        </p>
-                        <LinhaCliente
-                          cliente={clienteAtivo}
-                          ativo
-                          onClick={() => setAberto(false)}
-                        />
-                        <button
-                          onClick={() => {
-                            limpar();
-                            setAberto(false);
-                          }}
-                          className="mt-1 w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg"
-                        >
-                          Sair do ambiente deste cliente
-                        </button>
-                      </div>
-                    )}
-
-                    <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-                      <Clock className="h-3 w-3" /> Últimos acessados
-                    </p>
-                    {recentes.length === 0 ? (
-                      <p className="px-1 py-4 text-sm text-fg-subtle">
-                        Nenhum ainda. Use a busca acima para escolher um cliente.
-                      </p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {recentes.map((c) => (
-                          <LinhaCliente
-                            key={c.id}
-                            cliente={c}
-                            ativo={clienteAtivo?.id === c.id}
-                            onClick={() => escolher(c)}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </>
+                  <ul className="space-y-1">
+                    {recentes.map((c) => (
+                      <LinhaCliente
+                        key={c.id}
+                        cliente={c}
+                        ativo={clienteAtivo?.id === c.id}
+                        onClick={() => escolher(c)}
+                      />
+                    ))}
+                  </ul>
                 )}
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+              </section>
+            </>
+          )}
+        </div>
+      </Drawer>
     </>
   );
 }
@@ -203,36 +178,42 @@ function LinhaCliente({
   ativo,
   onClick,
 }: {
-  cliente: { id: number; nome: string; nome_fantasia: string; cnpj?: string; logomarca?: string | null };
+  cliente: {
+    id: number;
+    nome: string;
+    nome_fantasia: string;
+    cnpj?: string;
+    logomarca?: string | null;
+  };
   ativo: boolean;
   onClick: () => void;
 }) {
+  const principal = cliente.nome_fantasia || cliente.nome;
+  const secundario = cliente.nome_fantasia
+    ? cliente.nome
+    : cliente.cnpj
+    ? fmtCnpj(cliente.cnpj)
+    : "";
+
   return (
     <li>
       <button
+        type="button"
         onClick={onClick}
+        aria-current={ativo ? "true" : undefined}
         className={cn(
           "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors",
-          ativo ? "bg-accent-subtle" : "hover:bg-surface-muted"
+          ativo ? "bg-primary-subtle" : "hover:bg-surface-muted"
         )}
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-muted">
-          {cliente.logomarca ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={cliente.logomarca} alt="" className="h-full w-full object-contain" />
-          ) : (
-            <Building2 className="h-4 w-4 text-fg-subtle" />
+        <Avatar nome={principal} src={cliente.logomarca} tamanho="sm" className="rounded-lg" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-fg">{principal}</span>
+          {secundario && (
+            <span className="block truncate text-xs text-fg-subtle">{secundario}</span>
           )}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-fg">
-            {cliente.nome_fantasia || cliente.nome}
-          </span>
-          <span className="block truncate text-xs text-fg-subtle">
-            {cliente.nome_fantasia ? cliente.nome : cliente.cnpj || ""}
-          </span>
-        </span>
-        {ativo && <Check className="h-4 w-4 shrink-0 text-accent" />}
+        {ativo && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
       </button>
     </li>
   );

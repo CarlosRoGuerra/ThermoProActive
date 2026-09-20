@@ -11,7 +11,7 @@ análise preditiva, laudos, ordens de serviço e portal do cliente), desenvolvid
 
 | Módulo (Anexo I) | Entregue |
 |---|---|
-| 2.1 Login e Controle de Acesso (7 perfis, **JWT**) | ✅ |
+| 2.1 Login e Controle de Acesso (portais separados, RBAC, cookies HttpOnly, MFA e sessões) | ✅ |
 | 2.2 Cadastros — principais + **catálogos** (normas, tipos, criticidade, grupos) + **rotas** | ✅ completo |
 | 2.3 Coleta — **10 de 10 categorias** (vibração ISO, termografia ΔT, fluidos, ensaios elétricos, ultrassom, espessura, qualidade de energia, sensitiva, corretiva) | ✅ |
 | 2.4 Análise Preditiva — motor de regras por tipo + tendência | ✅ |
@@ -35,9 +35,10 @@ docker compose up --build
 ```
 Isso sobe **PostgreSQL + API + Frontend**, aplica migrations e semeia os dados de demonstração
 automaticamente. Quando aparecer `Listening at: http://0.0.0.0:8000`, acesse:
-- Frontend: http://localhost:3000
+- Portal do Cliente: http://localhost:3000/portal/login
+- Área Administrativa: http://localhost:3000/admin/login
 - API / Swagger: http://localhost:8000/api/ · http://localhost:8000/api/docs/
-- Admin Django: http://localhost:8000/admin/
+- Admin técnico do Django: http://localhost:8000/django-admin/
 
 Comandos úteis:
 ```bash
@@ -64,7 +65,7 @@ Sem `.env`, o backend usa **SQLite** (zero configuração). Para PostgreSQL, cop
 
 - API: http://127.0.0.1:8000/api/
 - Documentação (Swagger): http://127.0.0.1:8000/api/docs/
-- Admin Django: http://127.0.0.1:8000/admin/
+- Admin técnico do Django: http://127.0.0.1:8000/django-admin/
 
 #### 2. Frontend (Web) — porta 3000
 ```bash
@@ -73,9 +74,14 @@ npm install
 cp .env.local.example .env.local    # NEXT_PUBLIC_API_URL aponta para a API
 npm run dev
 ```
-Acesse http://localhost:3000
+Acesse http://localhost:3000/portal/login (clientes) ou
+http://localhost:3000/admin/login (equipe interna).
 
 ### Usuários de demonstração (senha: `thermo123`)
+> Estas contas **não são mais exibidas na tela de login**. Para vê-las em
+> desenvolvimento, descomente `NEXT_PUBLIC_DEMO_LOGIN=1` em `frontend/.env.local`;
+> em build de produção o bloco nunca é renderizado.
+
 | E-mail | Perfil |
 |---|---|
 | admin@thermoproactive.com | Administrador |
@@ -95,11 +101,12 @@ Acesse http://localhost:3000
    nova OSP, laudo concluído, aprovação pendente). Em dev, os e-mails são impressos no
    log do backend (`docker compose logs backend`).
 7. **Cadastros** (perfil interno) → gerencie normas, tipos e criticidades.
-8. Login como **cliente@exemplo.com** → cai na **home do Portal** (`/portal`): saudação,
-   indicadores do próprio parque (disponibilidade, equipamentos em atenção, OSPs abertas,
-   laudos disponíveis), **histórico de serviços** e acesso rápido. Vê apenas os dados do
-   próprio cliente, laudos **emitidos**, suas OSPs e notificações (não consegue criar
-   inspeções — HTTP 403).
+8. Login como **cliente@exemplo.com** → cai no **Portal do Cliente** (`/portal/*`), uma
+   área separada com menu, layout e objetivos próprios: início com primeiros passos,
+   *Meus equipamentos* (estado por máquina), *Inspeções*, *Ordens de serviço* (com prazo
+   em dias), *Laudos*, *Relatórios*, *Alertas* e *Como usar o portal*. Tudo em leitura, e
+   só do próprio cliente. Uma URL interna digitada à mão (`/clientes`, `/cadastros`) é
+   traduzida para o equivalente do portal — ver `docs/08-FRONTEND-REDESIGN.md`.
 
 > **SLA vencendo (2.10.2.4):** agende o comando para rodar diariamente (cron):
 > `docker compose exec backend python manage.py verificar_slas --dias 2`
@@ -107,9 +114,22 @@ Acesse http://localhost:3000
 ## Estrutura
 ```
 backend/   API Django + DRF (apps modulares: core, accounts, cadastros, coletas, laudos)
-frontend/  App Next.js (App Router, TS, Tailwind)
-docs/      Arquitetura (ADR), Discovery dos módulos técnicos, modelo de prompts
+frontend/
+  src/app/
+    (admin)/     painel operacional (equipe interna) — URLs na raiz
+    portal/      Portal do Cliente — URLs sob /portal/*
+    login/  carta/  imprimir/  error.tsx  not-found.tsx
+  src/components/ds/     Design System (tokens + ~50 componentes, porta única)
+  src/components/shell/  shell da aplicação (sidebar, topbar, guarda de rota)
+  src/features/          telas compartilhadas pelos dois portais
+  src/lib/               api, auth, permissões (RBAC), navegação, formatação, erros
+  public/brand/          símbolo e assinatura da marca (substituíveis)
+docs/      Arquitetura (ADR), Discovery dos módulos técnicos, redesign do front-end
 ```
+
+> **Front-end:** a reconstrução da experiência (separação dos portais, Design System,
+> RBAC com guarda de rota, tela de usuários, onboarding do cliente) e o que ficou de
+> fora estão descritos em [`docs/08-FRONTEND-REDESIGN.md`](docs/08-FRONTEND-REDESIGN.md).
 
 ## Conformidade contratual (Cláusula 12.4 — anti-lock-in)
 Todas as dependências são open-source com licenças permissivas; o SGBD é selecionado por

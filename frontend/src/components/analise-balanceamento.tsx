@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import type { ItemCorretivo, ServicoCampo } from "@/lib/types";
-import { Button, Card, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
-import { PontosMedicao, QuantidadePlanos, TrialRun, TrimRun } from "@/components/balanceamento-medicoes";
+import { Button, Card, Field, Input, Select, Spinner, Textarea } from "@/components/ds";
+import { ServicoCampoPainel } from "@/components/servico-campo-painel";
 
 type Opcao = { id: number; nome: string };
 type Catalogos = { condicoes: Opcao[]; tipos_componente: Opcao[]; tipos_anomalia: Opcao[]; recomendacoes: Opcao[] };
@@ -108,9 +108,6 @@ export function AnaliseBalanceamento({ atividadeId, item, podeEditar, onSaved }:
       {salvo && <p role="status" className="text-sm text-fg-muted">Análise salva nesta atividade e equipamento.</p>}
     </Card>
     {erro && <p role="alert" className="text-sm text-danger-fg">{erro}</p>}
-    <QuantidadePlanos servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} />
-    <PontosMedicao servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
-    <TrialRun servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
-    <TrimRun servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} onErro={setErro} />
+    <ServicoCampoPainel servico={dados.servico} podeEditar={habilitado} onMudou={recarregarMedicoes} />
   </div>;
 }

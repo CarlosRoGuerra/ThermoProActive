@@ -9,7 +9,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.accounts.views import LoginView, MeView
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # O painel operacional usa /admin/* no Next.js. O admin técnico do Django
+    # fica isolado para não interceptar as rotas de autenticação do produto.
+    path("django-admin/", admin.site.urls),
     # --- Autenticação (Anexo I 2.1.1.3 — JWT) ---
     path("api/auth/login/", LoginView.as_view(), name="login"),
     path("api/auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),

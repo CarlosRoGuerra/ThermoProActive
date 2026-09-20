@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Paginated } from "@/lib/types";
 import { type AchadoForm, type TecnologiaTipo, deltaTPreview } from "@/lib/inspecoes";
-import { Field, Input, Select, Textarea } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ds";
 
 type CatOpt = {
   id: number;
@@ -46,16 +46,16 @@ export function AchadoCampos({
   const [condicoes, setCondicoes] = useState<CondOpt[]>([]);
 
   useEffect(() => {
-    api<Paginated<CatOpt>>("/tipos-componente/?page_size=1000")
+    api<Paginated<CatOpt>>("/tipos-componente/?page_size=500")
       .then((d) => setComponentes(d.results))
       .catch(() => setComponentes([]));
-    api<Paginated<CatOpt>>("/tipos-anomalia/?page_size=1000")
+    api<Paginated<CatOpt>>("/tipos-anomalia/?page_size=500")
       .then((d) => setAnomalias(d.results))
       .catch(() => setAnomalias([]));
-    api<Paginated<CatOpt>>("/tipos-recomendacao/?page_size=1000")
+    api<Paginated<CatOpt>>("/tipos-recomendacao/?page_size=500")
       .then((d) => setRecomendacoes(d.results))
       .catch(() => setRecomendacoes([]));
-    api<Paginated<CondOpt>>("/condicoes/?page_size=1000")
+    api<Paginated<CondOpt>>("/condicoes/?page_size=500")
       .then((d) => setCondicoes(d.results))
       .catch(() => setCondicoes([]));
   }, []);

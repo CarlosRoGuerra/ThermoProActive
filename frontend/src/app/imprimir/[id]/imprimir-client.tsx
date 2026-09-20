@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
-import { RelatorioCorpo, type Dossie } from "@/app/(app)/relatorios-inspecao/[id]/dossie";
+import { RelatorioCorpo, type Dossie } from "@/features/relatorio-inspecao/dossie";
 
 /* Regras que o paged.js PRECISA processar (transforma @page/running/quebras em
    elementos reais — o navegador sozinho ignora essas regras). Vão pelo polisher. */

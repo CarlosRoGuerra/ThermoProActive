@@ -78,7 +78,7 @@ def to_pdf(rel: Relatorio) -> bytes:
 
     elems = [
         Paragraph(rel.titulo, styles["Title"]),
-        Paragraph("ThermoProActive — Gestão de Manutenção Preditiva", styles["Italic"]),
+        Paragraph("Pred Ativos — Gestão de Manutenção Preditiva", styles["Italic"]),
         Spacer(1, 0.4 * cm),
         table,
     ]

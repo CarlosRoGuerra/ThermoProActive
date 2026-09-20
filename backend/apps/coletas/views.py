@@ -1,7 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import InternoEditaClienteVisualiza
+from apps.accounts.permissions import InternoEditaClienteVisualiza, InternoOuClienteMasterEdita
 
 from .models import (
     Achado,
@@ -40,14 +40,51 @@ from .serializers import (
 
 
 def escopo_cliente(qs, user, campo_cliente="cliente"):
-    """Perfis cliente só enxergam dados do próprio cliente (Portal — item 2.7)."""
-    if user.is_cliente and user.cliente_id:
+    """
+    Perfis cliente só enxergam dados do próprio cliente (Portal — item 2.7).
+    Falha fechada: cliente sem `cliente_id` (conta mal configurada) não vê nada,
+    em vez de cair no `qs` inteiro sem filtro — mesma regra do multi-tenant em
+    `apps.cadastros.views.BaseCadastroViewSet`.
+    """
+    if user.is_cliente:
+        if not user.cliente_id:
+            return qs.none()
         return qs.filter(**{campo_cliente: user.cliente_id})
     return qs
 
 
+def impedir_cross_tenant(user, validated_data, campo, resto=None):
+    """
+    Contraparte de `escopo_cliente` para escrita: `get_queryset()` só protege
+    ler/editar um registro que já existe — nada impede o Master de um cliente
+    CRIAR um novo apontando um campo-âncora (`campo`) de OUTRO cliente (ex.:
+    uma Inspeção com `cliente` alheio, ou uma Medição com `inspecao` alheia).
+
+    `campo` é a chave em `validated_data`; `resto` é o caminho ORM daquele
+    valor até `cliente_id`, igual ao segundo argumento de `escopo_cliente`
+    (`None` quando o próprio campo já É o cliente, ex.: Inspecao.cliente).
+    Não faz nada para interno — ele pode apontar para qualquer cliente.
+    """
+    if not (user.is_cliente and user.cliente_id):
+        return
+    if campo not in validated_data:
+        return
+    valor = validated_data[campo]
+    pk_valor = getattr(valor, "pk", valor)
+    if resto:
+        ok = valor.__class__.objects.filter(pk=pk_valor, **{resto: user.cliente_id}).exists()
+    else:
+        ok = pk_valor == user.cliente_id
+    if not ok:
+        raise ValidationError({campo: "Isso não pertence à sua empresa."})
+
+
 class InspecaoViewSet(viewsets.ModelViewSet):
-    permission_classes = [InternoEditaClienteVisualiza]
+    # Master do cliente também cria/edita/exclui (decisão de 2026-09-19 — "o
+    # cliente vai ser administrado da própria empresa"). Coleta direta (sem
+    # rota) é usada por tecnologias que ainda não têm rota montada, então faz
+    # sentido o próprio cliente lançar uma medição pontual.
+    permission_classes = [InternoOuClienteMasterEdita]
     filterset_fields = ["cliente", "tipo_analise", "status", "tecnico"]
     search_fields = ["observacoes"]
     ordering_fields = ["data", "criado_em"]
@@ -69,10 +106,40 @@ class InspecaoViewSet(viewsets.ModelViewSet):
             return InspecaoListSerializer
         return InspecaoSerializer
 
+    def perform_create(self, serializer):
+        impedir_cross_tenant(self.request.user, serializer.validated_data, "cliente")
+        serializer.save()
 
-class MedicaoVibracaoViewSet(viewsets.ModelViewSet):
+    def perform_update(self, serializer):
+        impedir_cross_tenant(self.request.user, serializer.validated_data, "cliente")
+        serializer.save()
+
+
+class _MedicaoViewSetBase(viewsets.ModelViewSet):
+    """
+    As três medições (Vibração/Termografia/Técnica) compartilham a mesma regra
+    de tenant: a âncora é `inspecao`, e o `equipamento` referenciado também
+    precisa ser do mesmo cliente (senão a resposta vazaria TAG/nome de
+    equipamento alheio numa Inspeção legítima do cliente).
+    """
+
+    def perform_create(self, serializer):
+        self._impedir_cross_tenant(serializer.validated_data)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._impedir_cross_tenant(serializer.validated_data)
+        serializer.save()
+
+    def _impedir_cross_tenant(self, validated_data):
+        user = self.request.user
+        impedir_cross_tenant(user, validated_data, "inspecao", resto="cliente")
+        impedir_cross_tenant(user, validated_data, "equipamento", resto="setor__area__cliente")
+
+
+class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoVibracaoSerializer
-    permission_classes = [InternoEditaClienteVisualiza]
+    permission_classes = [InternoOuClienteMasterEdita]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "zona_iso", "direcao"]
     ordering_fields = ["data_hora", "velocidade_rms"]
 
@@ -83,9 +150,9 @@ class MedicaoVibracaoViewSet(viewsets.ModelViewSet):
         return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
 
 
-class MedicaoTermografiaViewSet(viewsets.ModelViewSet):
+class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTermografiaSerializer
-    permission_classes = [InternoEditaClienteVisualiza]
+    permission_classes = [InternoOuClienteMasterEdita]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "sistema"]
     ordering_fields = ["data_hora", "delta_t"]
 
@@ -96,9 +163,9 @@ class MedicaoTermografiaViewSet(viewsets.ModelViewSet):
         return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
 
 
-class MedicaoTecnicaViewSet(viewsets.ModelViewSet):
+class MedicaoTecnicaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTecnicaSerializer
-    permission_classes = [InternoEditaClienteVisualiza]
+    permission_classes = [InternoOuClienteMasterEdita]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "tipo"]
     ordering_fields = ["data_hora"]
 
@@ -583,10 +650,26 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
         qs = (
             Carregamento.objects.ativos()
             .select_related("cliente", "tecnologia", "relatorio", "rota", "instrumento", "analista")
-            .prefetch_related(
+        )
+
+        if self.action == "list":
+            # A listagem só precisa de CONTAGENS. Carregar itens, condições,
+            # achados e imagens para depois contá-los em Python custava uma
+            # consulta por linha (e trazia as imagens de toda a rota à toa).
+            # Com anotação, é uma consulta só para a página inteira.
+            qs = qs.annotate(
+                _qtd_itens=Count("itens", distinct=True),
+                _qtd_pendentes=Count(
+                    "itens", filter=Q(itens__condicao__isnull=True), distinct=True
+                ),
+                _qtd_achados=Count("itens__achados", distinct=True),
+            )
+        else:
+            # No detalhe a folha de campo precisa da árvore inteira.
+            qs = qs.prefetch_related(
                 "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
             )
-        )
+
         return escopo_cliente(qs, self.request.user)
 
     def get_serializer_class(self):
@@ -648,7 +731,11 @@ class AchadoViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = AchadoSerializer
-    permission_classes = [InternoEditaClienteVisualiza]
+    # Master do cliente também cria/edita/exclui e confirma análises (decisão de
+    # 2026-09-18). Achados de manutenção corretiva continuam fora do alcance
+    # deste endpoint genérico — ver `AchadoSerializer.validate_item` e
+    # `perform_destroy` abaixo, que já bloqueiam isso independente de quem pede.
+    permission_classes = [InternoOuClienteMasterEdita]
     filterset_fields = [
         "item", "item__carregamento", "item__carregamento__cliente",
         "item__carregamento__status", "item__carregamento__tecnologia",
@@ -914,6 +1001,32 @@ class PortalVisaoGeralView(APIView):
             atencao.values(), key=lambda r: r["ocorrencias"], reverse=True
         )
 
+        # --- Estado atual por equipamento (para a lista do Portal) ---
+        # O Portal precisa dizer COMO está cada máquina, não só quais estão
+        # críticas. Sem isto a tela teria de inventar um estado (ou mostrar
+        # "normal" para equipamento nunca medido, o que é falso).
+        # Uma agregação por (tag, criticidade) nas três origens de medição, e a
+        # pior criticidade é resolvida em Python — `Max` num CharField ordenaria
+        # alfabeticamente e "NORMAL" venceria "CRITICO".
+        RANK = {"CRITICO": 3, "ALERTA": 2, "NORMAL": 1, "": 0}
+        estado_por_tag: dict = {}
+        for qs in (vib, termo, tec):
+            for row in (
+                qs.values("equipamento__tag", "criticidade")
+                .annotate(total=Count("id"), ultima=Max("data_hora"))
+            ):
+                tag = row["equipamento__tag"]
+                atual = estado_por_tag.setdefault(
+                    tag, {"criticidade": "", "medicoes": 0, "ultima_medicao": None}
+                )
+                atual["medicoes"] += row["total"]
+                if RANK.get(row["criticidade"], 0) > RANK.get(atual["criticidade"], 0):
+                    atual["criticidade"] = row["criticidade"]
+                if row["ultima"] and (
+                    atual["ultima_medicao"] is None or row["ultima"] > atual["ultima_medicao"]
+                ):
+                    atual["ultima_medicao"] = row["ultima"]
+
         total_equip = equipamentos.count()
         em_atencao = len(equipamentos_atencao)
         # Índice de disponibilidade (item 2.8.1.1.6): % do parque sem ocorrência crítica.
@@ -980,5 +1093,8 @@ class PortalVisaoGeralView(APIView):
                 "laudos_disponiveis": laudos.count(),
             },
             "equipamentos_atencao": equipamentos_atencao[:8],
+            # Mapa TAG → estado atual, consumido pela lista de equipamentos do
+            # Portal. Campo aditivo: nada que já existia mudou de forma.
+            "estado_equipamentos": estado_por_tag,
             "historico": historico[:12],
         })

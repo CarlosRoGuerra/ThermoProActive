@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, Trash2, Upload } from "lucide-react";
-import { cn } from "./ui";
+import { cn } from "./ds";
 
 const TAMANHO_MAX_MB = 20; // alinhado ao limite do backend (DATA_UPLOAD_MAX_MEMORY_SIZE)
 
@@ -63,7 +63,7 @@ export function LogoUpload({
             escolher(e.dataTransfer.files?.[0] ?? null);
           }}
           className={cn(
-            "relative flex h-[90px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border-strong bg-surface-muted transition-colors hover:border-accent",
+            "relative flex h-[90px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-border-strong bg-surface-muted transition-colors hover:border-primary",
           )}
           aria-label="Selecionar logomarca"
         >

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Dossie } from "@/app/(app)/relatorios-inspecao/[id]/dossie";
+import type { Dossie } from "@/features/relatorio-inspecao/dossie";
 
 /* ============================================================================
    CARTA AO CLIENTE — documento independente do relatório, fiel ao modelo Word

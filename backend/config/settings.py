@@ -17,9 +17,12 @@ env = environ.Env(
     SECRET_KEY=(str, "dev-insecure-change-me-em-producao"),
     ALLOWED_HOSTS=(list, ["*"]),
     CORS_ALLOWED_ORIGINS=(list, ["http://localhost:3000", "http://127.0.0.1:3000"]),
-    # Origens confiáveis para CSRF (necessário para o /admin sob HTTPS atrás de proxy).
-    # Devem incluir o esquema, ex.: https://seudominio.com.br
-    CSRF_TRUSTED_ORIGINS=(list, []),
+    # Origens confiáveis para CSRF (necessário para o /admin sob HTTPS atrás de proxy,
+    # e para qualquer POST/PATCH/DELETE autenticado por cookie — o login grava
+    # tpa_access/tpa_refresh em cookie). Em produção, defina via env explicitamente
+    # (ex.: https://seudominio.com.br); o padrão abaixo cobre só o dev local, para
+    # não travar o front em :3000 com "Origin checking failed" a cada ambiente novo.
+    CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:3000", "http://127.0.0.1:3000"]),
 )
 
 # Lê backend/.env se existir (não obrigatório para dev com SQLite).
@@ -43,6 +46,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -115,7 +119,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # --- DRF + JWT ----------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -128,17 +132,29 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_RATES": {
+        "auth_login": "10/minute",
+        "auth_recovery": "5/hour",
+        "auth_otp": "10/minute",
+        "auth_registration": "3/hour",
+    },
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
+AUTH_COOKIE_ACCESS = "tpa_access"
+AUTH_COOKIE_REFRESH = "tpa_refresh"
+AUTH_COOKIE_SECURE = not DEBUG
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+CORS_ALLOW_CREDENTIALS = True
+
 SPECTACULAR_SETTINGS = {
-    "TITLE": "ThermoProActive API",
+    "TITLE": "Pred Ativos API",
     "DESCRIPTION": "API de gestão de manutenção preditiva (Anexo I do contrato).",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
@@ -152,7 +168,7 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 # WhatsApp/Push: adaptadores opcionais, desligados por padrão (sem lock-in — Cláusula 12.4).
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = env(
-    "DEFAULT_FROM_EMAIL", default="ThermoProActive <nao-responda@thermoproactive.local>"
+    "DEFAULT_FROM_EMAIL", default="Pred Ativos <nao-responda@thermoproactive.local>"
 )
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
@@ -206,3 +222,4 @@ if not DEBUG:
     # Cabeçalhos de proteção adicionais.
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+    SECURE_REFERRER_POLICY = "same-origin"

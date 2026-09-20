@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
-import { cn } from "./ui";
+import { cn } from "./ds";
 
 export type Opcao = {
   id: number;
@@ -181,7 +181,7 @@ export function Combobox({
                       <span className="block truncate font-medium text-fg">{o.label}</span>
                       {o.hint && <span className="block truncate text-xs text-fg-subtle">{o.hint}</span>}
                     </span>
-                    {o.id === value && <Check className="h-4 w-4 shrink-0 text-accent" />}
+                    {o.id === value && <Check className="h-4 w-4 shrink-0 text-primary" />}
                   </button>
                 </li>
               ))

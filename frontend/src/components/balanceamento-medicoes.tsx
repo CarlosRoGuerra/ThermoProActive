@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { sugerirPlano } from "@/lib/balanceamento";
 import type { BalanceamentoPonto, ServicoCampo } from "@/lib/types";
-import { Badge, Button, Card, CriticidadeBadge, Field, Input, Select } from "@/components/ui";
+import { Badge, Button, Card, CriticidadeBadge, Field, Input, Select } from "@/components/ds";
 
 const n = (v: string | number | null | undefined, casas = 2) =>
   v == null || v === "" ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
@@ -19,6 +19,12 @@ const n = (v: string | number | null | undefined, casas = 2) =>
  *  · Reference/Trial/Trim Run — as três corridas de vibração de cada ponto de medição.
  *    Reference vale para todos os pontos; Trial só para o ponto de foco (maior
  *    amplitude); Trim vale para todos de novo (verifica o resultado geral).
+ *
+ * A fase (°) volta a ser coletada nas três corridas: é ela que dá sentido ao mostrador
+ * polar (`MostradorPolar`, em balanceamento-graficos.tsx) — sem fase não há vetor pra
+ * desenhar, só amplitude. O peso de prova é fixado a 0° por convenção de bancada, mas a
+ * FASE MEDIDA da resposta de vibração no Trial Run é outra grandeza (depende da dinâmica
+ * da máquina, não da posição do peso) — por isso também é campo de entrada, não fixo.
  *
  * `QuantidadePlanos`/`PontosMedicao`/`TrialRun`/`TrimRun` cobrem, em ordem, os passos
  * 3-8 da interface pedida (1-2 = informações gerais/rotação, ficam na tela que usa
@@ -89,7 +95,7 @@ export function QuantidadePlanos({
             onClick={() => garantirPlanos(opcao)}
             className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               quantidade === opcao
-                ? "border-accent bg-accent-subtle text-accent-subtle-fg"
+                ? "border-primary bg-primary-subtle text-primary-subtle-fg"
                 : "border-border text-fg-muted hover:bg-surface-muted"
             }`}
           >
@@ -132,6 +138,7 @@ const PONTO_VAZIO = {
   identificacao: "",
   plano: "" as number | "",
   reference_mms: "",
+  reference_fase: "",
 };
 
 export function PontosMedicao({
@@ -150,6 +157,13 @@ export function PontosMedicao({
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [linhaOcupada, setLinhaOcupada] = useState<number | null>(null);
+
+  const doisPlanos = servico.planos.length === 2;
+  // Com 1 plano só, não existe escolha: liga o ponto a ele direto, sem perguntar —
+  // é o que fazia "Plano utilizado" no resultado do balanceamento ficar em branco
+  // mesmo com massa/ângulo lançados (o ponto nunca tinha sido vinculado a nenhum
+  // plano, porque o seletor só aparecia com 2 planos).
+  const planoUnico = servico.planos.length === 1 ? servico.planos[0].id : null;
 
   // Plano sugerido pela posição do mancal digitado — só entra se o técnico ainda não
   // escolheu manualmente um plano diferente.
@@ -178,8 +192,9 @@ export function PontosMedicao({
           numero_mancal: Number(novo.numero_mancal),
           direcao: novo.direcao,
           identificacao: novo.identificacao,
-          plano: novo.plano || null,
+          plano: novo.plano || planoUnico || null,
           reference_mms: novo.reference_mms,
+          reference_fase: novo.reference_fase || null,
         },
       });
       setNovo({ ...PONTO_VAZIO });
@@ -219,8 +234,6 @@ export function PontosMedicao({
     }
   }
 
-  const doisPlanos = servico.planos.length === 2;
-
   return (
     <Card className="space-y-4">
       <div className="flex items-center justify-between">
@@ -241,12 +254,13 @@ export function PontosMedicao({
 
       {servico.pontos.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-fg-subtle">
                 <th className="py-2 pr-3 font-medium">Ponto</th>
                 <th className="py-2 pr-3 font-medium">Identificação</th>
                 <th className="py-2 pr-3 font-medium">Reference (mm/s)</th>
+                <th className="py-2 pr-3 font-medium">Fase</th>
                 {doisPlanos && <th className="py-2 pr-3 font-medium">Plano</th>}
                 <th className="py-2 font-medium">Foco</th>
               </tr>
@@ -257,6 +271,9 @@ export function PontosMedicao({
                   <td className="py-2 pr-3 font-medium text-fg">{p.codigo_ponto}</td>
                   <td className="py-2 pr-3 text-fg-muted">{p.identificacao || "—"}</td>
                   <td className="py-2 pr-3 tabular-nums">{n(p.reference_mms)}</td>
+                  <td className="py-2 pr-3 tabular-nums text-fg-muted">
+                    {p.reference_fase != null ? `${n(p.reference_fase, 0)}°` : "—"}
+                  </td>
                   {doisPlanos && (
                     <td className="py-2 pr-3">
                       <Select
@@ -281,7 +298,7 @@ export function PontosMedicao({
                         disabled={!podeEditar || linhaOcupada === p.id}
                         onChange={() => escolherFoco(p.id)}
                         className="h-4 w-4"
-                        style={{ accentColor: "var(--accent)" }}
+                        style={{ accentColor: "var(--primary)" }}
                       />
                     </label>
                   </td>
@@ -344,6 +361,15 @@ export function PontosMedicao({
               onChange={(e) => setNovo({ ...novo, reference_mms: e.target.value })}
             />
           </Field>
+          <Field label="Fase (°)">
+            <Input
+              type="number"
+              step="0.1"
+              inputMode="decimal"
+              value={novo.reference_fase}
+              onChange={(e) => setNovo({ ...novo, reference_fase: e.target.value })}
+            />
+          </Field>
           <div className="flex items-end">
             <Button onClick={adicionar} loading={salvando} className="w-full">
               Salvar ponto
@@ -374,6 +400,7 @@ export function TrialRun({
 }) {
   const foco = servico.pontos.find((p) => p.id === servico.ponto_foco) ?? null;
   const [trialMms, setTrialMms] = useState(foco?.trial_mms ?? "");
+  const [trialFase, setTrialFase] = useState(foco?.trial_fase ?? "");
   const [massas, setMassas] = useState(() =>
     Object.fromEntries(servico.planos.map((p) => [p.id, { massa: p.massa_teste_g ?? "", angulo: p.angulo_teste ?? "" }]))
   );
@@ -397,10 +424,13 @@ export function TrialRun({
     setSalvando("trial");
     onErro(null);
     try {
-      // Fase não é medida — o peso de prova é sempre fixado na posição 0°, por convenção.
+      // Ângulo de fixação do peso de prova (0° por convenção) é OUTRO dado —
+      // mora em `angulo_teste` do plano, na seção "Massa de teste por plano" abaixo.
+      // `trial_fase` aqui é a fase MEDIDA da resposta de vibração, que depende da
+      // dinâmica da máquina — precisa ser lida no instrumento, não é sempre 0°.
       await api(`/balanceamento-pontos/${foco!.id}/`, {
         method: "PATCH",
-        body: { trial_mms: trialMms || null, trial_fase: trialMms ? "0" : null },
+        body: { trial_mms: trialMms || null, trial_fase: trialFase || null },
       });
       await onMudou();
     } catch (e) {
@@ -439,7 +469,7 @@ export function TrialRun({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Vibração medida (mm/s)">
           <Input
             type="number"
@@ -448,6 +478,16 @@ export function TrialRun({
             disabled={!podeEditar}
             value={trialMms}
             onChange={(e) => setTrialMms(e.target.value)}
+          />
+        </Field>
+        <Field label="Fase (°)">
+          <Input
+            type="number"
+            step="0.1"
+            inputMode="decimal"
+            disabled={!podeEditar}
+            value={trialFase}
+            onChange={(e) => setTrialFase(e.target.value)}
           />
         </Field>
         {podeEditar && (
@@ -536,8 +576,8 @@ export function TrimRun({
   onMudou: () => Promise<void>;
   onErro: (m: string | null) => void;
 }) {
-  const [trims, setTrims] = useState<Record<number, string>>(
-    Object.fromEntries(servico.pontos.map((p) => [p.id, p.trim_mms ?? ""]))
+  const [trims, setTrims] = useState<Record<number, { mms: string; fase: string }>>(
+    Object.fromEntries(servico.pontos.map((p) => [p.id, { mms: p.trim_mms ?? "", fase: p.trim_fase ?? "" }]))
   );
   const [massas, setMassas] = useState(() =>
     Object.fromEntries(servico.planos.map((p) => [p.id, { massa: p.massa_final_g ?? "", angulo: p.angulo_final ?? "" }]))
@@ -548,10 +588,10 @@ export function TrimRun({
     setSalvando(`trim-${pontoId}`);
     onErro(null);
     try {
-      const mms = trims[pontoId] ?? "";
+      const valor = trims[pontoId] ?? { mms: "", fase: "" };
       await api(`/balanceamento-pontos/${pontoId}/`, {
         method: "PATCH",
-        body: { trim_mms: mms || null },
+        body: { trim_mms: valor.mms || null, trim_fase: valor.fase || null },
       });
       await onMudou();
     } catch (e) {
@@ -592,13 +632,13 @@ export function TrimRun({
       ) : (
         <div className="space-y-3">
           {servico.pontos.map((p) => {
-            const mms = trims[p.id] ?? "";
+            const valor = trims[p.id] ?? { mms: "", fase: "" };
             return (
               <div key={p.id} className="rounded-lg border border-border p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
                   <span className="font-mono font-semibold text-fg">{p.codigo_ponto}</span>
                   {p.identificacao && <span className="text-fg-muted">{p.identificacao}</span>}
-                  {p.id === servico.ponto_foco && <Badge tone="accent">foco</Badge>}
+                  {p.id === servico.ponto_foco && <Badge tone="primary">foco</Badge>}
                   {p.completo && (
                     <span className="ml-auto flex items-center gap-1.5">
                       <CriticidadeBadge value={p.criticidade} />
@@ -607,15 +647,25 @@ export function TrimRun({
                     </span>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <Field label="Vibração após correção (mm/s)">
                     <Input
                       type="number"
                       step="0.01"
                       inputMode="decimal"
                       disabled={!podeEditar}
-                      value={mms}
-                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: e.target.value }))}
+                      value={valor.mms}
+                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: { ...valor, mms: e.target.value } }))}
+                    />
+                  </Field>
+                  <Field label="Fase (°)">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      inputMode="decimal"
+                      disabled={!podeEditar}
+                      value={valor.fase}
+                      onChange={(e) => setTrims((t) => ({ ...t, [p.id]: { ...valor, fase: e.target.value } }))}
                     />
                   </Field>
                   {podeEditar && (

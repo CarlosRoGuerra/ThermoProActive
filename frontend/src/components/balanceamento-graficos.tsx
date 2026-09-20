@@ -6,18 +6,28 @@
  * Os mesmos componentes servem a tela de campo e a impressão do relatório, por isso
  * todo rótulo é desenhado (nada depende de hover) e as cores vêm de tokens do tema.
  *
- * A fase deixou de ser coletada em Reference/Trial/Trim (pedido do cliente,
- * 2026-09-16) — o mostrador polar que existia aqui foi aposentado (ele só fazia
- * sentido com 3 vetores de ângulo variável; sem fase não sobra o que desenhar). O que
- * resta é puramente amplitude, então o gráfico de referência passa a ser o
- * Antes×Depois — agora com o Trial como um terceiro ponto no mesmo eixo, cobrindo a
- * mesma leitura de "convergiu?" sem fingir ter uma dimensão de dado que não existe.
+ * Duas mudanças deliberadas em relação à planilha de origem:
+ *
+ *  1. No mostrador, as agulhas aparecem. Na planilha os três vetores existem mas não
+ *     são visíveis — sobra o anel colorido e um texto solto com o ângulo. Aqui cada
+ *     corrida é uma agulha com comprimento proporcional à vibração, então a
+ *     convergência reference → trial → trim se lê no próprio mostrador.
+ *  2. O gráfico antes/depois tem UM eixo. A planilha plota mm/s à esquerda e % à
+ *     direita — duas escalas para o mesmo dado, que só parecem curvas diferentes
+ *     porque os eixos não batem. Aqui é mm/s, e a redução em % é rótulo.
  *
  * A paleta (--viz-reference/trial/trim) foi validada para daltonismo e contraste nos
- * temas claro e escuro.
+ * temas claro e escuro. Cada corrida também tem marcador próprio (círculo, losango,
+ * triângulo), então a identidade nunca depende só da cor.
  */
 
-type Corrida = { mms: number } | null;
+const SERIES = [
+  { chave: "reference", rotulo: "Reference (antes)", cor: "var(--viz-reference)" },
+  { chave: "trial", rotulo: "Trial (teste)", cor: "var(--viz-trial)" },
+  { chave: "trim", rotulo: "Trim (depois)", cor: "var(--viz-trim)" },
+] as const;
+
+type Corrida = { mms: number; fase: number | null } | null;
 
 export interface PontoGrafico {
   codigo_ponto: string;
@@ -32,12 +42,146 @@ export interface PontoGrafico {
 const num = (v: number, casas = 2) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
-/** Maior amplitude entre reference/trial/trim dos pontos informados. */
+/** Amplitude que vira raio 1 no mostrador — a maior vibração entre todos os pontos. */
 export function amplitudeMaxima(pontos: PontoGrafico[]): number {
   const valores = pontos.flatMap((p) =>
     [p.reference, p.trial, p.trim].filter(Boolean).map((c) => c!.mms)
   );
   return valores.length ? Math.max(...valores) : 0;
+}
+
+/* ===================== Mostrador polar ===================== */
+
+const R = 100; // raio do mostrador, em unidades do viewBox
+
+/**
+ * Mesma convenção da planilha (abas `Graf-O`): 0° à direita, sentido anti-horário.
+ * O y do SVG cresce para baixo, daí o sinal invertido.
+ */
+function ponta(fase: number, amplitude: number, maxima: number) {
+  const angulo = (fase / 360) * 2 * Math.PI;
+  const raio = maxima > 0 ? Math.min(amplitude / maxima, 1) * R : R;
+  return { x: Math.cos(angulo) * raio, y: -Math.sin(angulo) * raio };
+}
+
+function Marcador({ tipo, x, y, cor }: { tipo: string; x: number; y: number; cor: string }) {
+  // Anel na cor da superfície separa agulhas que se cruzam.
+  const comum = { fill: cor, stroke: "var(--surface)", strokeWidth: 2 };
+  if (tipo === "reference") return <circle cx={x} cy={y} r={6} {...comum} />;
+  if (tipo === "trial")
+    return <rect x={x - 5} y={y - 5} width={10} height={10} transform={`rotate(45 ${x} ${y})`} {...comum} />;
+  return <polygon points={`${x},${y - 6.5} ${x + 6},${y + 4} ${x - 6},${y + 4}`} {...comum} />;
+}
+
+/**
+ * Mostrador de fase de UM ponto — as três corridas (reference/trial/trim) como agulhas
+ * no mesmo mostrador polar, quando têm fase medida. Corrida sem fase (comum em pontos
+ * antigos, de quando a fase não era coletada) simplesmente não desenha agulha — o
+ * ponto ainda aparece no Antes×Depois, só não neste mostrador.
+ */
+export function MostradorPolar({
+  ponto,
+  tamanho = 280,
+}: {
+  ponto: PontoGrafico;
+  tamanho?: number;
+}) {
+  const corridas = SERIES.map((s) => ({ ...s, dado: ponto[s.chave] })).filter(
+    (c) => c.dado && c.dado.fase != null
+  );
+  // Escala LOCAL a este ponto — as 3 corridas (reference/trial/trim) do MESMO ponto
+  // precisam ser comparáveis entre si, mas normalizar contra a amplitude de OUTRO
+  // ponto do serviço distorce o raio (ex.: o trim, tipicamente o menor valor, fica
+  // ainda menor e quase some quando o máximo vem de um trial bem maior de outro ponto).
+  const maxima = amplitudeMaxima([ponto]);
+
+  if (!corridas.length) {
+    return (
+      <p className="text-sm text-fg-muted">
+        Sem fase medida em nenhuma corrida deste ponto — lance a fase no Reference,
+        Trial ou Trim Run para o mostrador aparecer.
+      </p>
+    );
+  }
+
+  return (
+    <figure className="m-0">
+      <svg
+        viewBox="-150 -150 300 300"
+        width={tamanho}
+        height={tamanho}
+        role="img"
+        aria-label={`Mostrador de fase do ponto ${ponto.codigo_ponto}`}
+        className="max-w-full"
+      >
+        {/* Graduação de 30° — a marcação do mostrador, não um dado. Neutra de
+            propósito: colorir os 12 setores competiria com as agulhas, que são o
+            que se precisa ler. */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const g = (i * 30 * Math.PI) / 180;
+          const eixo = i % 3 === 0;
+          return (
+            <line
+              key={i}
+              x1={Math.cos(g) * (R - (eixo ? 14 : 8))}
+              y1={-Math.sin(g) * (R - (eixo ? 14 : 8))}
+              x2={Math.cos(g) * R}
+              y2={-Math.sin(g) * R}
+              stroke="var(--border-strong)"
+              strokeWidth={eixo ? 2 : 1}
+            />
+          );
+        })}
+        <circle cx={0} cy={0} r={R} fill="none" stroke="var(--border)" strokeWidth={2} />
+        <line x1={-R} y1={0} x2={R} y2={0} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
+        <line x1={0} y1={-R} x2={0} y2={R} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
+        {/* Ponto de origem ANTES das corridas: um balanceamento bem-sucedido deixa o
+            Trim com raio pequeno (perto do centro, por definição — é o resultado
+            esperado); desenhar a origem depois esconderia esse marcador embaixo dela. */}
+        <circle cx={0} cy={0} r={3} fill="var(--fg-subtle)" />
+
+        {[
+          { t: "0°", x: R + 20, y: 4 },
+          { t: "90°", x: 0, y: -R - 12 },
+          { t: "180°", x: -R - 22, y: 4 },
+          { t: "270°", x: 0, y: R + 22 },
+        ].map((l) => (
+          <text
+            key={l.t}
+            x={l.x}
+            y={l.y}
+            textAnchor="middle"
+            className="fill-[var(--fg-subtle)] text-[11px]"
+          >
+            {l.t}
+          </text>
+        ))}
+
+        {corridas.map((c) => {
+          const p = ponta(c.dado!.fase!, c.dado!.mms, maxima);
+          return (
+            <g key={c.chave}>
+              <title>{`${c.rotulo}: ${num(c.dado!.mms)} mm/s a ${num(c.dado!.fase!, 1)}°`}</title>
+              <line x1={0} y1={0} x2={p.x} y2={p.y} stroke={c.cor} strokeWidth={2} />
+              <Marcador tipo={c.chave} x={p.x} y={p.y} cor={c.cor} />
+            </g>
+          );
+        })}
+      </svg>
+
+      <figcaption className="mt-2 space-y-1">
+        {corridas.map((c) => (
+          <div key={c.chave} className="flex items-center gap-2 text-xs text-fg-muted">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.cor }} />
+            <span className="text-fg-subtle">{c.rotulo}</span>
+            <span className="ml-auto tabular-nums text-fg">
+              {num(c.dado!.mms)} mm/s · {num(c.dado!.fase!, 1)}°
+            </span>
+          </div>
+        ))}
+      </figcaption>
+    </figure>
+  );
 }
 
 /* ===================== Antes × Depois ===================== */
