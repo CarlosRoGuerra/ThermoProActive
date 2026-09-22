@@ -254,7 +254,10 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
     const a = await api<Achado>(`/achados/${achadoId}/`);
     setAchado(a);
     setForm(formDeAchado(a));
-    setNumeroOsp(a.numero_osp ?? "");
+    // `osp_intervencao_numero` já resolve a OSP de origem (intervenção que herdou
+    // uma OSP preditiva já aberta) quando o vínculo direto (`numero_osp`) está
+    // vazio — mesma regra usada na folha do relatório (osp_da_intervencao).
+    setNumeroOsp(a.osp_intervencao_numero ?? a.numero_osp ?? "");
     if (a.tipo_corretiva === "BALANCEAMENTO" && a.servico_campo_id) {
       setServico(await api<ServicoCampo>(`/servicos/${a.servico_campo_id}/`));
     } else {
@@ -378,6 +381,7 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
           tipo={tipo}
           tecnologiaId={achado.tecnologia}
           camposTecnicosDesabilitados={!!achado.tipo_corretiva}
+          ocultarVibracaoGlobal={achado.tipo_corretiva === "BALANCEAMENTO"}
         />
       </Card>
 

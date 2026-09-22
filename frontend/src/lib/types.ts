@@ -268,6 +268,10 @@ export interface Achado {
   numero_osp: string;
   osp_sequencial: number | null;
   osp_codigo: number | null;
+  // OSP da intervenção para exibição (osp_da_intervencao): cobre a análise que
+  // herdou uma OSP de origem, quando `numero_osp`/`osp_sequencial` acima (o
+  // vínculo direto) ficam vazios de propósito.
+  osp_intervencao_numero: string | null;
   numero_relatorio: string | null;
   confirmada: boolean;
   visivel_cliente: boolean;

@@ -38,3 +38,36 @@ def vincular_osp_da_analise(servico):
 
     servico.osp = OrdemServico.gerar_de_achado(achado)
     return servico.osp
+
+
+def osp_da_intervencao(achado, servico=None):
+    """
+    A OSP que representa esta intervenção — usada tanto na folha do relatório
+    quanto na tela de Análise final. Uma regra só, duas fontes possíveis:
+
+    1. `achado.osp` — o vínculo direto (`OrdemServico.achado`), presente quando
+       esta própria análise gerou a OSP.
+    2. `ServicoCampo.osp`, quando o vínculo direto está vazio — cobre a
+       intervenção que herdou uma OSP de origem (execução de uma OSP preditiva
+       já aberta): `vincular_osp_da_analise` não reatribui `OrdemServico.achado`
+       nesse caso, para não sequestrar o vínculo da análise que a originou.
+
+    `servico` é opcional: quando o chamador já tem o `ServicoCampo` carregado em
+    lote (o dossiê, que monta um mapa único para evitar N+1), passa-o aqui e
+    nenhuma consulta extra é feita. Sem ele, cai no acessor reverso de
+    `ServicoCampo.analise_tecnica` (OneToOne — no máximo 1 consulta, cacheada
+    pelo Django na própria instância do achado).
+    """
+    osp = getattr(achado, "osp", None)
+    if osp is not None:
+        return osp
+    if servico is None:
+        servico = getattr(achado, "balanceamento_tecnico", None)
+    return servico.osp if servico is not None else None
+
+
+def numero_da_osp(osp, fallback=""):
+    """Formato do relatório: 'sequencial do cliente / sequencial global do BD'."""
+    if osp and osp.sequencial_cliente and osp.sequencial_global:
+        return f"{osp.sequencial_cliente}/{osp.sequencial_global}"
+    return fallback

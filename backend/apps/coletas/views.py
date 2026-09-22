@@ -389,6 +389,7 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         # economia e equipamento); buscar serviço por serviço dentro do laço de
         # achados seria N+1 num relatório com dezenas de folhas.
         from apps.servicos.models import ServicoCampo
+        from apps.servicos.osp_corretiva import numero_da_osp, osp_da_intervencao
         from apps.servicos.relatorio_corretivo import payload_corretivo_do_dossie
 
         servicos_corretivos = {
@@ -464,6 +465,9 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 payload_corretivo_do_dossie(servico_corretivo)
                 if servico_corretivo is not None else None
             )
+            # OSP ligada diretamente a ESTE achado — alimenta os KPIs da Seção B
+            # (custo evitado, taxa de acerto), que são sobre a OSP que ESTA análise
+            # gerou, não sobre uma OSP de origem herdada de outra análise/relatório.
             osp = getattr(a, "osp", None)
             if osp is not None:
                 custo_evitado += osp.retorno_investimento
@@ -471,11 +475,12 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                     diagnosticos_avaliados += 1
                     if osp.resultado_confirmacao == ResultadoConfirmacao.CONFIRMADO:
                         diagnosticos_confirmados += 1
-            # Número do relatório: "sequencial do cliente / sequencial global do BD".
-            osp_num = (
-                f"{osp.sequencial_cliente}/{osp.sequencial_global}"
-                if osp and osp.sequencial_cliente and osp.sequencial_global
-                else (a.numero_osp or "—")
+            # A OSP EXIBIDA na folha pode ser outra: numa intervenção que herdou uma
+            # OSP de origem, `a.osp` fica vazio de propósito (a origem não é
+            # sequestrada para esta análise) — usa o ServicoCampo já carregado em
+            # lote, sem consulta extra (mesma regra da tela de Análise final).
+            osp_num = numero_da_osp(
+                osp_da_intervencao(a, servico=servico_corretivo), fallback=(a.numero_osp or "—")
             )
             imagens = [
                 {"tipo": img.get_tipo_display(), "arquivo": request.build_absolute_uri(img.arquivo.url),
@@ -511,6 +516,7 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 # balanceamento tem apresentação definida). Vazio nos achados
                 # preditivos, que seguem com o layout de sempre.
                 "tipo_corretiva": a.item.carregamento.tipo_corretiva,
+                "tipo_corretiva_display": a.item.carregamento.get_tipo_corretiva_display(),
                 "corretiva": corretiva,
             })
 

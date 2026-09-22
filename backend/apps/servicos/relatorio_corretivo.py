@@ -11,9 +11,12 @@ A mesma função serve `ServicoCampoViewSet.relatorio()` (tela do serviço) e
 `RelatorioViewSet.dossie()` (folha da OSP no relatório técnico), sem chamada HTTP
 interna entre views.
 
-Extensão: `MONTADORES` despacha por tipo de serviço. O alinhamento a laser tem
-particularidades ainda não definidas com o cliente — quando forem, ganha o seu
-`montar_relatorio_alinhamento` aqui, sem tocar no balanceamento.
+Extensão: `MONTADORES` despacha por tipo de serviço; sem um montador específico,
+cai em `montar_relatorio_corretivo` (a base) — que já é honesta para qualquer tipo,
+porque pontos/planos vazios são o estado REAL de um serviço sem essas medições, não
+um campo inventado. O alinhamento a laser tem particularidades ainda não definidas
+com o cliente (tolerância, offset, calços…) — quando forem, ganha o seu
+`montar_relatorio_alinhamento` aqui, sem tocar no balanceamento nem na base comum.
 """
 from . import rules
 from .choices import TipoServico
@@ -22,6 +25,26 @@ from .choices import TipoServico
 def _f(valor):
     """Decimal → float para o JSON; `None` continua `None` (ausência ≠ zero)."""
     return float(valor) if valor is not None else None
+
+
+def _velocidade_referencia(servico, pontos):
+    """
+    Velocidade inicial oficial do balanceamento — a condição ANTES da correção.
+
+    Fonte: o Reference Run do ponto de foco (a medição que baseou a decisão de
+    balancear). Sem foco definido, cai no primeiro ponto medido, na mesma ordenação
+    técnica já usada em todo o resto do relatório (`BalanceamentoPonto.Meta.ordering`
+    — `reference_mms` é campo obrigatório do modelo, então qualquer ponto que exista
+    já tem essa medição). Sem nenhum ponto, não há velocidade a mostrar.
+
+    Nunca usa Trial (o ensaio) nem Trim (o resultado) — e não é a mesma fonte do
+    `Achado.velocidade_global` da análise genérica, que não é coletado neste fluxo.
+    """
+    if not pontos:
+        return None
+    foco = next((p for p in pontos if p.id == servico.ponto_foco_id), None)
+    ponto = foco if foco is not None else pontos[0]
+    return _f(ponto.reference_mms)
 
 
 def _corrida(mms, fase):
@@ -120,6 +143,7 @@ def montar_relatorio_corretivo(servico):
         "rotacao_rpm": servico.rotacao_rpm,
         "classe_iso": servico.equipamento.classe_iso,
         "ponto_foco": servico.ponto_foco_id,
+        "velocidade_referencia": _velocidade_referencia(servico, pontos),
         "planos": dados_planos,
         "pontos": dados_pontos,
         "mostrador": {
@@ -154,17 +178,19 @@ def payload_corretivo(servico):
 
 def payload_corretivo_do_dossie(servico):
     """
-    Payload da folha da OSP no relatório técnico.
+    Payload da folha da OSP no relatório técnico — SEMPRE reconhecida como
+    manutenção corretiva (nunca cai de volta no layout preditivo por falta de
+    montador específico).
 
-    Só devolve dados dos tipos com layout definido (hoje: balanceamento). O
-    alinhamento a laser cai em `None` de propósito — enquanto as regras técnicas
-    não forem discutidas, a folha continua usando o layout preditivo em vez de
-    exibir campos inventados.
+    Usa a mesma regra de `payload_corretivo`: com montador específico (hoje, só
+    balanceamento), o layout definido com o cliente; sem ele, a base comum, que já
+    é honesta para qualquer tipo (pontos/planos vazios refletem um serviço real sem
+    essas medições — nunca um campo técnico inventado). O alinhamento a laser fica
+    assim com identificação, foto e a Economia energética (modelo comum aos dois
+    tipos) até que suas particularidades sejam definidas com o cliente; o frontend
+    decide, a partir de `tipo`, se usa o layout específico ou o genérico.
     """
-    montador = MONTADORES.get(servico.tipo)
-    if montador is None:
-        return None
-    dados = montador(servico)
+    dados = MONTADORES.get(servico.tipo, montar_relatorio_corretivo)(servico)
     # `servico` é o serializer completo — e ele aninha planos, pontos e economia de
     # novo. Na folha isso duplicaria o bloco técnico em cada uma das dezenas de OSPs
     # do relatório, sem acrescentar nada: cabeçalho (empresa, TAG, analista, data)

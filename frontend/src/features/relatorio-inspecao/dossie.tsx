@@ -8,6 +8,7 @@ import { tecnologiaTipo, type TecnologiaTipo } from "@/lib/inspecoes";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
 import { CartaCorpo } from "@/app/carta/[id]/carta";
 import { CorpoBalanceamento, type Corretiva } from "./corretiva-balanceamento";
+import { CorpoCorretivaGenerico } from "./corretiva-base";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -57,8 +58,11 @@ type OspD = {
   imagens: { tipo: string; arquivo: string; legenda: string }[];
   avaliacao: Avaliacao | null;
   /* Manutenção corretiva: vazio nas folhas preditivas. `corretiva` traz os dados
-     técnicos da intervenção (balanceamento) já calculados no backend. */
+     técnicos da intervenção já calculados no backend — com layout específico
+     (hoje: balanceamento) ou só a base comum (economia), quando o tipo ainda não
+     tem apresentação própria definida. */
   tipo_corretiva: string;
+  tipo_corretiva_display: string;
   corretiva: Corretiva | null;
 };
 
@@ -865,11 +869,22 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
           const imgs = imagensUnicas(o.imagens);
           // A metade inferior da folha muda quando a intervenção é uma corretiva já
           // executada: Planejamento/Tendência/Espectro/Retorno descrevem uma OSP a
-          // fazer, não uma que foi feita. Só o balanceamento tem layout definido —
-          // o alinhamento a laser (regras técnicas ainda em discussão com o cliente)
-          // segue no layout preditivo até lá.
-          const balanceamento = o.tipo_corretiva === "BALANCEAMENTO" ? o.corretiva : null;
+          // fazer, não uma que foi feita. Qualquer `tipo_corretiva` não-vazio é
+          // corretiva — nunca cai de volta no layout preditivo por falta de layout
+          // específico. Só o balanceamento tem apresentação própria; outros tipos
+          // (ex.: alinhamento a laser, com regras técnicas ainda em discussão com o
+          // cliente) usam o corpo neutro comum, sem inventar campo nenhum.
           const foto = <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />;
+          const corpoCorretivo =
+            o.tipo_corretiva === "BALANCEAMENTO" && o.corretiva ? (
+              <CorpoBalanceamento corretiva={o.corretiva} foto={foto} />
+            ) : o.tipo_corretiva ? (
+              <CorpoCorretivaGenerico
+                tipoDisplay={o.tipo_corretiva_display || o.tipo_corretiva}
+                economia={o.corretiva?.economia ?? null}
+                foto={foto}
+              />
+            ) : null;
           return (
             <PaginaInterna key={i} cab={cab} evitarQuebra conteudoTopMm={23.5}>
               <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOsp(o.osp)}</p>
@@ -925,12 +940,8 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </div>
               </div>
 
-              {balanceamento ? (
-                <CorpoBalanceamento
-                  corretiva={balanceamento}
-                  foto={foto}
-                  velocidade={o.amplitude_velocidade}
-                />
+              {corpoCorretivo ? (
+                corpoCorretivo
               ) : (
                 <>
                   {/* GRID físico 90 + 10 + 80 + 10 = 190mm.

@@ -260,7 +260,7 @@ export function PontosMedicao({
                 <th className="py-2 pr-3 font-medium">Ponto</th>
                 <th className="py-2 pr-3 font-medium">Identificação</th>
                 <th className="py-2 pr-3 font-medium">Reference (mm/s)</th>
-                <th className="py-2 pr-3 font-medium">Fase</th>
+                <th className="py-2 pr-3 font-medium">Fase (Reference)</th>
                 {doisPlanos && <th className="py-2 pr-3 font-medium">Plano</th>}
                 <th className="py-2 font-medium">Foco</th>
               </tr>
@@ -361,7 +361,7 @@ export function PontosMedicao({
               onChange={(e) => setNovo({ ...novo, reference_mms: e.target.value })}
             />
           </Field>
-          <Field label="Fase (°)">
+          <Field label="Fase vibracional medida (°)">
             <Input
               type="number"
               step="0.1"
@@ -480,7 +480,7 @@ export function TrialRun({
             onChange={(e) => setTrialMms(e.target.value)}
           />
         </Field>
-        <Field label="Fase (°)">
+        <Field label="Fase vibracional do Trial (°)">
           <Input
             type="number"
             step="0.1"
@@ -527,7 +527,7 @@ export function TrialRun({
                     onChange={(e) => setMassas((m) => ({ ...m, [p.id]: { ...valor, massa: e.target.value } }))}
                   />
                 </Field>
-                <Field label="Ângulo (°)">
+                <Field label="Ângulo da massa de teste (°)">
                   <Input
                     type="number"
                     step="0.1"
@@ -658,7 +658,7 @@ export function TrimRun({
                       onChange={(e) => setTrims((t) => ({ ...t, [p.id]: { ...valor, mms: e.target.value } }))}
                     />
                   </Field>
-                  <Field label="Fase (°)">
+                  <Field label="Fase vibracional após correção (°)">
                     <Input
                       type="number"
                       step="0.1"
@@ -705,7 +705,7 @@ export function TrimRun({
                     onChange={(e) => setMassas((m) => ({ ...m, [p.id]: { ...valor, massa: e.target.value } }))}
                   />
                 </Field>
-                <Field label="Ângulo (°)">
+                <Field label="Ângulo da massa de correção (°)">
                   <Input
                     type="number"
                     step="0.1"

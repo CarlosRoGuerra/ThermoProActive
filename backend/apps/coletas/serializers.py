@@ -212,14 +212,36 @@ class AchadoSerializer(serializers.ModelSerializer):
     # painel de Serviços de campo (Planos/Pontos/Economia) na Análise final.
     tipo_corretiva = serializers.CharField(source="item.carregamento.tipo_corretiva", read_only=True)
     servico_campo_id = serializers.SerializerMethodField()
+    # A OSP da intervenção, para exibição — mesma regra usada na folha do relatório
+    # (apps.servicos.osp_corretiva.osp_da_intervencao). Sem este campo, uma
+    # intervenção que herdou uma OSP de origem mostraria "numero_osp" vazio na
+    # Análise final mesmo com `ServicoCampo.osp` válida — o vínculo direto
+    # (`osp_sequencial`/`osp_codigo` acima) só existe quando a OSP nasceu desta
+    # própria análise.
+    osp_intervencao_numero = serializers.SerializerMethodField()
 
     class Meta:
         model = Achado
         exclude = ["ativo"]
 
+    def _servico_corretivo(self, obj):
+        # Memoiza na própria instância: os dois métodos abaixo usam o mesmo serviço,
+        # e uma lista de achados não deve pagar duas consultas por linha.
+        if not hasattr(obj, "_servico_corretivo_cache"):
+            from apps.servicos.models import ServicoCampo  # tardio: evita ciclo coletas↔servicos
+            obj._servico_corretivo_cache = (
+                ServicoCampo.objects.filter(analise_tecnica_id=obj.id).select_related("osp").first()
+            )
+        return obj._servico_corretivo_cache
+
     def get_servico_campo_id(self, obj):
-        from apps.servicos.models import ServicoCampo  # tardio: evita ciclo coletas↔servicos
-        return ServicoCampo.objects.filter(analise_tecnica_id=obj.id).values_list("id", flat=True).first()
+        servico = self._servico_corretivo(obj)
+        return servico.id if servico else None
+
+    def get_osp_intervencao_numero(self, obj):
+        from apps.servicos.osp_corretiva import numero_da_osp, osp_da_intervencao
+        osp = osp_da_intervencao(obj, servico=self._servico_corretivo(obj))
+        return numero_da_osp(osp, fallback=(obj.numero_osp or None)) or None
 
     def update(self, instance, validated_data):
         # Ao CONFIRMAR (0→1), gera a OSP da análise (1 por análise) — exceto para achados

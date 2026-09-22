@@ -31,6 +31,7 @@ export function AchadoCampos({
   tipo,
   tecnologiaId,
   camposTecnicosDesabilitados = false,
+  ocultarVibracaoGlobal = false,
 }: {
   form: AchadoForm;
   setForm: (f: AchadoForm) => void;
@@ -39,6 +40,14 @@ export function AchadoCampos({
   // Manutenção corretiva: esses campos só são editáveis pela Análise de campo
   // (validação cruzada de catálogo × tecnologia) — a Condição continua editável.
   camposTecnicosDesabilitados?: boolean;
+  // Balanceamento corretivo: a velocidade oficial já vem do Reference Run
+  // (ServicoCampoPainel, ao lado — ver apps.servicos.relatorio_corretivo). Mostrar
+  // aqui também o bloco genérico de Vibração convidaria a preencher a mesma
+  // medição duas vezes, e exporia "Global de aceleração", que o cliente pediu para
+  // não aparecer neste fluxo (o relatório de balanceamento já não mostra
+  // aceleração). Não depende do nome cadastrado da tecnologia (`tipo` acima é só
+  // uma heurística por substring) — é decidido pelo `tipo_corretiva` real.
+  ocultarVibracaoGlobal?: boolean;
 }) {
   const [componentes, setComponentes] = useState<CatOpt[]>([]);
   const [anomalias, setAnomalias] = useState<CatOpt[]>([]);
@@ -158,7 +167,7 @@ export function AchadoCampos({
       </div>
 
       {/* --- Vibração --- */}
-      {tipo === "vibracao" && (
+      {tipo === "vibracao" && !ocultarVibracaoGlobal && (
         <div>
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
             Vibração — valores globais
