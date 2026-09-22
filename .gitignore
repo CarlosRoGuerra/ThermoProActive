@@ -32,3 +32,7 @@ contrato.txt
 .agents/
 skills-lock.json
 dossie.json
+
+# Artefatos intermediarios do relatorio de auditoria (o PDF e o entregavel).
+docs/security-audit/_graficos/
+docs/security-audit/__pycache__/
