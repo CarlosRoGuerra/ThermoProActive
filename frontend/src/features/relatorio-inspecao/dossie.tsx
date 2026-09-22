@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { tecnologiaTipo, type TecnologiaTipo } from "@/lib/inspecoes";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
 import { CartaCorpo } from "@/app/carta/[id]/carta";
+import { CorpoBalanceamento, type Corretiva } from "./corretiva-balanceamento";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
 
@@ -55,6 +56,10 @@ type OspD = {
   corrente: (string | null)[]; tensao: (string | null)[]; analista: string;
   imagens: { tipo: string; arquivo: string; legenda: string }[];
   avaliacao: Avaliacao | null;
+  /* Manutenção corretiva: vazio nas folhas preditivas. `corretiva` traz os dados
+     técnicos da intervenção (balanceamento) já calculados no backend. */
+  tipo_corretiva: string;
+  corretiva: Corretiva | null;
 };
 
 const num = (v: string | null) => (v == null || v === "" ? 0 : Number(v));
@@ -858,6 +863,13 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
         {ospsValidas.map((o, i) => {
           const cor = corCondicao(o.grau_risco);
           const imgs = imagensUnicas(o.imagens);
+          // A metade inferior da folha muda quando a intervenção é uma corretiva já
+          // executada: Planejamento/Tendência/Espectro/Retorno descrevem uma OSP a
+          // fazer, não uma que foi feita. Só o balanceamento tem layout definido —
+          // o alinhamento a laser (regras técnicas ainda em discussão com o cliente)
+          // segue no layout preditivo até lá.
+          const balanceamento = o.tipo_corretiva === "BALANCEAMENTO" ? o.corretiva : null;
+          const foto = <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />;
           return (
             <PaginaInterna key={i} cab={cab} evitarQuebra conteudoTopMm={23.5}>
               <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOsp(o.osp)}</p>
@@ -913,47 +925,55 @@ export function RelatorioCorpo({ d }: { d: Dossie }) {
                 </div>
               </div>
 
-              {/* GRID físico 90 + 10 + 80 + 10 = 190mm.
-                  Esquerda (90mm): FOTO deslocada 10mm da margem (10→90), mas Amplitudes
-                  e Planejamento ALINHADOS À MARGEM ESQUERDA (0mm), como os campos acima;
-                  as linhas de Planejamento terminam a 90mm (borda direita da foto).
-                  Direita (100→180mm): Tendência + 10mm + Espectro. */}
-              <div style={{ width: "190mm", display: "grid", gridTemplateColumns: "90mm 10mm 80mm 10mm", alignItems: "start", marginTop: "14.2mm" }}>
-                <div style={{ width: "90mm" }}>
-                  <div style={{ marginLeft: "10mm", width: "80mm" }}>
-                    <SlotImagem img={imgs.find((im) => im.tipo === "Foto real")} label="Foto do Eqpto" />
+              {balanceamento ? (
+                <CorpoBalanceamento
+                  corretiva={balanceamento}
+                  foto={foto}
+                  velocidade={o.amplitude_velocidade}
+                />
+              ) : (
+                <>
+                  {/* GRID físico 90 + 10 + 80 + 10 = 190mm.
+                      Esquerda (90mm): FOTO deslocada 10mm da margem (10→90), mas Amplitudes
+                      e Planejamento ALINHADOS À MARGEM ESQUERDA (0mm), como os campos acima;
+                      as linhas de Planejamento terminam a 90mm (borda direita da foto).
+                      Direita (100→180mm): Tendência + 10mm + Espectro. */}
+                  <div style={{ width: "190mm", display: "grid", gridTemplateColumns: "90mm 10mm 80mm 10mm", alignItems: "start", marginTop: "14.2mm" }}>
+                    <div style={{ width: "90mm" }}>
+                      <div style={{ marginLeft: "10mm", width: "80mm" }}>{foto}</div>
+                      <div style={{ height: "10mm" }} />
+                      <AmplitudesOSP o={o} tipo={tipoTec} />
+                      <table style={{ marginTop: "3mm", width: "90mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <th />
+                            <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
+                            <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
+                            <tr key={e}>
+                              <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
+                              <td style={{ borderBottom: "0.2mm solid #64748b", width: "25mm" }} />
+                              <td style={{ borderBottom: "0.2mm solid #64748b" }} />
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div />
+                    <div style={{ width: "80mm" }}>
+                      <SlotImagem img={imgs.find((im) => im.tipo === "Linha de tendência")} label="Tendência" />
+                      <div style={{ height: "10mm" }} />
+                      <SlotImagem img={imgs.find((im) => im.tipo === "Espectro")} label="Espectro" />
+                    </div>
+                    <div />
                   </div>
-                  <div style={{ height: "10mm" }} />
-                  <AmplitudesOSP o={o} tipo={tipoTec} />
-                  <table style={{ marginTop: "3mm", width: "90mm", fontSize: "9pt", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th />
-                        <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
-                        <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
-                        <tr key={e}>
-                          <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
-                          <td style={{ borderBottom: "0.2mm solid #64748b", width: "25mm" }} />
-                          <td style={{ borderBottom: "0.2mm solid #64748b" }} />
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div />
-                <div style={{ width: "80mm" }}>
-                  <SlotImagem img={imgs.find((im) => im.tipo === "Linha de tendência")} label="Tendência" />
-                  <div style={{ height: "10mm" }} />
-                  <SlotImagem img={imgs.find((im) => im.tipo === "Espectro")} label="Espectro" />
-                </div>
-                <div />
-              </div>
 
-              <TabelaRetorno aval={o.avaliacao} />
+                  <TabelaRetorno aval={o.avaliacao} />
+                </>
+              )}
             </PaginaInterna>
           );
         })}

@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from apps.cadastros.models import TipoAnomalia, TipoComponente, TipoRecomendacao
 from apps.coletas.models import Achado, Carregamento, Relatorio, StatusCarregamento
+from apps.osp.models import OrdemServico
 from . import test_atividades as fixtures
 from .models import BalanceamentoPlano, ServicoCampo, TipoServico
 
@@ -219,6 +220,78 @@ class AnaliseBalanceamentoTest(TestCase):
         Carregamento.objects.filter(pk=self.atividade["id"]).update(tipo_corretiva=TipoServico.ALINHAMENTO)
         self.assertEqual(self.api.get(self.url).status_code, 400)
         self.assertEqual(self.salvar().status_code, 400)
+
+    # --- Análise técnica → OSP -------------------------------------------------
+    # A folha que sai para o cliente é a da intervenção executada, e ela precisa de
+    # um número de OSP. O gatilho é a análise SALVA — nunca o clique em "Analisar".
+
+    def test_abrir_analise_nao_cria_osp_antes_da_analise_tecnica(self):
+        # setUp já fez POST /analise/: existe o ServicoCampo, e só ele.
+        self.assertEqual(ServicoCampo.objects.count(), 1)
+        self.assertFalse(Achado.objects.exists())
+        self.assertFalse(OrdemServico.objects.exists())
+        self.assertIsNone(ServicoCampo.objects.get().osp_id)
+
+    def test_salvar_analise_cria_uma_osp_vinculada_com_dados_do_achado(self):
+        resposta = self.salvar()
+        self.assertEqual(resposta.status_code, 200, resposta.data)
+        achado = Achado.objects.get()
+        servico = ServicoCampo.objects.get()
+        osp = OrdemServico.objects.get()
+        self.assertEqual(osp.achado_id, achado.pk)
+        self.assertEqual(servico.analise_tecnica_id, achado.pk)
+        self.assertEqual(servico.osp_id, osp.pk)
+        # A análise de ORIGEM (fluxo preditivo) continua intocada.
+        self.assertIsNone(servico.achado_id)
+        self.assertEqual(osp.cliente_id, self.cliente.pk)
+        self.assertEqual(osp.equipamento_id, servico.equipamento_id)
+        self.assertTrue(osp.gerada_automaticamente)
+        self.assertRegex(osp.numero, r"^OSP-\d{4}-\d{4}$")
+        self.assertEqual(osp.sequencial_cliente, 1)
+        self.assertEqual(osp.sequencial_global, 1)
+        self.assertEqual(achado.numero_osp, f"{osp.sequencial_cliente}/{osp.sequencial_global}")
+        # Conteúdo técnico copiado pela regra existente (gerar_de_achado).
+        self.assertEqual(osp.componente, "Rotor do exaustor")
+        self.assertEqual(osp.tipo_componente_id, self.componente.pk)
+        self.assertEqual(osp.tipo_anomalia_id, self.anomalia.pk)
+        self.assertEqual(self.api.get(self.url).data["servico"]["osp"], osp.pk)
+
+    def test_resalvar_analise_nao_duplica_osp(self):
+        for _ in range(5):
+            self.assertEqual(self.salvar().status_code, 200)
+        # Editar detalhe/recomendação depois também não abre uma segunda ordem.
+        self.assertEqual(
+            self.api.patch(self.url, {"tecnica": {"detalhe": "Revisado"}}, format="json").status_code, 200
+        )
+        self.assertEqual(
+            self.api.patch(self.url, {"tecnica": {"recomendacao": self.recomendacao_sem_anomalia.pk}}, format="json").status_code,
+            200,
+        )
+        self.assertEqual(Achado.objects.count(), 1)
+        self.assertEqual(OrdemServico.objects.count(), 1)
+        self.assertEqual(ServicoCampo.objects.count(), 1)
+
+    def test_servico_com_osp_de_origem_nao_ganha_segunda_osp(self):
+        origem = OrdemServico.objects.create(
+            cliente=self.cliente, equipamento_id=ServicoCampo.objects.get().equipamento_id,
+            titulo="OSP preditiva de origem",
+        )
+        ServicoCampo.objects.filter(pk=self.servico_id).update(osp=origem)
+        self.assertEqual(self.salvar().status_code, 200)
+        self.assertEqual(OrdemServico.objects.count(), 1)
+        self.assertEqual(ServicoCampo.objects.get().osp_id, origem.pk)
+        # A OSP de origem não é sequestrada para a análise desta intervenção.
+        self.assertIsNone(OrdemServico.objects.get().achado_id)
+
+    def test_falha_ao_gerar_osp_reverte_analise_e_vinculos(self):
+        with patch("apps.osp.models.OrdemServico.save", side_effect=RuntimeError("falha")):
+            with self.assertRaises(RuntimeError):
+                self.salvar()
+        self.assertFalse(Achado.objects.exists())
+        self.assertFalse(OrdemServico.objects.exists())
+        servico = ServicoCampo.objects.get()
+        self.assertIsNone(servico.analise_tecnica_id)
+        self.assertIsNone(servico.osp_id)
 
     def test_falha_no_servico_reverte_criacao_da_analise(self):
         with patch("apps.servicos.models.ServicoCampo.save", side_effect=RuntimeError("falha")):

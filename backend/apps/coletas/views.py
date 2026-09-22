@@ -384,6 +384,26 @@ class RelatorioViewSet(viewsets.ModelViewSet):
 
         from apps.osp.models import ResultadoConfirmacao
 
+        # --- Manutenção corretiva: o ServicoCampo de cada análise técnica ---------
+        # Mapa carregado de uma vez (a folha da OSP precisa de planos, pontos,
+        # economia e equipamento); buscar serviço por serviço dentro do laço de
+        # achados seria N+1 num relatório com dezenas de folhas.
+        from apps.servicos.models import ServicoCampo
+        from apps.servicos.relatorio_corretivo import payload_corretivo_do_dossie
+
+        servicos_corretivos = {
+            s.analise_tecnica_id: s
+            for s in (
+                ServicoCampo.objects.ativos()
+                .filter(analise_tecnica__item__carregamento__relatorio=rel)
+                .select_related(
+                    "cliente", "equipamento", "analista", "instrumento", "economia",
+                    "osp", "item",
+                )
+                .prefetch_related("planos", "pontos")
+            )
+        }
+
         # --- Achados: apuração (Seção B) E folhas (Seção D) da MESMA lista —
         #     itera TODOS os achados, garantindo que a contagem bata com as folhas.
         achados_qs = (
@@ -439,6 +459,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
             eq = a.item.equipamento
             setor = eq.setor
             area = setor.area if setor else None
+            servico_corretivo = servicos_corretivos.get(a.id)
+            corretiva = (
+                payload_corretivo_do_dossie(servico_corretivo)
+                if servico_corretivo is not None else None
+            )
             osp = getattr(a, "osp", None)
             if osp is not None:
                 custo_evitado += osp.retorno_investimento
@@ -482,6 +507,11 @@ class RelatorioViewSet(viewsets.ModelViewSet):
                 "analista": a.item.carregamento.analista.nome if a.item.carregamento.analista_id else "",
                 "imagens": imagens,
                 "avaliacao": avaliacao_osp(osp),
+                # Manutenção corretiva: o layout da folha muda por tipo (hoje só o
+                # balanceamento tem apresentação definida). Vazio nos achados
+                # preditivos, que seguem com o layout de sempre.
+                "tipo_corretiva": a.item.carregamento.tipo_corretiva,
+                "corretiva": corretiva,
             })
 
         def distribuicao(tally):

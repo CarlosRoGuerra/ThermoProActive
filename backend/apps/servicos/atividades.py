@@ -16,6 +16,7 @@ from .analise_balanceamento import (
     AnaliseBalanceamentoSerializer, CabecalhoBalanceamentoSerializer,
     catalogos_balanceamento, validar_servico_balanceamento,
 )
+from .osp_corretiva import vincular_osp_da_analise
 
 # Os campos analise/analise_tecnica/observacoes_analise já vêm de
 # ItemInspecaoSerializer (base, coletas/serializers.py) — a Análise de campo unificada
@@ -149,6 +150,9 @@ class AtividadeCorretivaViewSet(
             servico.analise_tecnica = tecnica.save(item=item)
             if "rotacao_hz" in cabecalho.validated_data:
                 servico.rotacao_hz = cabecalho.validated_data["rotacao_hz"]
+            # A OSP nasce da análise SALVA, não do clique em "Analisar": abrir a tela
+            # cria só o ServicoCampo. Idempotente — resalvar a análise não gera outra.
+            vincular_osp_da_analise(servico)
             servico.save()
         return Response({
             "servico": ServicoCampoSerializer(servico).data,

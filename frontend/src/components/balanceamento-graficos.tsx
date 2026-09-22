@@ -21,11 +21,16 @@
  * triângulo), então a identidade nunca depende só da cor.
  */
 
+import type { ReactNode } from "react";
+
 const SERIES = [
   { chave: "reference", rotulo: "Reference (antes)", cor: "var(--viz-reference)" },
   { chave: "trial", rotulo: "Trial (teste)", cor: "var(--viz-trial)" },
   { chave: "trim", rotulo: "Trim (depois)", cor: "var(--viz-trim)" },
 ] as const;
+
+/** Corrida do balanceamento — `reference`, `trial` ou `trim`. */
+export type SerieCorrida = (typeof SERIES)[number]["chave"];
 
 type Corrida = { mms: number; fase: number | null } | null;
 
@@ -74,32 +79,60 @@ function Marcador({ tipo, x, y, cor }: { tipo: string; x: number; y: number; cor
 }
 
 /**
- * Mostrador de fase de UM ponto — as três corridas (reference/trial/trim) como agulhas
- * no mesmo mostrador polar, quando têm fase medida. Corrida sem fase (comum em pontos
+ * Mostrador de fase de UM ponto — as corridas (reference/trial/trim) como agulhas no
+ * mesmo mostrador polar, quando têm fase medida. Corrida sem fase (comum em pontos
  * antigos, de quando a fase não era coletada) simplesmente não desenha agulha — o
  * ponto ainda aparece no Antes×Depois, só não neste mostrador.
+ *
+ * `series` limita as corridas desenhadas. A tela de campo omite a propriedade e vê as
+ * três (é assim que se acompanha a convergência); o relatório final pede só o trim,
+ * porque o resultado que ficou na máquina é o do Trim Run — mostrar o Trial ali seria
+ * publicar o ângulo do ensaio como se fosse o da correção.
  */
 export function MostradorPolar({
   ponto,
   tamanho = 280,
+  series,
+  mensagemVazia,
 }: {
   ponto: PontoGrafico;
-  tamanho?: number;
+  /** Lado do SVG. Aceita medida CSS ("46mm") para caber no slot impresso. */
+  tamanho?: number | string;
+  series?: readonly SerieCorrida[];
+  /** Texto quando nenhuma corrida visível tem fase — nunca cair em outra corrida. */
+  mensagemVazia?: ReactNode;
 }) {
-  const corridas = SERIES.map((s) => ({ ...s, dado: ponto[s.chave] })).filter(
+  const visiveis = series ? SERIES.filter((s) => series.includes(s.chave)) : SERIES;
+  const corridas = visiveis.map((s) => ({ ...s, dado: ponto[s.chave] })).filter(
     (c) => c.dado && c.dado.fase != null
   );
-  // Escala LOCAL a este ponto — as 3 corridas (reference/trial/trim) do MESMO ponto
-  // precisam ser comparáveis entre si, mas normalizar contra a amplitude de OUTRO
-  // ponto do serviço distorce o raio (ex.: o trim, tipicamente o menor valor, fica
-  // ainda menor e quase some quando o máximo vem de um trial bem maior de outro ponto).
-  const maxima = amplitudeMaxima([ponto]);
+  // Escala LOCAL a este ponto e às corridas VISÍVEIS. Com as três à vista (tela de
+  // campo) isso é a amplitude do ponto, como sempre foi: elas precisam ser
+  // comparáveis entre si, e normalizar contra a amplitude de OUTRO ponto do serviço
+  // distorceria o raio. Com uma corrida só (o trim, no relatório final) a agulha
+  // ocupa o raio inteiro — ali o que se lê é o ÂNGULO da correção; a amplitude está
+  // escrita na legenda e desenhada no antes/depois. Sem isso o trim, que por
+  // definição é o menor valor, viraria um ponto colado no centro.
+  const soVisivel = (chave: SerieCorrida) =>
+    visiveis.some((s) => s.chave === chave) ? ponto[chave] : null;
+  const maxima = amplitudeMaxima([
+    {
+      ...ponto,
+      reference: soVisivel("reference"),
+      trial: soVisivel("trial"),
+      trim: soVisivel("trim"),
+    },
+  ]);
 
   if (!corridas.length) {
     return (
       <p className="text-sm text-fg-muted">
-        Sem fase medida em nenhuma corrida deste ponto — lance a fase no Reference,
-        Trial ou Trim Run para o mostrador aparecer.
+        {mensagemVazia ?? (
+          <>
+            Sem fase medida em nenhuma corrida deste ponto — lance a fase no Reference,
+            Trial ou Trim Run para o mostrador aparecer.
+          </>
+        )}
       </p>
     );
   }

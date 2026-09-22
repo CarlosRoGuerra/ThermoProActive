@@ -6,7 +6,6 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import InternoEditaClienteVisualiza
 
-from . import rules
 from .analise_balanceamento import validar_servico_balanceamento
 from .models import (
     BalanceamentoPlano,
@@ -14,6 +13,7 @@ from .models import (
     EconomiaEnergetica,
     ServicoCampo,
 )
+from .relatorio_corretivo import payload_corretivo
 from .serializers import (
     BalanceamentoPlanoSerializer,
     BalanceamentoPontoSerializer,
@@ -60,75 +60,11 @@ class ServicoCampoViewSet(viewsets.ModelViewSet):
         Payload pronto do relatório: os mesmos números da planilha, mais o que ela não
         dava — veredito ISO por ponto e as coordenadas do mostrador polar já calculadas
         (o front desenha o SVG, não refaz trigonometria).
+
+        A montagem vive em `relatorio_corretivo` porque a folha da OSP no relatório
+        técnico (`RelatorioViewSet.dossie`) consome exatamente os mesmos números.
         """
-        servico = self.get_object()
-        pontos = list(servico.pontos.all())
-
-        # Escala do mostrador: a maior vibração do serviço vira raio 1.
-        amplitudes = []
-        for p in pontos:
-            amplitudes.append(p.reference_mms)
-            amplitudes.extend(v for v in (p.trial_mms, p.trim_mms) if v is not None)
-        amplitude_maxima = max(amplitudes) if amplitudes else None
-
-        def vetor(fase, amplitude):
-            if fase is None or amplitude is None:
-                return None
-            x, y = rules.vetor_polar(fase, amplitude=amplitude, amplitude_maxima=amplitude_maxima)
-            return {"x": float(x), "y": float(y), "fase": float(fase), "amplitude": float(amplitude)}
-
-        dados_pontos = []
-        for p in pontos:
-            dados_pontos.append({
-                "id": p.id,
-                "codigo_ponto": p.codigo_ponto,
-                "numero_mancal": p.numero_mancal,
-                "direcao": p.direcao,
-                "plano": p.plano_id,
-                "reference": {
-                    "mms": float(p.reference_mms),
-                    "fase": float(p.reference_fase) if p.reference_fase is not None else None,
-                },
-                "trial": (
-                    {"mms": float(p.trial_mms), "fase": float(p.trial_fase)}
-                    if p.trial_mms is not None and p.trial_fase is not None else None
-                ),
-                "trim": (
-                    {"mms": float(p.trim_mms), "fase": float(p.trim_fase)}
-                    if p.completo else None
-                ),
-                "completo": p.completo,
-                "residual_pct": float(p.residual_pct) if p.residual_pct is not None else None,
-                "reducao_pct": float(p.reducao_pct) if p.reducao_pct is not None else None,
-                "zona_iso": p.zona_iso,
-                "criticidade": p.criticidade,
-                "eficaz": p.eficaz,
-                "diagnostico": p.diagnostico,
-                "mostrador": {
-                    "reference": vetor(p.reference_fase, p.reference_mms),
-                    "trial": vetor(p.trial_fase, p.trial_mms),
-                    "trim": vetor(p.trim_fase, p.trim_mms),
-                },
-            })
-
-        economia = getattr(servico, "economia", None)
-        dados_economia = None
-        if economia is not None:
-            dados_economia = {
-                **EconomiaEnergeticaSerializer(economia).data,
-                "premissas": economia.premissas,
-            }
-
-        return Response({
-            "servico": ServicoCampoSerializer(servico).data,
-            "mostrador": {
-                "setores": rules.SETORES_MOSTRADOR,
-                "graus_por_setor": rules.GRAUS_POR_SETOR,
-                "amplitude_maxima": float(amplitude_maxima) if amplitude_maxima else None,
-            },
-            "pontos": dados_pontos,
-            "economia": dados_economia,
-        })
+        return Response(payload_corretivo(self.get_object()))
 
 
 class BalanceamentoPlanoViewSet(viewsets.ModelViewSet):

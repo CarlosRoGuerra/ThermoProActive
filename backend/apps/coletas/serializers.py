@@ -223,8 +223,9 @@ class AchadoSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # Ao CONFIRMAR (0→1), gera a OSP da análise (1 por análise) — exceto para achados
-        # de manutenção corretiva: a OSP relevante já é `ServicoCampo.osp` ("OSP de
-        # origem"), gerar outra aqui duplicaria a OSP da mesma intervenção.
+        # de manutenção corretiva, onde a OSP já nasceu no salvamento da análise técnica
+        # (apps.servicos.osp_corretiva) ou já é a "OSP de origem" do serviço. Confirmar
+        # no escritório não é um segundo gatilho: a intervenção tem UMA ordem.
         gerar_osp = (
             validated_data.get("confirmada")
             and not instance.confirmada
