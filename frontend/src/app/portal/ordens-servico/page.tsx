@@ -1,12 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Clock, Pencil, Plus, TriangleAlert, Trash2, Wrench } from "lucide-react";
+import { ClipboardPen, Clock, TriangleAlert, Wrench } from "lucide-react";
 import {
   Alert,
-  Button,
-  ConfirmDialog,
   DataTable,
   EmptyState,
   EstadoBadge,
@@ -21,13 +18,10 @@ import {
   StatusBadge,
   Toolbar,
   grauDe,
-  useConfirmacao,
-  useToast,
   type Coluna,
   type ItemMenu,
 } from "@/components/ds";
-import { api } from "@/lib/api";
-import { useLista, useMutacao } from "@/lib/recurso";
+import { useLista } from "@/lib/recurso";
 import { usePermissoes } from "@/lib/permissions";
 import { data as fmtData, diasAte, plural, texto } from "@/lib/format";
 import type { OrdemServico } from "@/lib/types";
@@ -95,26 +89,13 @@ function Prazo({ osp }: { osp: OrdemServico }) {
 
 export default function PortalOrdensServicoPage() {
   const { pode } = usePermissoes();
-  const podeGerenciar = pode("parque:gerenciar");
-  const toast = useToast();
+  const podeResponder = pode("osp:responder");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("abertas");
   const { itens, carregando, falha, recarregar } = useLista<OrdemServico>(
     "/osps/?ordering=-criado_em&page_size=300",
     "ordens de serviço do portal"
   );
-  const mutacao = useMutacao("remoção de ordem de serviço");
-  const remocao = useConfirmacao<OrdemServico>();
-
-  async function remover(osp: OrdemServico) {
-    const r = await mutacao.executar(() => api(`/osps/${osp.id}/`, { method: "DELETE" }));
-    if (r.ok) {
-      toast.sucesso(`OSP ${osp.numero} removida`);
-      recarregar();
-    } else {
-      toast.erro(r.falha.titulo, { descricao: r.falha.descricao });
-    }
-  }
 
   const abertas = useMemo(() => itens.filter((o) => STATUS_ABERTOS.includes(o.status)), [itens]);
   const vencidas = useMemo(() => abertas.filter((o) => o.sla_vencido), [abertas]);
@@ -190,15 +171,8 @@ export default function PortalOrdensServicoPage() {
       <PageHeader
         icon={Wrench}
         title="Ordens de serviço"
-        description="As intervenções recomendadas a partir das medições do seu parque, com a urgência e o prazo de cada uma. A execução é acompanhada pela equipe técnica."
+        description="As intervenções recomendadas a partir das medições do seu parque, com a urgência e o prazo de cada uma. Quando a corretiva for executada, informe aqui o que foi feito — é esse retorno que fecha o ciclo e alimenta o retorno do investimento no relatório."
         trilha={[{ label: "Ordens de serviço" }]}
-        actions={
-          podeGerenciar ? (
-            <Link href="/portal/ordens-servico/novo">
-              <Button icon={Plus}>Nova ordem de serviço</Button>
-            </Link>
-          ) : undefined
-        }
       />
 
       {vencidas.length > 0 && (
@@ -277,14 +251,12 @@ export default function PortalOrdensServicoPage() {
         ordenacaoInicial={{ chave: "prazo", direcao: "asc" }}
         legenda="Ordens de serviço com número, equipamento, urgência, prazo e situação"
         acoes={
-          podeGerenciar
+          podeResponder
             ? (o): ItemMenu[] => [
-                { label: "Editar", icon: Pencil, href: `/portal/ordens-servico/editar/${o.id}` },
                 {
-                  label: "Remover",
-                  icon: Trash2,
-                  destrutivo: true,
-                  onClick: () => remocao.pedir(o),
+                  label: "Informar execução",
+                  icon: ClipboardPen,
+                  href: `/portal/ordens-servico/editar/${o.id}`,
                 },
               ]
             : undefined
@@ -301,43 +273,17 @@ export default function PortalOrdensServicoPage() {
             <EmptyState
               icon={Wrench}
               title="Nenhuma ordem de serviço"
-              description={
-                podeGerenciar
-                  ? "As ordens costumam abrir automaticamente numa medição crítica — mas você também pode abrir uma manualmente."
-                  : "As ordens são abertas automaticamente quando uma medição aponta condição crítica em um equipamento seu."
-              }
-              action={
-                podeGerenciar ? (
-                  <Link href="/portal/ordens-servico/novo">
-                    <Button icon={Plus}>Nova ordem de serviço</Button>
-                  </Link>
-                ) : undefined
-              }
+              description="As ordens são abertas automaticamente quando uma medição aponta condição crítica em um equipamento seu."
               comoFunciona={[
                 "Uma medição fora do limite da norma é classificada como crítica.",
                 "O sistema abre a ordem com a recomendação técnica e o prazo (SLA).",
-                "Você é avisado por e-mail e acompanha a execução aqui.",
+                "Você é avisado por e-mail, executa a corretiva e informa aqui o que foi feito.",
               ]}
             />
           )
         }
       />
 
-      <ConfirmDialog
-        aberto={!!remocao.alvo}
-        onFechar={remocao.cancelar}
-        onConfirmar={() => remocao.executar(remover)}
-        enviando={remocao.enviando}
-        title="Remover esta ordem de serviço?"
-        confirmarLabel="Remover"
-        mensagem={
-          <>
-            A OSP <strong>{remocao.alvo?.numero}</strong> ({texto(remocao.alvo?.equipamento_tag)})
-            é removida.
-          </>
-        }
-        irreversivel
-      />
     </PageBody>
   );
 }

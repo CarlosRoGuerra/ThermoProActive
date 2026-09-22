@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.accounts.permissions import InternoOuClienteMasterEdita
+from apps.accounts.permissions import InternoEditaClienteResponde, IsInterno
 from apps.coletas.views import escopo_cliente
 
 from .models import OrdemServico
@@ -12,9 +12,11 @@ from .serializers import OrdemServicoSerializer, StatusUpdateSerializer
 
 class OrdemServicoViewSet(viewsets.ModelViewSet):
     serializer_class = OrdemServicoSerializer
-    # Master do cliente também cria/edita/exclui e muda status (decisão de
-    # 2026-09-18) — antes só a equipe interna escrevia aqui.
-    permission_classes = [InternoOuClienteMasterEdita]
+    # Único recurso em que o Portal escreve: o cliente devolve as informações
+    # da execução (PATCH), mas não abre nem apaga OSP (decisão de 2026-09-21).
+    # QUAIS campos ele pode tocar está em
+    # `OrdemServicoSerializer.CAMPOS_RETORNO_CLIENTE`.
+    permission_classes = [InternoEditaClienteResponde]
     filterset_fields = ["status", "prioridade", "cliente", "equipamento", "gerada_automaticamente"]
     search_fields = ["numero", "titulo", "descricao"]
     ordering_fields = ["criado_em", "sla_data", "prioridade"]
@@ -28,10 +30,13 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
 
     def _impedir_cruzar_cliente(self, validated_data):
         """
-        `get_queryset()` só protege OSP que já existe. Sem isto, o Master de um
-        cliente poderia criar (ou reatribuir) uma OSP com `cliente` de outra
-        empresa, ou com `equipamento` de outra empresa — inclusive vazando o TAG
-        do equipamento alheio de volta na resposta.
+        Segunda tranca de `cliente`/`equipamento`.
+
+        Hoje ela não tem por onde disparar: o cliente não cria OSP, e os dois
+        campos saem somente-leitura para ele em `OrdemServicoSerializer`. Fica
+        de propósito — é a guarda que impede reatribuir uma OSP para outra
+        empresa (e vazar o TAG alheio na resposta) se a regra de escrita voltar
+        a afrouxar, como já afrouxou uma vez.
         """
         user = self.request.user
         if not (user.is_cliente and user.cliente_id):
@@ -53,9 +58,15 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         self._impedir_cruzar_cliente(serializer.validated_data)
         serializer.save()
 
-    @action(detail=True, methods=["patch"])
+    @action(detail=True, methods=["patch"], permission_classes=[IsInterno])
     def status(self, request, pk=None):
-        """Atualiza o status da OSP — fluxo do item 2.6.3."""
+        """
+        Atualiza o status da OSP — fluxo do item 2.6.3.
+
+        Restrito à equipe interna: o status é a leitura que a CONTRATADA faz do
+        andamento. O cliente informa as DATAS e o que foi feito (campos de
+        retorno); quem move a OSP de coluna, a partir disso, é a equipe.
+        """
         osp = self.get_object()
         serializer = StatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

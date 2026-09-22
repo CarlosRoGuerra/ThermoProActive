@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -157,6 +158,19 @@ class SolicitacaoAcessoViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(SolicitacaoAcessoListSerializer(solicitacao).data)
 
 
+class PaginacaoEquipe(PageNumberPagination):
+    """
+    A equipe de um cliente é uma lista curta e é usada para PREENCHER SELECT
+    ("quem executou a corretiva"), não só para exibir. Com a paginação padrão
+    (20, sem `page_size_query_param`), um `?page_size=200` era silenciosamente
+    ignorado e o 21º colaborador sumia da lista sem nenhum aviso.
+    """
+
+    page_size = 100
+    page_size_query_param = "page_size"
+    max_page_size = 500
+
+
 class MinhaEquipeViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Portal do Cliente: "quem já tem acesso" da PRÓPRIA empresa — o que faltava
@@ -168,6 +182,7 @@ class MinhaEquipeViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = UserSerializer
     permission_classes = [SouDoCliente]
+    pagination_class = PaginacaoEquipe
 
     def get_queryset(self):
         # Escopo por cliente: nunca lista colega de outra empresa (multi-tenant).

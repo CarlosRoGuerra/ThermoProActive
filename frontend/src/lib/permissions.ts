@@ -22,6 +22,12 @@ import type { Nivel, Perfil, User } from "./types";
  *     Sênior  opera e exclui
  *     Pleno   opera, não exclui
  *     Júnior  opera, não exclui
+ *
+ * O FrontEnd (Portal) é de CONSULTA. A única escrita que ele tem é o retorno
+ * de informação da Ordem de Serviço (`osp:responder`) — decisão de
+ * 2026-09-21, que reverte a de 2026-09-18. Convidar a própria equipe
+ * (`equipe:gerenciar`) continua com o Master do cliente: é gestão da conta,
+ * não dado operacional.
  */
 
 /** Cada verbo que a interface precisa decidir mostrar ou não. */
@@ -38,11 +44,10 @@ export type Habilidade =
      exclusivo da equipe interna, em /clientes, /equipamentos, /rotas (admin). */
   | "clientes:gerenciar"
   /*
-   * O PRÓPRIO parque, visto de dentro do Portal (decisão de 2026-09-18: o
-   * cliente passa a se autoadministrar — "empresas" cuidam do que é delas).
-   * Reaproveita as MESMAS telas de /equipamentos e /rotas por baixo (mesmo
-   * formulário, mesma validação) — só entra pelo Portal, escopado ao próprio
-   * cliente pelo backend. Só o Master do cliente; os demais níveis só leem.
+   * Escrita no parque técnico (equipamentos, rotas, inspeções, medições).
+   * Exclusivo da equipe interna desde 2026-09-21, quando a decisão de
+   * autoatendimento de 2026-09-18 foi revertida: o Portal consulta e devolve
+   * informação, mas quem cadastra e diagnostica é a CONTRATADA.
    */
   | "parque:gerenciar"
   /* Tabelas de referência do sistema (normas, tipos, criticidades…) */
@@ -63,6 +68,11 @@ export type Habilidade =
   | "osp:ver"
   | "osp:criar"
   | "osp:mudar-status"
+  /* Retorno de informação: o cliente devolve quando a corretiva foi planejada
+     e executada, por quem, o que foi feito, se o diagnóstico se confirmou e
+     quanto custou. É a ÚNICA escrita do Portal — ver, no backend,
+     `OrdemServicoSerializer.CAMPOS_RETORNO_CLIENTE`. */
+  | "osp:responder"
   /* Relatórios e exportações */
   | "relatorios:ver"
   | "relatorios:exportar"
@@ -99,7 +109,7 @@ export function can(user: User | null | undefined, habilidade: Habilidade): bool
       return interno;
 
     case "parque:gerenciar":
-      return interno || (cliente && master);
+      return interno;
 
     case "dados-sistema:ver":
       return interno;
@@ -134,6 +144,10 @@ export function can(user: User | null | undefined, habilidade: Habilidade): bool
     case "osp:criar":
     case "osp:mudar-status":
       return interno;
+    /* Qualquer nível do Portal responde: quem executou a corretiva costuma ser
+       o manutentor, não o gestor. O backend também não exige Master aqui. */
+    case "osp:responder":
+      return interno || cliente;
 
     case "relatorios:ver":
     case "relatorios:exportar":
@@ -203,16 +217,12 @@ type RegraRota = { prefixo: string; exige: Habilidade };
 
 const REGRAS_ROTA: RegraRota[] = [
   { prefixo: "/portal/equipe", exige: "equipe:ver" },
-  // Escrita no próprio parque — só o Master do cliente (ou a equipe interna,
-  // testando pelo Portal). Prefixos específicos, checados ANTES do "/portal"
-  // genérico abaixo.
-  { prefixo: "/portal/equipamentos/novo", exige: "parque:gerenciar" },
-  { prefixo: "/portal/equipamentos/editar", exige: "parque:gerenciar" },
-  { prefixo: "/portal/ordens-servico/novo", exige: "parque:gerenciar" },
-  { prefixo: "/portal/ordens-servico/editar", exige: "parque:gerenciar" },
-  // "Nova inspeção" é um modal em /portal/inspecoes (sem rota própria); só a
-  // edição (lançar medições) tem rota dedicada.
-  { prefixo: "/portal/inspecoes/editar", exige: "parque:gerenciar" },
+  // A única tela de escrita do Portal: devolver as informações da execução de
+  // uma OSP. Prefixo específico, checado ANTES do "/portal" genérico abaixo.
+  // As rotas de cadastro que existiam aqui (/portal/equipamentos/novo,
+  // /portal/ordens-servico/novo, /portal/inspecoes/editar) foram removidas
+  // junto com as páginas em 2026-09-21.
+  { prefixo: "/portal/ordens-servico/editar", exige: "osp:responder" },
   { prefixo: "/portal", exige: "area:portal" },
   { prefixo: "/usuarios", exige: "usuarios:ver" },
   { prefixo: "/cadastros", exige: "dados-sistema:ver" },

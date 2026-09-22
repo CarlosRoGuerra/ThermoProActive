@@ -4,7 +4,6 @@ from rest_framework.pagination import PageNumberPagination
 
 from apps.accounts.permissions import (
     InternoEditaClienteVisualiza,
-    InternoOuClienteMasterEdita,
     MasterEditaDemaisVisualizam,
 )
 
@@ -86,6 +85,10 @@ class BaseCadastroViewSet(viewsets.ModelViewSet):
     (`escopo_cliente`), agora também aqui.
     """
 
+    #: O Portal é de consulta: o parque é cadastrado pela CONTRATADA
+    #: (decisão de 2026-09-21, que reverte a de 2026-09-18). A única escrita do
+    #: cliente no sistema é o retorno da Ordem de Serviço — ver
+    #: `InternoEditaClienteResponde`.
     permission_classes = [InternoEditaClienteVisualiza]
 
     #: Caminho do ORM até `cadastros.Cliente`. `None` = tabela global.
@@ -149,11 +152,8 @@ class ClienteViewSet(BaseCadastroViewSet):
     """
     Cadastro do tomador de serviço (topo da hierarquia Cliente → Área → Setor).
 
-    Fica com `InternoEditaClienteVisualiza` (só leitura pro cliente) mesmo após
-    a decisão de 2026-09-18 de liberar escrita pro Master do cliente no parque
-    abaixo: criar/excluir A PRÓPRIA empresa não faz sentido por autoatendimento,
-    e "editar meus dados cadastrais" não foi pedido — só o parque técnico foi
-    (equipamentos, áreas, setores, rotas, OSPs, análises).
+    Só leitura para o cliente, como todo o resto do parque: ele consulta a
+    própria estrutura, mas quem cadastra é a CONTRATADA.
     """
 
     # O usuário do Portal vê apenas a própria empresa.
@@ -168,7 +168,6 @@ class ClienteViewSet(BaseCadastroViewSet):
 
 
 class AreaViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "cliente"
     queryset = Area.objects.ativos().select_related("cliente")
     serializer_class = AreaSerializer
@@ -178,7 +177,6 @@ class AreaViewSet(BaseCadastroViewSet):
 
 
 class SetorViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "area__cliente"
     queryset = Setor.objects.ativos().select_related("area", "area__cliente")
     serializer_class = SetorSerializer
@@ -188,7 +186,6 @@ class SetorViewSet(BaseCadastroViewSet):
 
 
 class EquipamentoViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "setor__area__cliente"
     queryset = (
         Equipamento.objects.ativos()
@@ -209,7 +206,6 @@ class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
     """Datasheet de Motor Elétrico — acesso estruturado via /equipamentos/{id}/ (nested,
     somente leitura) e aqui para criar/editar (mesmo padrão de balanceamento-planos)."""
 
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "equipamento__setor__area__cliente"
     queryset = DadosTecnicosMotor.objects.ativos().select_related("equipamento")
     serializer_class = DadosTecnicosMotorSerializer
@@ -217,7 +213,6 @@ class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
 
 
 class DadosTecnicosTransformadorViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "equipamento__setor__area__cliente"
     queryset = DadosTecnicosTransformador.objects.ativos().select_related("equipamento")
     serializer_class = DadosTecnicosTransformadorSerializer
@@ -225,7 +220,6 @@ class DadosTecnicosTransformadorViewSet(BaseCadastroViewSet):
 
 
 class ComponenteViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "equipamento__setor__area__cliente"
     queryset = Componente.objects.ativos().select_related("equipamento")
     serializer_class = ComponenteSerializer
@@ -323,7 +317,6 @@ class GrupoAcessoViewSet(CatalogoViewSet):
 
 
 class RotaViewSet(BaseCadastroViewSet):
-    permission_classes = [InternoOuClienteMasterEdita]
     campo_cliente = "cliente"
     queryset = Rota.objects.ativos().select_related("cliente").prefetch_related("equipamentos")
     serializer_class = RotaSerializer

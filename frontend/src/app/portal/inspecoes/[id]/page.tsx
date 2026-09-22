@@ -1,11 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { Activity, ClipboardCheck, Flame, Gauge, Pencil, Waves } from "lucide-react";
+import { Activity, ClipboardCheck, Flame, Gauge, Waves } from "lucide-react";
 import {
   Badge,
-  Button,
   Card,
   CardHeader,
   DescriptionList,
@@ -28,7 +26,6 @@ import {
   grauDe,
 } from "@/components/ds";
 import { useRecurso } from "@/lib/recurso";
-import { usePermissoes } from "@/lib/permissions";
 import { data as fmtData, numero, numeroUnidade, texto } from "@/lib/format";
 import type { Inspecao } from "@/lib/types";
 
@@ -43,8 +40,6 @@ import type { Inspecao } from "@/lib/types";
  */
 export default function PortalInspecaoPage() {
   const { id } = useParams<{ id: string }>();
-  const { pode } = usePermissoes();
-  const podeGerenciar = pode("parque:gerenciar");
   const { dados: insp, falha, carregando, recarregar } = useRecurso<Inspecao>(
     `/inspecoes/${id}/`,
     "inspeção"
@@ -69,15 +64,6 @@ export default function PortalInspecaoPage() {
         description={insp.tipo_analise_display}
         trilha={[{ label: "Inspeções", href: "/portal/inspecoes" }, { label: fmtData(insp.data) }]}
         selo={<Badge tone="neutral">{insp.status_display}</Badge>}
-        actions={
-          podeGerenciar ? (
-            <Link href={`/portal/inspecoes/editar/${insp.id}`}>
-              <Button variant="secondary" icon={Pencil}>
-                Lançar medições
-              </Button>
-            </Link>
-          ) : undefined
-        }
       />
 
       <MetricGrid colunas={3}>

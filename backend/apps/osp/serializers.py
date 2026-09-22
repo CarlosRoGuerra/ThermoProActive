@@ -4,6 +4,39 @@ from .models import OrdemServico
 
 
 class OrdemServicoSerializer(serializers.ModelSerializer):
+    """
+    A OSP é o único recurso em que o Portal escreve — e só nos campos de
+    RETORNO DE INFORMAÇÃO (`CAMPOS_RETORNO_CLIENTE`): quando a corretiva foi
+    planejada e executada, por quem, o que foi feito, se a abertura da máquina
+    confirmou o diagnóstico, e quanto custou de fato.
+
+    Todo o resto (título, grau de risco, anomalia, recomendação, amplitudes,
+    status, acompanhamento, responsável, SLA) é diagnóstico técnico da
+    CONTRATADA e fica somente-leitura para o cliente. A trava é aplicada em
+    `__init__`, ou seja, vale para qualquer caminho de escrita — não depende de
+    o formulário do front esconder o campo.
+    """
+
+    #: Campos que o cliente devolve preenchidos. Espelha os dois blocos
+    #: marcados no modelo: "Etapas alimentadas pelo cliente" e
+    #: "Avaliação de Resultados" (a base do ROI da Seção D).
+    CAMPOS_RETORNO_CLIENTE = frozenset({
+        # Etapas da execução
+        "planejado_em", "planejado_por",
+        "executado_em", "executado_por",
+        "finalizado_por", "descricao_corretiva", "resultado_confirmacao",
+        # Avaliação de Resultados — custo real, que só o cliente conhece
+        "pred_mao_obra_h", "pred_mao_obra_valor",
+        "pred_terceirizado_h", "pred_terceirizado_valor",
+        "pred_material_valor", "pred_producao_h", "pred_producao_valor",
+        "pred_outros_valor",
+        "emerg_mao_obra_h", "emerg_mao_obra_valor",
+        "emerg_terceirizado_h", "emerg_terceirizado_valor",
+        "emerg_material_valor", "emerg_producao_h", "emerg_producao_valor",
+        "emerg_outros_valor",
+        "custo_real",
+    })
+
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     responsavel_nome = serializers.CharField(source="responsavel.nome", read_only=True, default=None)
@@ -61,6 +94,29 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "custo_estimado", "custo_real", "finalizada_em", "criado_em",
         ]
         read_only_fields = ["numero", "gerada_automaticamente", "criticidade_origem", "finalizada_em"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        usuario = getattr(self.context.get("request"), "user", None)
+        if not getattr(usuario, "is_cliente", False):
+            return
+        # Portal: tudo que não é campo de retorno vira leitura. Um PATCH que
+        # mande `grau_risco` não levanta erro — o DRF simplesmente descarta o
+        # campo somente-leitura, então o diagnóstico da CONTRATADA não é
+        # sobrescrito nem por engano nem de propósito.
+        for nome, campo in self.fields.items():
+            if nome not in self.CAMPOS_RETORNO_CLIENTE:
+                campo.read_only = True
+
+        # "Quem planejou/executou/finalizou" é escolhido numa lista de pessoas.
+        # Sem recortar o queryset, o Portal poderia apontar um usuário de outra
+        # empresa e receber o nome dele de volta em `*_por_nome` — um vazamento
+        # entre inquilinos pela porta dos fundos. Só a própria equipe entra.
+        equipe = type(usuario).objects.filter(
+            cliente_id=usuario.cliente_id, is_active=True
+        ) if usuario.cliente_id else type(usuario).objects.none()
+        for nome in ("planejado_por", "executado_por", "finalizado_por"):
+            self.fields[nome].queryset = equipe
 
 
 class StatusUpdateSerializer(serializers.Serializer):

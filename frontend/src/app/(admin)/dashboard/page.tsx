@@ -42,6 +42,7 @@ import {
   TR,
   cn,
 } from "@/components/ds";
+import { qs } from "@/lib/api";
 import { useRecurso } from "@/lib/recurso";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { inteiro, moeda, percentual, plural } from "@/lib/format";
@@ -71,7 +72,11 @@ export default function DashboardPage() {
       <PageHeader
         icon={Gauge}
         title="Visão geral"
-        description="O estado da operação agora: o que está fora do limite, o que está em execução e como o mês vem se comportando."
+        description={
+          clienteAtivo
+            ? `O estado da operação de ${clienteAtivo.nome_fantasia || clienteAtivo.nome} agora: o que está fora do limite, o que está em execução e como o mês vem se comportando. Desative o cliente na barra lateral para ver todas as unidades.`
+            : "O estado da operação agora, somando todos os clientes: o que está fora do limite, o que está em execução e como o mês vem se comportando. Ative um cliente na barra lateral para entrar no ambiente dele."
+        }
         selo={
           clienteAtivo ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-subtle px-2.5 py-0.5 text-xs font-medium text-primary-subtle-fg">
@@ -101,8 +106,12 @@ export default function DashboardPage() {
 /* ============================ Operacional ============================ */
 
 function Operacional() {
+  // Com um cliente ativado na barra lateral, o painel entra no ambiente dele;
+  // sem nenhum, mostra a operação inteira. O recorte é feito no servidor — ver
+  // `recorte_cliente` em apps/coletas/views.py.
+  const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<Dashboard>(
-    "/dashboard/",
+    `/dashboard/${qs({ cliente: clienteAtivo?.id })}`,
     "painel operacional"
   );
 
@@ -274,8 +283,9 @@ function Operacional() {
 /* ============================ Executivo ============================ */
 
 function Executivo() {
+  const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<DashboardExecutivo>(
-    "/dashboard/executivo/",
+    `/dashboard/executivo/${qs({ cliente: clienteAtivo?.id })}`,
     "painel executivo"
   );
 

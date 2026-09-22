@@ -1,9 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { OspForm } from "@/app/(admin)/osps/osp-form";
+import { RetornoOsp } from "@/features/portal/retorno-osp";
 
-export default function PortalEditarOspPage() {
+export default function PortalRetornoOspPage() {
   const { id } = useParams<{ id: string }>();
-  return <OspForm ospId={Number(id)} />;
+  return <RetornoOsp ospId={Number(id)} />;
 }

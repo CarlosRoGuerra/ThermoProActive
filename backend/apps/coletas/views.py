@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import InternoEditaClienteVisualiza, InternoOuClienteMasterEdita
+from apps.accounts.permissions import InternoEditaClienteVisualiza
 
 from .models import (
     Achado,
@@ -53,6 +53,25 @@ def escopo_cliente(qs, user, campo_cliente="cliente"):
     return qs
 
 
+def recorte_cliente(qs, request, campo_cliente="cliente"):
+    """
+    `escopo_cliente` (segurança) + recorte opcional pelo CLIENTE ATIVO (UX).
+
+    O painel da equipe interna trabalha "dentro" de um cliente quando o analista
+    ativa um na barra lateral; sem nenhum ativado, ele mostra a operação inteira.
+    O front manda essa escolha em `?cliente=<id>`.
+
+    A ordem importa: o escopo de segurança vem PRIMEIRO e o recorte só estreita
+    o que sobrou. Assim um usuário do Portal que mande `?cliente=<de outro>` não
+    amplia nada — recebe conjunto vazio, nunca dado alheio.
+    """
+    qs = escopo_cliente(qs, request.user, campo_cliente)
+    escolhido = request.query_params.get("cliente")
+    if escolhido and str(escolhido).isdigit():
+        qs = qs.filter(**{campo_cliente: int(escolhido)})
+    return qs
+
+
 def impedir_cross_tenant(user, validated_data, campo, resto=None):
     """
     Contraparte de `escopo_cliente` para escrita: `get_queryset()` só protege
@@ -80,11 +99,10 @@ def impedir_cross_tenant(user, validated_data, campo, resto=None):
 
 
 class InspecaoViewSet(viewsets.ModelViewSet):
-    # Master do cliente também cria/edita/exclui (decisão de 2026-09-19 — "o
-    # cliente vai ser administrado da própria empresa"). Coleta direta (sem
-    # rota) é usada por tecnologias que ainda não têm rota montada, então faz
-    # sentido o próprio cliente lançar uma medição pontual.
-    permission_classes = [InternoOuClienteMasterEdita]
+    # Lançar medição é trabalho técnico da CONTRATADA; o cliente consulta o
+    # resultado (decisão de 2026-09-21). As guardas de escrita cross-tenant
+    # abaixo continuam valendo para o caso de a regra voltar a afrouxar.
+    permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["cliente", "tipo_analise", "status", "tecnico"]
     search_fields = ["observacoes"]
     ordering_fields = ["data", "criado_em"]
@@ -139,7 +157,7 @@ class _MedicaoViewSetBase(viewsets.ModelViewSet):
 
 class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoVibracaoSerializer
-    permission_classes = [InternoOuClienteMasterEdita]
+    permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "zona_iso", "direcao"]
     ordering_fields = ["data_hora", "velocidade_rms"]
 
@@ -152,7 +170,7 @@ class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
 
 class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTermografiaSerializer
-    permission_classes = [InternoOuClienteMasterEdita]
+    permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "sistema"]
     ordering_fields = ["data_hora", "delta_t"]
 
@@ -165,7 +183,7 @@ class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
 
 class MedicaoTecnicaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTecnicaSerializer
-    permission_classes = [InternoOuClienteMasterEdita]
+    permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = ["inspecao", "equipamento", "criticidade", "tipo"]
     ordering_fields = ["data_hora"]
 
@@ -731,11 +749,12 @@ class AchadoViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = AchadoSerializer
-    # Master do cliente também cria/edita/exclui e confirma análises (decisão de
-    # 2026-09-18). Achados de manutenção corretiva continuam fora do alcance
-    # deste endpoint genérico — ver `AchadoSerializer.validate_item` e
-    # `perform_destroy` abaixo, que já bloqueiam isso independente de quem pede.
-    permission_classes = [InternoOuClienteMasterEdita]
+    # Diagnosticar e confirmar a análise é responsabilidade técnica da
+    # CONTRATADA; o cliente lê o que foi diagnosticado (decisão de 2026-09-21).
+    # Achados de manutenção corretiva continuam fora do alcance deste endpoint
+    # genérico — ver `AchadoSerializer.validate_item` e `perform_destroy`
+    # abaixo, que já bloqueiam isso independente de quem pede.
+    permission_classes = [InternoEditaClienteVisualiza]
     filterset_fields = [
         "item", "item__carregamento", "item__carregamento__cliente",
         "item__carregamento__status", "item__carregamento__tecnologia",
@@ -794,20 +813,25 @@ def _conta_criticidade(queryset) -> dict:
 
 
 class DashboardView(APIView):
-    """Indicadores operacionais — Anexo I 2.8.1.1 (vibração + termografia)."""
+    """
+    Indicadores operacionais — Anexo I 2.8.1.1 (vibração + termografia).
+
+    Aceita `?cliente=<id>`: com um cliente ativado na barra lateral, o painel
+    mostra só a operação dele; sem nenhum, mostra o todo (ver `recorte_cliente`).
+    """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        inspecoes = escopo_cliente(Inspecao.objects.ativos(), request.user)
-        vib = escopo_cliente(
-            MedicaoVibracao.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        inspecoes = recorte_cliente(Inspecao.objects.ativos(), request)
+        vib = recorte_cliente(
+            MedicaoVibracao.objects.all(), request, campo_cliente="inspecao__cliente"
         )
-        termo = escopo_cliente(
-            MedicaoTermografia.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        termo = recorte_cliente(
+            MedicaoTermografia.objects.all(), request, campo_cliente="inspecao__cliente"
         )
-        tec = escopo_cliente(
-            MedicaoTecnica.objects.all(), request.user, campo_cliente="inspecao__cliente"
+        tec = recorte_cliente(
+            MedicaoTecnica.objects.all(), request, campo_cliente="inspecao__cliente"
         )
 
         c_vib, c_termo, c_tec = _conta_criticidade(vib), _conta_criticidade(termo), _conta_criticidade(tec)
@@ -836,7 +860,7 @@ class DashboardView(APIView):
         # Import tardio evita dependência circular coletas <-> osp.
         from apps.osp.models import STATUS_ABERTOS, OrdemServico
 
-        osps = escopo_cliente(OrdemServico.objects.all(), request.user)
+        osps = recorte_cliente(OrdemServico.objects.all(), request)
 
         return Response({
             "total_inspecoes": inspecoes.count(),
@@ -862,7 +886,12 @@ def _ultimos_meses(n=6):
 
 
 class DashboardExecutivoView(APIView):
-    """Dashboard executivo — Anexo I 2.8.1.2 (KPIs, custos, MTBF, MTTR, evolução)."""
+    """
+    Dashboard executivo — Anexo I 2.8.1.2 (KPIs, custos, MTBF, MTTR, evolução).
+
+    Aceita `?cliente=<id>` igual ao painel operacional: com cliente ativado, os
+    KPIs e a "performance por unidade" falam só dele; sem nenhum, falam do todo.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -870,11 +899,10 @@ class DashboardExecutivoView(APIView):
         from apps.cadastros.models import Cliente
         from apps.osp.models import OrdemServico
 
-        user = request.user
-        osps = escopo_cliente(OrdemServico.objects.all(), user)
-        vib = escopo_cliente(MedicaoVibracao.objects.all(), user, "inspecao__cliente")
-        termo = escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente")
-        tec = escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente")
+        osps = recorte_cliente(OrdemServico.objects.all(), request)
+        vib = recorte_cliente(MedicaoVibracao.objects.all(), request, "inspecao__cliente")
+        termo = recorte_cliente(MedicaoTermografia.objects.all(), request, "inspecao__cliente")
+        tec = recorte_cliente(MedicaoTecnica.objects.all(), request, "inspecao__cliente")
 
         total_osp = osps.count()
         finalizadas = osps.filter(status="FINALIZADA", finalizada_em__isnull=False)
@@ -914,8 +942,10 @@ class DashboardExecutivoView(APIView):
             })
 
         # Performance por unidade — item 2.8.1.2.5
+        # Com cliente ativado a tabela fica com uma linha só (a dele); sem
+        # nenhum, compara todas as unidades.
         performance = []
-        for c in escopo_cliente(Cliente.objects.ativos(), user, "id"):
+        for c in recorte_cliente(Cliente.objects.ativos(), request, "id"):
             cosps = osps.filter(cliente=c)
             criticas = sum(
                 q.filter(inspecao__cliente=c, criticidade="CRITICO").count()

@@ -2,13 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { Activity, Boxes, CornerDownRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { Activity, Boxes, CornerDownRight } from "lucide-react";
 import {
   Badge,
-  Button,
   ClasseAtivoBadge,
-  ConfirmDialog,
   DataTable,
   EmptyState,
   EstadoBadge,
@@ -23,15 +20,10 @@ import {
   Toolbar,
   grauDe,
   pesoGravidade,
-  useConfirmacao,
-  useToast,
   type Coluna,
   type GrauMonitoramento,
-  type ItemMenu,
 } from "@/components/ds";
-import { api } from "@/lib/api";
-import { useLista, useMutacao, useRecurso } from "@/lib/recurso";
-import { usePermissoes } from "@/lib/permissions";
+import { useLista, useRecurso } from "@/lib/recurso";
 import { dataHora, plural } from "@/lib/format";
 import { useRegistrarVisita } from "@/features/portal/onboarding";
 import type { Equipamento, EstadoEquipamento, PortalVisaoGeral } from "@/lib/types";
@@ -52,10 +44,7 @@ type Filtro = "todos" | "atencao" | "sem-medicao";
 
 export default function PortalEquipamentosPage() {
   useRegistrarVisita("equipamentos");
-  const toast = useToast();
   const parametros = useSearchParams();
-  const { pode } = usePermissoes();
-  const podeGerenciar = pode("parque:gerenciar");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>(
     parametros?.get("estado") === "critico" ? "atencao" : "todos"
@@ -63,18 +52,6 @@ export default function PortalEquipamentosPage() {
 
   const lista = useLista<Equipamento>("/equipamentos/?page_size=500", "equipamentos do portal");
   const visao = useRecurso<PortalVisaoGeral>("/portal/visao-geral/", "estado dos equipamentos");
-  const mutacao = useMutacao("remoção de equipamento");
-  const remocao = useConfirmacao<Equipamento>();
-
-  async function remover(eq: Equipamento) {
-    const r = await mutacao.executar(() => api(`/equipamentos/${eq.id}/`, { method: "DELETE" }));
-    if (r.ok) {
-      toast.sucesso(`${eq.tag} removido`);
-      lista.recarregar();
-    } else {
-      toast.erro(r.falha.titulo, { descricao: r.falha.descricao });
-    }
-  }
 
   const estados = visao.dados?.estado_equipamentos ?? {};
   const carregando = lista.carregando || visao.carregando;
@@ -209,13 +186,6 @@ export default function PortalEquipamentosPage() {
         title="Meus equipamentos"
         description="O parque monitorado pela ThermoProActive, com o estado apurado na última coleta de cada máquina. Os equipamentos que exigem decisão aparecem no topo."
         trilha={[{ label: "Meus equipamentos" }]}
-        actions={
-          podeGerenciar ? (
-            <Link href="/portal/equipamentos/novo">
-              <Button icon={Plus}>Novo equipamento</Button>
-            </Link>
-          ) : undefined
-        }
       />
 
       <MetricGrid colunas={4}>
@@ -293,23 +263,6 @@ export default function PortalEquipamentosPage() {
         tomDaLinha={(l) => (l.grau === "CRITICO" ? "danger" : undefined)}
         legenda="Equipamentos monitorados, com estado, localização e data da última medição"
         porPagina={15}
-        acoes={
-          podeGerenciar
-            ? (l): ItemMenu[] => [
-                {
-                  label: "Editar",
-                  icon: Pencil,
-                  href: `/portal/equipamentos/editar/${l.equipamento.id}`,
-                },
-                {
-                  label: "Remover",
-                  icon: Trash2,
-                  destrutivo: true,
-                  onClick: () => remocao.pedir(l.equipamento),
-                },
-              ]
-            : undefined
-        }
         vazio={
           filtro !== "todos" ? (
             <EmptyState
@@ -330,18 +283,7 @@ export default function PortalEquipamentosPage() {
             <EmptyState
               icon={Activity}
               title="Seu parque ainda não foi cadastrado"
-              description={
-                podeGerenciar
-                  ? "Cadastre o primeiro equipamento, ou peça para a equipe técnica levantar o parque durante a próxima visita."
-                  : "Os equipamentos são cadastrados pela equipe técnica no início do contrato, a partir do levantamento em campo, ou pelo Master da sua empresa."
-              }
-              action={
-                podeGerenciar ? (
-                  <Link href="/portal/equipamentos/novo">
-                    <Button icon={Plus}>Cadastrar equipamento</Button>
-                  </Link>
-                ) : undefined
-              }
+              description="Os equipamentos são cadastrados pela equipe técnica da ThermoProActive no início do contrato, a partir do levantamento em campo."
               comoFunciona={[
                 "A equipe faz o levantamento dos ativos na sua planta.",
                 "Cada equipamento entra no sistema com TAG, área, setor e dados de placa.",
@@ -350,23 +292,6 @@ export default function PortalEquipamentosPage() {
             />
           )
         }
-      />
-
-      <ConfirmDialog
-        aberto={!!remocao.alvo}
-        onFechar={remocao.cancelar}
-        onConfirmar={() => remocao.executar(remover)}
-        enviando={remocao.enviando}
-        title="Remover este equipamento?"
-        confirmarLabel="Remover"
-        mensagem={
-          <>
-            <strong>{remocao.alvo?.tag}</strong> — {remocao.alvo?.nome} sai do seu parque
-            monitorado.
-          </>
-        }
-        detalhe="O histórico de medições e laudos já emitidos não é apagado."
-        irreversivel
       />
     </PageBody>
   );

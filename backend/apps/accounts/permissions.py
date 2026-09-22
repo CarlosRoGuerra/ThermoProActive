@@ -46,10 +46,13 @@ class InternoEditaClienteVisualiza(BasePermission):
     """
     Interno: leitura+escrita. Cliente: somente leitura (Portal — item 2.7).
     Exclusão exige nível Master ou Sênior — Júnior/Pleno alimentam mas não apagam.
-    Usada nos recursos técnicos (coletas, laudos) e nos catálogos internos
-    (Prestador, Instrumentação, dados de sistema) — nenhum deles é "dado do
-    cliente" que ele deva escrever. Para o que o cliente PODE escrever, ver
-    `InternoOuClienteMasterEdita`.
+
+    É o padrão do Portal: vale para o parque (Cliente/Área/Setor/Equipamento/
+    Componente/Dados técnicos/Rota), para os recursos técnicos (inspeções,
+    medições, análises, laudos) e para os catálogos internos (Prestador,
+    Instrumentação, dados de sistema). O único recurso em que o cliente escreve
+    é a Ordem de Serviço, e só nos campos de retorno — ver
+    `InternoEditaClienteResponde`.
     """
 
     def has_permission(self, request, view):
@@ -66,29 +69,32 @@ class InternoEditaClienteVisualiza(BasePermission):
         return True
 
 
-class InternoOuClienteMasterEdita(BasePermission):
+class InternoEditaClienteResponde(BasePermission):
     """
     Interno: leitura+escrita, exclusão exige nível Master ou Sênior (igual
     `InternoEditaClienteVisualiza`).
 
-    Cliente: o Master da própria empresa TAMBÉM cria/edita/exclui (decisão de
-    2026-09-18 — até então o Portal era só leitura, item 2.7 do Anexo I).
-    Os demais níveis do cliente (Sênior/Pleno/Júnior — PCM/Local/Manutentor)
-    continuam só lendo: do lado do cliente não é o nível que decide quem
-    exclui, é especificamente o Master — o mesmo usuário que já podia
-    convidar o resto da equipe (`SouDoCliente`/`PodeConvidar`).
+    Cliente: consulta + RETORNO DE INFORMAÇÃO. Ele não cria nem exclui nada —
+    só atualiza (PATCH/PUT) um registro que a CONTRATADA já abriu, e apenas nos
+    campos de resposta. QUAIS campos é decidido no serializer
+    (`OrdemServicoSerializer.CAMPOS_RETORNO_CLIENTE`), não aqui: esta classe só
+    responde "pode tocar neste tipo de recurso, e com qual verbo".
 
-    Usada SÓ onde faz sentido o cliente escrever: o cadastro do próprio parque
-    (Cliente/Área/Setor/Equipamento/Componente/Dados técnicos/Rota), Ordens de
-    Serviço e Achados/análises. NÃO é usada em Prestador, Instrumentação nem
-    nos catálogos globais (normas, tipos, condições) — esses continuam com
-    `InternoEditaClienteVisualiza`, porque editá-los afetaria todos os
-    clientes, não só quem está logado.
+    Decisão de 2026-09-21, que substitui a de 2026-09-18: o Portal volta a ser
+    somente leitura em todo o resto (parque, rotas, inspeções, medições,
+    análises), como no item 2.7 do Anexo I. A única escrita que sobra é a que o
+    cliente é a ÚNICA fonte: quando a corretiva foi planejada e executada, quem
+    executou, o que foi feito, se a abertura da máquina confirmou o
+    diagnóstico, e quanto custou de fato — números que alimentam o ROI da
+    Seção D e o KPI de acerto do diagnóstico.
 
     O ESCOPO por cliente continua em `get_queryset()` de cada ViewSet
-    (`escopo_cliente`/`campo_cliente`) — esta classe só decide "pode escrever
-    ALGUMA coisa neste tipo de recurso", nunca "em qual cliente".
+    (`escopo_cliente`/`campo_cliente`) — esta classe nunca decide "em qual
+    cliente".
     """
+
+    #: Verbos de retorno: alteram um registro existente, nunca criam nem apagam.
+    METODOS_RETORNO = {"PATCH", "PUT"}
 
     def has_permission(self, request, view):
         user = request.user
@@ -101,11 +107,11 @@ class InternoOuClienteMasterEdita(BasePermission):
                 self.message = "Seu nível de acesso não permite excluir registros."
                 return False
             return True
-        if user.is_cliente and user.is_master:
+        if user.is_cliente and request.method in self.METODOS_RETORNO:
             return True
         self.message = (
-            "Seu perfil só tem leitura. Peça ao Master da sua empresa para criar, "
-            "editar ou excluir este registro."
+            "No Portal você consulta e devolve as informações da execução. "
+            "Criar ou excluir registros é feito pela equipe da ThermoProActive."
         )
         return False
 
