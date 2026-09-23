@@ -80,7 +80,8 @@ export const ESTILOS_CORRETIVA = `
   .bal-colunas { display: grid; grid-template-columns: 92mm 6mm 92mm; margin-top: 2mm; }
   /* Duas colunas de pares rótulo/valor dentro de cada lista: as 15 grandezas da
      economia cabem em 4 linhas, deixando a folha A4 fechar com sobra. */
-  .bal-lista { display: grid; grid-template-columns: 1fr 1fr; column-gap: 4mm; font-size: 8.5pt; }
+  .bal-lista { display: grid; grid-template-columns: 1fr 1fr; column-gap: 4mm; font-size: 8.5pt;
+    align-content: start; /* lista mais curta (Resultados) não estica as linhas: alinha com a vizinha */ }
   .bal-lista .cab { grid-column: 1 / -1; font-weight: 700; line-height: 4.2mm;
     border-bottom: 0.2mm solid #94a3b8; }
   .bal-lista .par { display: flex; justify-content: space-between; gap: 2mm; line-height: 4.2mm;
@@ -113,16 +114,32 @@ export type EconomiaCorretiva = {
   premissas: string[];
 };
 
-function Lista({ titulo, itens }: { titulo: string; itens: [string, string][] }) {
+type Par = [rotulo: string, valor: string];
+type Colunas = { esquerda: Par[]; direita: Par[] };
+
+/**
+ * Duas colunas lidas de cima para baixo — é assim que o cliente especifica a
+ * ordem. A grade (`.bal-lista`) é preenchida linha a linha, então os pares são
+ * intercalados aqui; cada linha continua alinhada com a vizinha.
+ */
+function Lista({ titulo, esquerda, direita }: { titulo: string } & Colunas) {
+  const linhas = Array.from({ length: Math.max(esquerda.length, direita.length) }, (_, i) => [
+    esquerda[i],
+    direita[i],
+  ]).flat();
   return (
     <div className="bal-lista">
       <div className="cab">{titulo}</div>
-      {itens.map(([rotulo, valor]) => (
-        <div className="par" key={rotulo}>
-          <span>{rotulo}</span>
-          <span>{valor}</span>
-        </div>
-      ))}
+      {linhas.map((par, i) =>
+        par ? (
+          <div className="par" key={par[0]}>
+            <span>{par[0]}</span>
+            <span>{par[1]}</span>
+          </div>
+        ) : (
+          <div key={`vazio-${i}`} />
+        )
+      )}
     </div>
   );
 }
@@ -142,25 +159,39 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
   // Rótulos curtos e valores sem prefixo de moeda (a unidade está no rótulo): em
   // 44mm de coluna, "R$ 36.897,12" quebraria a linha e empurraria a folha para fora
   // do A4. Os cartões de destaque acima mostram o valor formatado por extenso.
-  const premissas: [string, string][] = [
-    ["Tensão [V]", nt(economia.tensao_v)],
-    ["Corrente antes [A]", nt(economia.corrente_antes_a)],
-    ["Corrente após [A]", nt(economia.corrente_apos_a)],
-    ["Fator de potência", nt(economia.fator_potencia, 3)],
-    ["Operação [h/dia]", nt(economia.horas_dia, 1)],
-    ["Operação [dias/ano]", economia.dias_ano == null ? AUSENTE : String(economia.dias_ano)],
-    ["Energia [R$/kWh]", nt(economia.custo_kwh, 4)],
-    ["Investimento [R$]", nt(economia.investimento)],
-  ];
-  const resultados: [string, string][] = [
-    ["Redução corrente [A]", nt(economia.reducao_corrente_a)],
-    ["Redução demanda [kW]", nt(economia.reducao_kw, 4)],
-    ["Economia [kWh/ano]", nt(economia.economia_kwh_ano)],
-    ["Economia [R$/ano]", nt(economia.economia_rs_ano)],
-    ["Payback [meses]", nt(economia.payback_meses)],
-    ["Payback [dias]", nt(economia.payback_dias, 1)],
-    ["Retorno [×/ano]", nt(economia.retorno_ano, 2)],
-  ];
+  //
+  // Ordem e rótulos do Fabrício (23/09/2026): grandezas elétricas à esquerda,
+  // regime de operação e custo à direita. "Corrente Elétrica (antes) [A]", como
+  // ele escreveu, quebrava linha nos 44mm da coluna (medido) — ficou
+  // "Corrente (antes) [A]".
+  const entradas: Colunas = {
+    esquerda: [
+      ["Tensão Elétrica [V]", nt(economia.tensao_v)],
+      ["Fator de Potência", nt(economia.fator_potencia, 3)],
+      ["Corrente (antes) [A]", nt(economia.corrente_antes_a)],
+      ["Corrente (após) [A]", nt(economia.corrente_apos_a)],
+    ],
+    direita: [
+      ["Operação [h/dia]", nt(economia.horas_dia, 1)],
+      ["Operação [dias/ano]", economia.dias_ano == null ? AUSENTE : String(economia.dias_ano)],
+      ["Custo Energia [R$/kWh]", nt(economia.custo_kwh, 4)],
+      ["Investimento [R$]", nt(economia.investimento)],
+    ],
+  };
+  // A redução de corrente saiu do relatório a pedido do cliente. Continua sendo
+  // calculada (a redução de demanda depende dela) e aparece no painel do serviço.
+  const resultados: Colunas = {
+    esquerda: [
+      ["Redução demanda [kW]", nt(economia.reducao_kw, 4)],
+      ["Economia [kWh/ano]", nt(economia.economia_kwh_ano)],
+      ["Economia [R$/ano]", nt(economia.economia_rs_ano)],
+    ],
+    direita: [
+      ["Payback [dias]", nt(economia.payback_dias, 1)],
+      ["Payback [meses]", nt(economia.payback_meses)],
+      ["Retorno [×/ano]", nt(economia.retorno_ano, 2)],
+    ],
+  };
 
   return (
     <div className="bal-bloco" style={{ marginTop: "4mm" }}>
@@ -186,9 +217,9 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
       </div>
 
       <div className="bal-colunas">
-        <Lista titulo="Entradas / premissas" itens={premissas} />
+        <Lista titulo="Entradas / premissas" {...entradas} />
         <div />
-        <Lista titulo="Resultados" itens={resultados} />
+        <Lista titulo="Resultados" {...resultados} />
       </div>
 
       {/* Sem as premissas o número financeiro não se sustenta em auditoria. */}
