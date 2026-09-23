@@ -20,6 +20,7 @@ import {
 } from "@/components/ds";
 import { data as fmtData, plural, texto } from "@/lib/format";
 import type { Carregamento, ItemInspecao } from "@/lib/types";
+import { proximoPendente } from "./navegador-equipamentos";
 import { ROTULO_ESTADO, estadoDoItem, progressoDosItens } from "./progresso";
 
 /* ==========================================================================
@@ -57,9 +58,32 @@ export function PainelPendencias({
   const semAnalise = itens.filter((i) => estadoDoItem(i) === "INCOMPLETO");
   const transferida = carregamento.status !== "EM_CAMPO";
   const liberada = semCondicao.length === 0 && itens.length > 0;
+  const faltam = semCondicao.length + semAnalise.length;
+  const proximo = proximoPendente(itens, null);
 
   return (
     <div className="space-y-4">
+      {/* Esta é a tela de entrada da rota: o primeiro gesto é voltar ao trabalho.
+          Fundo em vez de `Card tom`: as bordas com opacidade (border-primary/35)
+          não são geradas sobre cores em var(--…) e o card sairia com borda cinza. */}
+      {podeEditar && !transferida && proximo && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-primary-subtle px-4 py-3.5 shadow-xs sm:px-5">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-fg">
+              {faltam === 1 ? "Falta" : "Faltam"} {plural(faltam, "equipamento")}
+            </p>
+            <p className="truncate text-xs text-fg-muted">
+              {p.concluidos === 0 ? "Comece por" : "Continue de onde parou:"}{" "}
+              <span className="data font-medium text-fg">{proximo.equipamento_tag}</span> —{" "}
+              {proximo.equipamento_nome}
+            </p>
+          </div>
+          <Button iconRight={ChevronRight} onClick={() => onSelecionar(proximo)}>
+            {p.concluidos === 0 ? "Começar" : "Continuar"}
+          </Button>
+        </div>
+      )}
+
       <Card>
         <CardHeader
           title="Resumo desta coleta"

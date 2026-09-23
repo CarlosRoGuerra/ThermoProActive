@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -29,6 +30,7 @@ from .serializers import (
     AchadoSerializer,
     CarregamentoListSerializer,
     CarregamentoSerializer,
+    CondicaoEmLoteSerializer,
     InspecaoListSerializer,
     InspecaoSerializer,
     ItemInspecaoSerializer,
@@ -719,9 +721,14 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
                 _qtd_achados=Count("itens__achados", distinct=True),
             )
         else:
-            # No detalhe a folha de campo precisa da árvore inteira.
+            # No detalhe a folha de campo precisa da árvore inteira. Tipo do
+            # equipamento e serviço corretivo entram aqui porque o
+            # ItemInspecaoSerializer lê os dois — fora do prefetch eram duas
+            # consultas POR equipamento (N+1), e esta é a leitura que a folha
+            # de campo refaz depois de cada alteração.
             qs = qs.prefetch_related(
-                "itens__equipamento__setor__area", "itens__condicao", "itens__achados__imagens",
+                "itens__equipamento__setor__area", "itens__equipamento__tipo_equipamento",
+                "itens__condicao", "itens__achados__imagens", "itens__servico_corretivo",
             )
 
         return escopo_cliente(qs, self.request.user)
@@ -752,6 +759,40 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
         carregamento.save(update_fields=["status", "transferido_em", "atualizado_em"])
         return Response(self.get_serializer(carregamento).data)
 
+    @action(detail=True, methods=["post"], url_path="definir-condicao")
+    @transaction.atomic
+    def definir_condicao(self, request, pk=None):
+        """
+        Lançamento em lote da folha de campo: UMA condição para vários itens.
+
+        É o "marcar estes 30 como OK" — uma requisição e uma escrita, em vez de
+        30 PATCH em /itens-inspecao/. Devolve os itens no mesmo formato de
+        `CarregamentoSerializer.itens`, para a tela trocar só essas linhas.
+        """
+        carregamento = self.get_object()
+        if carregamento.status != StatusCarregamento.EM_CAMPO:
+            return Response(
+                {"detail": "Esta rota já foi transferida ou descartada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        entrada = CondicaoEmLoteSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        ids = set(entrada.validated_data["itens"])
+        alvo = ItemInspecao.objects.ativos().filter(carregamento=carregamento, pk__in=ids)
+        if alvo.count() != len(ids):
+            raise ValidationError({"itens": "Há equipamentos que não pertencem a esta rota."})
+        # update() não passa por save(): o auto_now de `atualizado_em` vai à mão.
+        alvo.update(condicao=entrada.validated_data["condicao"], atualizado_em=timezone.now())
+        itens = (
+            ItemInspecao.objects.filter(pk__in=ids)
+            .select_related(
+                "equipamento__setor__area", "equipamento__tipo_equipamento",
+                "condicao", "carregamento", "servico_corretivo",
+            )
+            .prefetch_related("achados__imagens")
+        )
+        return Response(ItemInspecaoSerializer(itens, many=True).data)
+
     @action(detail=True, methods=["post"])
     def descartar(self, request, pk=None):
         """"Apagar tudo": marca o carregamento como descartado (sai da tela de campo)."""
@@ -771,7 +812,10 @@ class ItemInspecaoViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = (
             ItemInspecao.objects.ativos()
-            .select_related("equipamento__setor__area", "condicao", "carregamento")
+            .select_related(
+                "equipamento__setor__area", "equipamento__tipo_equipamento",
+                "condicao", "carregamento", "servico_corretivo",
+            )
             .prefetch_related("achados__imagens")
         )
         return escopo_cliente(qs, self.request.user, campo_cliente="carregamento__cliente")

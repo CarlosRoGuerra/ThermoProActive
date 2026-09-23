@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronsRight,
   ClipboardCheck,
   ClipboardList,
   Loader2,
@@ -17,6 +18,8 @@ import {
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { mensagemDeErro } from "@/lib/erros";
+import { plural } from "@/lib/format";
 import type { Achado, Carregamento, Condicao, ItemInspecao, Paginated } from "@/lib/types";
 import { AnaliseBalanceamento } from "@/components/analise-balanceamento";
 import {
@@ -34,12 +37,60 @@ import {
   useToast,
 } from "@/components/ds";
 import { ModalAnalise } from "@/features/inspecoes/campo/modal-analise";
-import { NavegadorEquipamentos, proximoPendente, vizinhos } from "@/features/inspecoes/campo/navegador-equipamentos";
+import {
+  NavegadorEquipamentos,
+  filtrarPorBusca,
+  proximoPendente,
+  vizinhos,
+  type Filtro,
+} from "@/features/inspecoes/campo/navegador-equipamentos";
 import { PainelEquipamento } from "@/features/inspecoes/campo/painel-equipamento";
 import { PainelPendencias } from "@/features/inspecoes/campo/painel-pendencias";
 import { estadoDoItem } from "@/features/inspecoes/campo/progresso";
+import { condicoesEmOrdem } from "@/features/inspecoes/campo/seletor-condicao";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
+
+/* ---------------- Condição no estado local ---------------- */
+
+type CamposCondicao = Pick<ItemInspecao, "condicao" | "condicao_nome" | "condicao_gera_acao">;
+
+function camposDe(c: Condicao | null): CamposCondicao {
+  return { condicao: c?.id ?? null, condicao_nome: c?.nome ?? null, condicao_gera_acao: c ? c.gera_acao : null };
+}
+
+function camposDoItem(i: ItemInspecao): CamposCondicao {
+  return { condicao: i.condicao, condicao_nome: i.condicao_nome, condicao_gera_acao: i.condicao_gera_acao };
+}
+
+/** Troca SÓ a condição dos itens indicados — achados e o resto seguem como estão. */
+function comCondicoes(c: Carregamento | null, campos: Map<number, CamposCondicao>): Carregamento | null {
+  if (!c || campos.size === 0) return c;
+  return {
+    ...c,
+    itens: c.itens.map((i) => {
+      const novo = campos.get(i.id);
+      return novo ? { ...i, ...novo } : i;
+    }),
+  };
+}
+
+/** Troca itens inteiros pela versão que o servidor devolveu. */
+function comItens(c: Carregamento | null, novos: ItemInspecao[]): Carregamento | null {
+  if (!c || novos.length === 0) return c;
+  const porId = new Map(novos.map((i) => [i.id, i]));
+  return { ...c, itens: c.itens.map((i) => porId.get(i.id) ?? i) };
+}
+
+const ehPendente = (i: ItemInspecao) => {
+  const e = estadoDoItem(i);
+  return e === "PENDENTE" || e === "INCOMPLETO";
+};
+
+/** Depois do avanço automático o botão tocado continua sob o dedo: um toque
+ *  duplo marcaria o PRÓXIMO equipamento sem o técnico ver. Cliques dentro desta
+ *  janela são descartados — o teclado não passa por ela. */
+const GUARDA_TOQUE_DUPLO_MS = 400;
 
 /* ---------------- Análise por equipamento — manutenção corretiva ---------------- */
 // Reaproveita o mesmo painel que hoje vive em /servicos/atividades/[id]?item= — a
@@ -113,11 +164,25 @@ function AnaliseCorretivaItem({
    pendências e transferência —, porque "onde eu parei" e "o que falta"
    respondem a mesma pergunta com o mesmo painel.
 
+   Ritmo de campo: numa rota quase tudo está normal, então o caminho comum
+   custa um gesto por equipamento. Classificar um pendente com condição que
+   não exige ação grava e já abre o próximo pendente; com condição que exige
+   ação, abre o registro da análise e só segue depois de salvo. Corrigir uma
+   condição já dada não mexe na navegação. No desktop, 1–9 escolhem a
+   condição e ←/→ trocam de equipamento. Para a rota inteira normal, o
+   navegador tem o lançamento em lote.
+
+   Gravação otimista: a condição aparece na hora e o PATCH segue por baixo.
+   A resposta troca só aquele item — reler a rota inteira a cada toque era o
+   que deixava a tela lenta em campo. Se o envio falha, a condição volta ao
+   que era e o técnico é avisado com a TAG. Cada envio leva uma versão, e só
+   a resposta do mais recente de cada item vale (dois toques rápidos no mesmo
+   equipamento não se atropelam).
+
    Não existe botão de "Salvar" nesta tela: a condição é gravada assim que
-   escolhida (PATCH imediato) e cada análise é gravada pelo próprio modal.
-   A barra inferior do celular mostra o estado real dessa gravação — não um
-   botão decorativo que fingiria acumular alterações que já foram para o
-   servidor.
+   escolhida e cada análise é gravada pelo próprio modal. A barra inferior do
+   celular mostra o estado real dessa gravação — não um botão decorativo que
+   fingiria acumular alterações que já foram para o servidor.
    ========================================================================== */
 export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   const router = useRouter();
@@ -135,9 +200,25 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
     itemQuery ? Number(itemQuery) : null
   );
   const [mostrarListaMobile, setMostrarListaMobile] = useState(!itemQuery);
-  const [salvandoCondicaoIds, setSalvandoCondicaoIds] = useState<Set<number>>(new Set());
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<Filtro>("todos");
 
-  const [modal, setModal] = useState<{ item: ItemInspecao; achado: Achado | null } | null>(null);
+  // Condições a caminho do servidor, por item, com a versão do envio.
+  const emVoo = useRef(new Map<number, { versao: number; condicao: Condicao | null }>());
+  const ultimaVersao = useRef(0);
+  const envios = useRef(new Set<Promise<unknown>>());
+  const [salvandoIds, setSalvandoIds] = useState<Set<number>>(new Set());
+
+  // Pista do último avanço automático: o que acabou de ser gravado e o caminho de volta.
+  const [ultimo, setUltimo] = useState<{ id: number; tag: string; condicao: string } | null>(null);
+  const avancouEm = useRef(0);
+
+  const [modal, setModal] = useState<{
+    item: ItemInspecao;
+    achado: Achado | null;
+    /** Aberto pela classificação: salvo o registro, a folha segue para o próximo. */
+    avancarAoSalvar?: boolean;
+  } | null>(null);
   const [transferindo, setTransferindo] = useState(false);
   const [analisando, setAnalisando] = useState(false);
   const remocaoItem = useConfirmacao<ItemInspecao>();
@@ -151,8 +232,17 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
   const recarregar = useCallback(async () => {
     const d = await api<Carregamento>(`/carregamentos/${carregamentoId}/`);
-    setCarreg(d);
+    // Condição ainda a caminho vale mais que esta leitura: o GET pode ter
+    // saído antes de o PATCH gravar.
+    const voando = new Map(Array.from(emVoo.current, ([id, v]) => [id, camposDe(v.condicao)] as const));
+    const atual = comCondicoes(d, voando) ?? d;
+    setCarreg(atual);
+    return atual;
   }, [carregamentoId]);
+
+  const atualizar = useCallback(async () => {
+    await recarregar();
+  }, [recarregar]);
 
   useEffect(() => {
     setLoading(true);
@@ -180,27 +270,127 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
     [carreg, selecionadoId]
   );
 
-  function selecionar(item: ItemInspecao | null) {
+  function irPara(item: ItemInspecao | null) {
     setSelecionadoId(item?.id ?? null);
     setMostrarListaMobile(false);
   }
 
-  async function definirCondicao(item: ItemInspecao, valor: string) {
-    setSalvandoCondicaoIds((s) => new Set(s).add(item.id));
+  /** Navegação escolhida pelo técnico — encerra a pista do último avanço. */
+  function selecionar(item: ItemInspecao | null) {
+    setUltimo(null);
+    irPara(item);
+  }
+
+  function iniciarEnvio(ids: number[], condicao: Condicao | null) {
+    const versao = ++ultimaVersao.current;
+    for (const id of ids) emVoo.current.set(id, { versao, condicao });
+    setSalvandoIds((s) => {
+      const n = new Set(s);
+      ids.forEach((id) => n.add(id));
+      return n;
+    });
+    return versao;
+  }
+
+  /** Fecha o envio e devolve os itens em que ele ainda é o mais recente. */
+  function concluirEnvio(ids: number[], versao: number): Set<number> {
+    const vigentes = new Set(ids.filter((id) => emVoo.current.get(id)?.versao === versao));
+    vigentes.forEach((id) => emVoo.current.delete(id));
+    setSalvandoIds((s) => {
+      const n = new Set(s);
+      vigentes.forEach((id) => n.delete(id));
+      return n;
+    });
+    return vigentes;
+  }
+
+  /** Guarda o envio para a transferência esperar por ele. */
+  function rastrear<T>(p: Promise<T>): Promise<T> {
+    envios.current.add(p);
+    const fim = () => {
+      envios.current.delete(p);
+    };
+    p.then(fim, fim);
+    return p;
+  }
+
+  /** Grava a pista do avanço e abre o próximo pendente (respeitando a busca). */
+  function avancar(itens: ItemInspecao[], de: ItemInspecao, condicao: Condicao) {
+    setUltimo({ id: de.id, tag: de.equipamento_tag, condicao: condicao.sigla || condicao.nome });
+    avancouEm.current = performance.now();
+    const prox = proximoPendente(filtrarPorBusca(itens, busca), de.id);
+    if (prox) irPara(prox);
+    // Nada mais pendente na rota: a revisão é o próximo passo (transferir).
+    else if (!itens.some(ehPendente)) irPara(null);
+  }
+
+  async function definirCondicao(item: ItemInspecao, condicao: Condicao) {
+    if (!carreg || item.condicao === condicao.id) return;
+    const antes = camposDoItem(item);
+    const atualizado = { ...item, ...camposDe(condicao) };
+    const versao = iniciarEnvio([item.id], condicao);
+    setCarreg((c) => comCondicoes(c, new Map([[item.id, camposDe(condicao)]])));
+
+    // Só a PRIMEIRA classificação move a folha: corrigir uma condição já dada
+    // é trabalho neste equipamento, não no próximo.
+    if (item.condicao == null) {
+      if (!condicao.gera_acao) {
+        avancar(carreg.itens.map((i) => (i.id === item.id ? atualizado : i)), atualizado, condicao);
+      } else if (!ehCorretiva && (item.achados?.length ?? 0) === 0) {
+        setModal({ item: atualizado, achado: null, avancarAoSalvar: true });
+      }
+    }
+
     try {
-      await api(`/itens-inspecao/${item.id}/`, {
-        method: "PATCH",
-        body: { condicao: valor === "" ? null : Number(valor) },
-      });
-      await recarregar();
+      const salvo = await rastrear(
+        api<ItemInspecao>(`/itens-inspecao/${item.id}/`, {
+          method: "PATCH",
+          body: { condicao: condicao.id },
+        })
+      );
+      if (concluirEnvio([item.id], versao).size) setCarreg((c) => comItens(c, [salvo]));
     } catch (e) {
-      toast.falha(e, "Não foi possível salvar a condição.");
-    } finally {
-      setSalvandoCondicaoIds((s) => {
-        const n = new Set(s);
-        n.delete(item.id);
-        return n;
+      if (concluirEnvio([item.id], versao).size) {
+        setCarreg((c) => comCondicoes(c, new Map([[item.id, antes]])));
+        setUltimo((u) => (u?.id === item.id ? null : u));
+      }
+      // A folha pode já ter avançado: o aviso leva de volta ao equipamento.
+      toast.erro(`A condição de ${item.equipamento_tag} não foi salva`, {
+        descricao: mensagemDeErro(e),
+        acao: { label: "Abrir", onClick: () => selecionar(item) },
       });
+    }
+  }
+
+  function escolherPeloClique(item: ItemInspecao, condicao: Condicao) {
+    if (performance.now() - avancouEm.current < GUARDA_TOQUE_DUPLO_MS) return;
+    void definirCondicao(item, condicao);
+  }
+
+  async function aplicarEmLote(itens: ItemInspecao[], condicao: Condicao): Promise<boolean> {
+    const ids = itens.map((i) => i.id);
+    const antes = new Map(itens.map((i) => [i.id, camposDoItem(i)]));
+    const versao = iniciarEnvio(ids, condicao);
+    setCarreg((c) => comCondicoes(c, new Map(ids.map((id) => [id, camposDe(condicao)]))));
+    setUltimo(null);
+    try {
+      const salvos = await rastrear(
+        api<ItemInspecao[]>(`/carregamentos/${carregamentoId}/definir-condicao/`, {
+          method: "POST",
+          body: { itens: ids, condicao: condicao.id },
+        })
+      );
+      const vigentes = concluirEnvio(ids, versao);
+      setCarreg((c) => comItens(c, salvos.filter((i) => vigentes.has(i.id))));
+      toast.sucesso(
+        `${plural(ids.length, "equipamento marcado", "equipamentos marcados")} como ${condicao.sigla || condicao.nome}`
+      );
+      return true;
+    } catch (e) {
+      const vigentes = concluirEnvio(ids, versao);
+      setCarreg((c) => comCondicoes(c, new Map(Array.from(antes).filter(([id]) => vigentes.has(id)))));
+      toast.falha(e, "Não foi possível aplicar a condição aos equipamentos.");
+      return false;
     }
   }
 
@@ -260,6 +450,9 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   async function transferir() {
     setTransferindo(true);
     try {
+      // Condição ainda a caminho precisa chegar antes: o servidor confere a
+      // rota inteira no momento da transferência.
+      if (envios.current.size) await Promise.allSettled(Array.from(envios.current));
       await api(`/carregamentos/${carregamentoId}/transferir/`, { method: "POST" });
       toast.sucesso("Rota transferida para o escritório");
       router.push("/inspecoes/campo");
@@ -281,6 +474,44 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       toast.falha(e, "Não foi possível descartar esta rota.");
     }
   }
+
+  // Atalhos do desktop. Sem lista de dependências de propósito: reassina a
+  // cada render e sempre enxerga o estado atual (o React aplica a render de
+  // uma tecla antes de entregar a próxima).
+  useEffect(() => {
+    if (!carreg || (ehCorretiva && itemId)) return;
+    const itens = carreg.itens;
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || !selecionado) return;
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName))) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const viz = vizinhos(itens, selecionado.id);
+        const destino = e.key === "ArrowRight" ? viz.proximo : viz.anterior;
+        if (destino) {
+          e.preventDefault();
+          selecionar(destino);
+        }
+        return;
+      }
+      if (!podeEditar) return;
+      if (/^[1-9]$/.test(e.key)) {
+        const condicao = condicoesEmOrdem(condicoes)[Number(e.key) - 1];
+        if (condicao) {
+          e.preventDefault();
+          void definirCondicao(selecionado, condicao);
+        }
+      } else if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        if (ehCorretiva) void analisarCorretiva(selecionado);
+        else setModal({ item: selecionado, achado: null });
+      }
+    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  });
 
   if (loading) return <LoadingState variante="tabela" linhas={6} colunas={5} label="Carregando a folha de campo…" />;
   if (!carreg) return <Card><p className="text-sm text-danger-fg">{msg ?? "Rota não encontrada."}</p></Card>;
@@ -308,14 +539,14 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
             atividadeId={String(carregamentoId)}
             item={item}
             podeEditar={podeEditar}
-            onSaved={recarregar}
+            onSaved={atualizar}
           />
         ) : (
           <AnaliseCorretivaItem
             carregamentoId={carregamentoId}
             item={item}
             podeEditar={podeEditar}
-            onSaved={recarregar}
+            onSaved={atualizar}
           />
         )}
       </div>
@@ -323,10 +554,25 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   }
 
   const viz = vizinhos(carreg.itens, selecionadoId);
-  const salvandoAtual = selecionado ? salvandoCondicaoIds.has(selecionado.id) : false;
+  const salvandoAtual = selecionado ? salvandoIds.has(selecionado.id) : false;
+  const candidatos = filtrarPorBusca(carreg.itens, busca);
+  const proxPendente = selecionado ? proximoPendente(candidatos, selecionado.id) : null;
+
+  const navegador = {
+    itens: carreg.itens,
+    condicoes,
+    selecionadoId,
+    onSelecionar: selecionar,
+    busca,
+    onBusca: setBusca,
+    filtro,
+    onFiltro: setFiltro,
+    podeEditar,
+    onAplicarEmLote: aplicarEmLote,
+  };
 
   return (
-    <PageBody className={cn(selecionado && "pb-24 lg:pb-6")}>
+    <PageBody className={cn(selecionado && !mostrarListaMobile && "pb-24 lg:pb-6")}>
       <PageHeader
         icon={ClipboardCheck}
         title={carreg.numero || `Carregamento #${carreg.id}`}
@@ -376,12 +622,7 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       <div className="lg:grid lg:grid-cols-[336px_1fr] lg:items-start lg:gap-6">
         {/* Navegador — desktop: sempre visível, fixo, rolagem própria. */}
         <div className="hidden lg:sticky lg:top-[88px] lg:block lg:max-h-[calc(100dvh-104px)] lg:overflow-hidden lg:rounded-xl lg:border lg:border-border lg:bg-surface">
-          <NavegadorEquipamentos
-            itens={carreg.itens}
-            selecionadoId={selecionadoId}
-            onSelecionar={selecionar}
-            className="max-h-[calc(100dvh-104px)]"
-          />
+          <NavegadorEquipamentos {...navegador} className="max-h-[calc(100dvh-104px)]" />
         </div>
 
         {/* Navegador — celular: uma das duas telas (lista OU conteúdo). */}
@@ -398,18 +639,13 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                 Revisão e transferência
               </button>
             </div>
-            <NavegadorEquipamentos
-              itens={carreg.itens}
-              selecionadoId={selecionadoId}
-              onSelecionar={selecionar}
-              className="max-h-[65dvh]"
-            />
+            <NavegadorEquipamentos {...navegador} className="max-h-[65dvh]" />
           </div>
         </div>
 
         {/* Conteúdo — desktop: sempre visível. Celular: só quando a lista está fechada. */}
         <div className={cn("min-w-0 space-y-4", mostrarListaMobile && "hidden lg:block")}>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <button
               type="button"
               onClick={() => setMostrarListaMobile(true)}
@@ -418,6 +654,16 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
               Equipamentos
             </button>
+
+            {ultimo && (
+              <UltimoLancamento
+                key={ultimo.id}
+                tag={ultimo.tag}
+                condicao={ultimo.condicao}
+                salvando={salvandoIds.has(ultimo.id)}
+                onVoltar={() => selecionar(carreg.itens.find((i) => i.id === ultimo.id) ?? null)}
+              />
+            )}
 
             {selecionado && (
               <div className="ml-auto hidden items-center gap-1 lg:flex">
@@ -442,42 +688,43 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                 >
                   Próximo
                 </Button>
+                {proxPendente && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    iconRight={ChevronsRight}
+                    onClick={() => selecionar(proxPendente)}
+                    className="ml-1"
+                  >
+                    Próximo pendente
+                  </Button>
+                )}
               </div>
             )}
           </div>
 
           {selecionado ? (
-            ehCorretiva ? (
+            // A chave refaz a entrada a cada equipamento: com o avanço
+            // automático o layout é idêntico, e sem o movimento a troca de
+            // TAG passaria despercebida.
+            <div key={selecionado.id} className="animate-slide-up">
               <PainelEquipamento
                 item={selecionado}
                 condicoes={condicoes}
                 podeEditar={podeEditar}
-                ehCorretiva
+                ehCorretiva={ehCorretiva}
                 salvandoCondicao={salvandoAtual}
-                onDefinirCondicao={(v) => definirCondicao(selecionado, v)}
-                onNovaAnalise={() => {}}
-                onEditarAnalise={() => {}}
-                onRemoverAnalise={() => {}}
-                onAnalisarCorretiva={() => analisarCorretiva(selecionado)}
-                onAdicionarLinha={() => adicionarLinha(selecionado)}
-                onRemoverItem={() => remocaoItem.pedir(selecionado)}
-              />
-            ) : (
-              <PainelEquipamento
-                item={selecionado}
-                condicoes={condicoes}
-                podeEditar={podeEditar}
-                ehCorretiva={false}
-                salvandoCondicao={salvandoAtual}
-                onDefinirCondicao={(v) => definirCondicao(selecionado, v)}
+                onDefinirCondicao={(c) => escolherPeloClique(selecionado, c)}
                 onNovaAnalise={() => setModal({ item: selecionado, achado: null })}
                 onEditarAnalise={(a) => setModal({ item: selecionado, achado: a })}
                 onRemoverAnalise={(a) => remocaoAchado.pedir(a)}
-                onAnalisarCorretiva={() => {}}
+                onAnalisarCorretiva={() => {
+                  if (!analisando) void analisarCorretiva(selecionado);
+                }}
                 onAdicionarLinha={() => adicionarLinha(selecionado)}
                 onRemoverItem={() => remocaoItem.pedir(selecionado)}
               />
-            )
+            </div>
           ) : (
             <PainelPendencias
               carregamento={carreg}
@@ -500,8 +747,13 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
           tecnologiaId={carreg.tecnologia}
           onFechar={() => setModal(null)}
           onSalvo={async () => {
+            const aberto = modal;
             setModal(null);
-            await recarregar();
+            const atual = await recarregar();
+            if (!aberto?.avancarAoSalvar) return;
+            const item = atual.itens.find((i) => i.id === aberto.item.id);
+            const condicao = condicoes.find((c) => c.id === item?.condicao);
+            if (item && condicao) avancar(atual.itens, item, condicao);
           }}
         />
       )}
@@ -566,7 +818,7 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       />
 
       {/* ---------- Barra fixa do celular ---------- */}
-      {selecionado && (
+      {selecionado && !mostrarListaMobile && (
         <div className="fixed inset-x-0 bottom-0 z-sticky border-t border-border bg-surface/95 px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
           <div className="flex items-center gap-2">
             <Button
@@ -582,29 +834,71 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
             <EstadoSalvamento salvando={salvandoAtual} estado={estadoDoItem(selecionado)} />
 
-            {(() => {
-              const prox = proximoPendente(carreg.itens, selecionado.id);
-              return prox ? (
-                <Button size="sm" block onClick={() => selecionar(prox)} iconRight={ChevronRight}>
-                  Próximo pendente
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  iconRight={ChevronRight}
-                  disabled={!viz.proximo}
-                  onClick={() => selecionar(viz.proximo)}
-                  className="shrink-0"
-                >
-                  <span className="sr-only sm:not-sr-only">Próximo</span>
-                </Button>
-              );
-            })()}
+            {proxPendente ? (
+              <Button size="sm" block onClick={() => selecionar(proxPendente)} iconRight={ChevronRight}>
+                Próximo pendente
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                iconRight={ChevronRight}
+                disabled={!viz.proximo}
+                onClick={() => selecionar(viz.proximo)}
+                className="shrink-0"
+              >
+                <span className="sr-only sm:not-sr-only">Próximo</span>
+              </Button>
+            )}
           </div>
         </div>
       )}
     </PageBody>
+  );
+}
+
+/**
+ * O que o avanço automático acabou de gravar, com o caminho de volta.
+ *
+ * Sem esta linha a folha "pula" de equipamento e o técnico fica sem saber se
+ * o toque pegou e onde foi parar. Mostra o envio em curso (a rede de campo
+ * cai) e some quando a navegação volta a ser manual.
+ */
+function UltimoLancamento({
+  tag,
+  condicao,
+  salvando,
+  onVoltar,
+}: {
+  tag: string;
+  condicao: string;
+  salvando: boolean;
+  onVoltar: () => void;
+}) {
+  return (
+    <p
+      role="status"
+      className="order-last flex w-full min-w-0 animate-fade-in items-center gap-1.5 text-xs text-fg-muted lg:order-none lg:w-auto"
+    >
+      {salvando ? (
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+      ) : (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
+      )}
+      <span className="min-w-0 truncate">
+        <span className="data font-medium text-fg">{tag}</span> marcado como{" "}
+        <span className="data font-medium text-fg">{condicao}</span>
+        {salvando ? " · salvando…" : ""}
+      </span>
+      <button
+        type="button"
+        onClick={onVoltar}
+        aria-label={`Voltar para ${tag} e corrigir`}
+        className="shrink-0 rounded px-1 font-medium text-primary underline-offset-4 hover:underline"
+      >
+        Corrigir
+      </button>
+    </p>
   );
 }
 

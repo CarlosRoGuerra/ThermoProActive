@@ -3,8 +3,10 @@
 import { useState } from "react";
 import {
   ChevronDown,
+  CircleCheck,
   ClipboardCheck,
   CopyPlus,
+  Loader2,
   Pencil,
   Plus,
   Trash2,
@@ -18,16 +20,15 @@ import {
   CardHeader,
   DescriptionList,
   EmptyState,
-  Field,
   SemDado,
-  Select,
   Skeleton,
   cn,
 } from "@/components/ds";
 import { useRecurso } from "@/lib/recurso";
-import { numeroUnidade } from "@/lib/format";
+import { numeroUnidade, plural } from "@/lib/format";
 import type { Achado, Condicao, Equipamento, ItemInspecao } from "@/lib/types";
 import { EXPLICACAO_ESTADO, ROTULO_ESTADO, estadoDoItem } from "./progresso";
+import { SeletorCondicao, Tecla } from "./seletor-condicao";
 
 /* ==========================================================================
    Painel do equipamento — a coluna direita da folha de campo.
@@ -35,9 +36,11 @@ import { EXPLICACAO_ESTADO, ROTULO_ESTADO, estadoDoItem } from "./progresso";
    Tudo o que o técnico faz num equipamento acontece aqui, sem trocar de página:
    ver a identificação, definir a condição e registrar as análises.
 
-   A ficha técnica é buscada sob demanda (só do equipamento aberto) e fica
-   recolhida: no campo o que importa é a TAG e o estado; a placa é consulta
-   ocasional.
+   A condição fica no mesmo card da identificação: é o gesto que se repete em
+   todo equipamento, então precisa estar à vista sem rolar a tela. A ficha
+   técnica é buscada sob demanda (só do equipamento aberto) e fica recolhida
+   no pé do card: no campo o que importa é a TAG e o estado; a placa é
+   consulta ocasional.
    ========================================================================== */
 
 export function PainelEquipamento({
@@ -59,7 +62,7 @@ export function PainelEquipamento({
   podeEditar: boolean;
   ehCorretiva: boolean;
   salvandoCondicao: boolean;
-  onDefinirCondicao: (valor: string) => void;
+  onDefinirCondicao: (condicao: Condicao) => void;
   onNovaAnalise: () => void;
   onEditarAnalise: (a: Achado) => void;
   onRemoverAnalise: (a: Achado) => void;
@@ -72,9 +75,22 @@ export function PainelEquipamento({
   const exigeAcao = !!condicaoAtual?.gera_acao;
   const achados = item.achados ?? [];
 
+  // A ação que a condição pede vai no próprio aviso — sem caçar o botão abaixo.
+  const acaoAnalise = podeEditar ? (
+    ehCorretiva ? (
+      <Button size="sm" icon={ClipboardCheck} onClick={onAnalisarCorretiva}>
+        {item.analise ? "Abrir análise" : "Iniciar análise"}
+      </Button>
+    ) : (
+      <Button size="sm" icon={Plus} onClick={onNovaAnalise}>
+        Registrar análise
+      </Button>
+    )
+  ) : undefined;
+
   return (
     <div className="space-y-4">
-      {/* ---------- Identificação ---------- */}
+      {/* ---------- Identificação + condição ---------- */}
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div className="min-w-0">
@@ -107,62 +123,73 @@ export function PainelEquipamento({
           </Badge>
         </div>
 
-        <FichaTecnica equipamentoId={item.equipamento} />
-      </Card>
-
-      {/* ---------- Condição ---------- */}
-      <Card>
-        <CardHeader
-          title="Condição do equipamento"
-          description="É ela que libera a transferência e define se há ação a registrar."
-        />
-        <Field
-          label="Condição"
-          obrigatorio
-          hint={
-            condicaoAtual?.descricao ||
-            (item.condicao == null
-              ? "Defina a condição deste equipamento antes de concluir a análise."
-              : undefined)
-          }
-        >
-          <Select
-            value={item.condicao != null ? String(item.condicao) : ""}
-            onChange={(e) => onDefinirCondicao(e.target.value)}
-            disabled={!podeEditar || salvandoCondicao}
-          >
-            <option value="">Selecione a condição…</option>
-            {condicoes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.sigla ? `${c.sigla} — ${c.nome}` : c.nome}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        {condicaoAtual && (
-          <div className="mt-3">
-            {exigeAcao ? (
-              achados.length === 0 ? (
-                <Alert tone="warning" icon={TriangleAlert} title="Esta condição exige ação">
-                  Registre ao menos uma análise para este equipamento — é ela que vira achado,
-                  ordem de serviço e folha no relatório técnico.
-                </Alert>
-              ) : (
-                <Alert tone="info">
-                  {achados.length === 1
-                    ? "1 análise registrada."
-                    : `${achados.length} análises registradas.`}{" "}
-                  Elas seguem para revisão na Análise final.
-                </Alert>
-              )
-            ) : (
-              <Alert tone="success">
-                Equipamento inspecionado sem necessidade de ação. Pode seguir para o próximo.
-              </Alert>
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-fg">
+              Condição <span className="text-danger" aria-hidden="true">*</span>
+            </h2>
+            {salvandoCondicao && (
+              <span role="status" className="inline-flex items-center gap-1.5 text-xs text-fg-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Salvando…
+              </span>
             )}
           </div>
-        )}
+
+          <SeletorCondicao
+            condicoes={condicoes}
+            valor={item.condicao}
+            onEscolher={onDefinirCondicao}
+            disabled={!podeEditar}
+          />
+
+          <div className="mt-3">
+            {!condicaoAtual ? (
+              <p className="text-xs text-fg-subtle">
+                {podeEditar
+                  ? "Escolha a condição observada — é ela que libera a transferência."
+                  : "Condição não registrada."}
+              </p>
+            ) : exigeAcao ? (
+              achados.length === 0 ? (
+                <Alert
+                  tone="warning"
+                  icon={TriangleAlert}
+                  title="Esta condição exige análise"
+                  actions={acaoAnalise}
+                >
+                  É a análise que vira achado, ordem de serviço e folha no relatório técnico.
+                </Alert>
+              ) : (
+                <p className="text-xs text-fg-muted">
+                  {plural(achados.length, "análise registrada", "análises registradas")} — segue
+                  para revisão na Análise final.
+                </p>
+              )
+            ) : (
+              <p className="flex items-start gap-1.5 text-xs text-success-fg">
+                <CircleCheck className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Sem necessidade de ação.
+                  {condicaoAtual.descricao && (
+                    <span className="text-fg-muted"> {condicaoAtual.descricao}</span>
+                  )}
+                </span>
+              </p>
+            )}
+          </div>
+
+          {/* Só no desktop: no celular não há teclado físico para isso valer. */}
+          {podeEditar && (
+            <p className="mt-3 hidden flex-wrap items-center gap-x-1.5 gap-y-1 text-2xs text-fg-subtle lg:flex">
+              Atalhos: <Tecla>1</Tecla>–<Tecla>9</Tecla> condição ·
+              <Tecla>←</Tecla>
+              <Tecla>→</Tecla> equipamento · <Tecla>A</Tecla> análise
+            </p>
+          )}
+        </div>
+
+        <FichaTecnica equipamentoId={item.equipamento} />
       </Card>
 
       {/* ---------- Análises ---------- */}

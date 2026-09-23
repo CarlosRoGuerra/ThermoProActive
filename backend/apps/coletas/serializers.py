@@ -1,6 +1,8 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.cadastros.models import Condicao
+
 from .models import (
     Achado,
     AchadoImagem,
@@ -292,6 +294,15 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemInspecao
         exclude = ["ativo"]
+
+
+class CondicaoEmLoteSerializer(serializers.Serializer):
+    """Entrada do lançamento em lote da folha de campo (`definir-condicao`)."""
+
+    itens = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), allow_empty=False, max_length=1000
+    )
+    condicao = serializers.PrimaryKeyRelatedField(queryset=Condicao.objects.ativos())
 
 
 class RelatorioSerializer(serializers.ModelSerializer):
