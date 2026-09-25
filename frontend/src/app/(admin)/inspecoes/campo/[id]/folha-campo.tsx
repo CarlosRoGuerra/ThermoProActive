@@ -22,6 +22,8 @@ import { mensagemDeErro } from "@/lib/erros";
 import { plural } from "@/lib/format";
 import type { Achado, Carregamento, Condicao, ItemInspecao, Paginated } from "@/lib/types";
 import { AnaliseBalanceamento } from "@/components/analise-balanceamento";
+import { EditorTransformador } from "@/features/ensaios/editor";
+import { ehModuloTransformador, type TransformadorInspecao } from "@/features/ensaios/tipos";
 import {
   Badge,
   Button,
@@ -228,7 +230,10 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
   const itemId = params.get("item");
   const ehCorretiva = !!carreg?.tipo_corretiva;
+  // Óleo isolante / ensaios elétricos: cada transformador tem o lançamento próprio (?item=).
+  const moduloTrafo = ehModuloTransformador(carreg?.modulo_tecnico) ? carreg!.modulo_tecnico : null;
   const podeEditar = !!user?.is_interno && carreg?.status === "EM_CAMPO";
+  const [resumoTrafo, setResumoTrafo] = useState<Map<number, TransformadorInspecao> | null>(null);
 
   const recarregar = useCallback(async () => {
     const d = await api<Carregamento>(`/carregamentos/${carregamentoId}/`);
@@ -257,6 +262,15 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       .catch(() => setMsg("Não foi possível carregar esta rota."))
       .finally(() => setLoading(false));
   }, [carregamentoId]);
+
+  // Resumo dos ensaios por transformador (registro e laudos) para o painel. Relido
+  // ao voltar do lançamento de um transformador, que é onde ele muda.
+  useEffect(() => {
+    if (!moduloTrafo || itemId) return;
+    api<Paginated<TransformadorInspecao>>(`/transformadores-inspecao/?carregamento=${carregamentoId}&page_size=500`)
+      .then((r) => setResumoTrafo(new Map(r.results.map((t) => [t.id, t]))))
+      .catch(() => setResumoTrafo(new Map()));
+  }, [moduloTrafo, itemId, carregamentoId]);
 
   // Se o item selecionado sair da rota (removido, ou rota recarregada sem ele),
   // volta para a revisão em vez de mostrar um painel de equipamento fantasma.
@@ -479,7 +493,7 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   // cada render e sempre enxerga o estado atual (o React aplica a render de
   // uma tecla antes de entregar a próxima).
   useEffect(() => {
-    if (!carreg || (ehCorretiva && itemId)) return;
+    if (!carreg || ((ehCorretiva || moduloTrafo) && itemId)) return;
     const itens = carreg.itens;
     function aoTeclar(e: KeyboardEvent) {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || !selecionado) return;
@@ -518,6 +532,19 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
   const pendentes = carreg.itens.filter((i) => i.condicao == null).length;
   const transferida = carreg.status !== "EM_CAMPO";
+
+  // Óleo isolante / ensaios elétricos — lançamento do transformador (registro,
+  // inspeção visual, medições e laudos), o mesmo editor da Análise final.
+  if (moduloTrafo && itemId) {
+    return (
+      <EditorTransformador
+        key={itemId}
+        itemId={Number(itemId)}
+        podeEditar={podeEditar}
+        voltar={{ href: `/inspecoes/campo/${carregamentoId}`, label: "Voltar para equipamentos da rota" }}
+      />
+    );
+  }
 
   // Manutenção corretiva — "Análise por equipamento": mesmo painel de
   // /servicos/atividades/[id]?item=, agora dentro da Análise de campo.
@@ -723,6 +750,16 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                 }}
                 onAdicionarLinha={() => adicionarLinha(selecionado)}
                 onRemoverItem={() => remocaoItem.pedir(selecionado)}
+                transformador={
+                  moduloTrafo
+                    ? {
+                        modulo: moduloTrafo,
+                        resumo: resumoTrafo?.get(selecionado.id) ?? null,
+                        carregando: resumoTrafo == null,
+                        onAbrir: () => router.push(`/inspecoes/campo/${carregamentoId}?item=${selecionado.id}`),
+                      }
+                    : undefined
+                }
               />
             </div>
           ) : (

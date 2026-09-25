@@ -25,6 +25,8 @@ import {
   cn,
 } from "@/components/ds";
 import { useRecurso } from "@/lib/recurso";
+import { ResumoEnsaiosCampo } from "@/features/ensaios/resumo-campo";
+import type { ModuloTransformador, TransformadorInspecao } from "@/features/ensaios/tipos";
 import { numeroUnidade, plural } from "@/lib/format";
 import type { Achado, Condicao, Equipamento, ItemInspecao } from "@/lib/types";
 import { EXPLICACAO_ESTADO, ROTULO_ESTADO, estadoDoItem } from "./progresso";
@@ -56,6 +58,7 @@ export function PainelEquipamento({
   onAnalisarCorretiva,
   onAdicionarLinha,
   onRemoverItem,
+  transformador,
 }: {
   item: ItemInspecao;
   condicoes: Condicao[];
@@ -69,6 +72,13 @@ export function PainelEquipamento({
   onAnalisarCorretiva: () => void;
   onAdicionarLinha: () => void;
   onRemoverItem: () => void;
+  /** Rotas de óleo isolante e de ensaios elétricos: coleta/registro e laudos do transformador. */
+  transformador?: {
+    modulo: ModuloTransformador;
+    resumo: TransformadorInspecao | null;
+    carregando: boolean;
+    onAbrir: () => void;
+  };
 }) {
   const estado = estadoDoItem(item);
   const condicaoAtual = condicoes.find((c) => c.id === item.condicao) ?? null;
@@ -191,6 +201,16 @@ export function PainelEquipamento({
 
         <FichaTecnica equipamentoId={item.equipamento} />
       </Card>
+
+      {transformador && (
+        <ResumoEnsaiosCampo
+          modulo={transformador.modulo}
+          resumo={transformador.resumo}
+          carregando={transformador.carregando}
+          podeEditar={podeEditar}
+          onAbrir={transformador.onAbrir}
+        />
+      )}
 
       {/* ---------- Análises ---------- */}
       <Card>

@@ -260,6 +260,57 @@ def _ficha_rxo(params, campanhas, atual, trafo):
     }
 
 
+def montar_ficha(ensaio, params, resultado, atual, campanhas, trafo, solicitado) -> dict:
+    """Ficha de um ensaio: textos do laudo, avaliação e o corpo do tipo (tabela, R×T, R×I, R×O)."""
+    tipo = TIPO_FICHA.get(ensaio.sigla)
+    if tipo == "RXT":
+        corpo = _ficha_rxt(params, campanhas, atual, trafo)
+    elif tipo == "RXI":
+        corpo = _ficha_rxi(params, atual if resultado and resultado.situacao == REALIZADO else None)
+    elif tipo == "RXO":
+        corpo = _ficha_rxo(params, campanhas, atual, trafo)
+    else:
+        corpo = _ficha_tabela(ensaio, params, campanhas, atual)
+    conformes = corpo.pop("conformes")
+    status = _status(resultado, conformes)
+    r = resultado
+    return {
+        "sigla": ensaio.sigla, "nome": ensaio.nome, "rotulo": ROTULO_CURTO.get(ensaio.sigla, ensaio.sigla),
+        "titulo": ensaio.titulo_ficha, "solicitado": solicitado,
+        "situacao": r.situacao if r else SituacaoResultado.SEM_RESULTADO,
+        "status": status, "status_rotulo": STATUS_ROTULO[status],
+        "avaliados": sum(1 for c in conformes if c is not None),
+        "fora": sum(1 for c in conformes if c is False),
+        "numero_laudo": r.numero_laudo if r else "",
+        "criticidade": r.get_criticidade_display() if r and r.criticidade else "",
+        "data_analise": r.data_analise if r else None, "data_proxima": r.data_proxima if r else None,
+        "conclusao": r.conclusao if r else "", "recomendacao": r.recomendacao if r else "",
+        "informacoes_adicionais": r.informacoes_adicionais if r else "",
+        "instrumento": _instrumento(r.instrumento) if r else "",
+        "rotulos": {"conclusao": ensaio.rotulo_conclusao, "informacoes": ensaio.rotulo_informacoes,
+                    "proxima": ensaio.rotulo_proxima},
+        "notas": [linha.strip() for linha in ensaio.nota_tecnica.splitlines() if linha.strip()],
+        **corpo,
+    }
+
+
+# O que o editor de lançamento mostra depois de salvar: a parte calculada da ficha.
+CAMPOS_AVALIACAO = ("tipo", "status", "status_rotulo", "avaliados", "fora", "campanhas", "indicadores",
+                    "gp_estimado", "series", "tempos", "limite", "criterio_ip", "pares")
+
+
+def avaliar_resultado(resultado) -> dict:
+    """
+    Os cálculos da ficha só com este resultado (sem histórico): o mesmo erro do
+    R×T, IP/IA, TG/TGC, valores corrigidos e conformidade que o relatório imprime.
+    """
+    params = [p for p in resultado.ensaio.parametros.all() if p.ativo]
+    atual = _Campanha(resultado)
+    trafo = _um(resultado.item.equipamento, "dados_transformador")
+    ficha = montar_ficha(resultado.ensaio, params, resultado, atual, [atual], trafo, solicitado=False)
+    return {k: ficha[k] for k in CAMPOS_AVALIACAO if k in ficha}
+
+
 # ---------------------------------- Módulo ----------------------------------
 class ModuloTransformador:
     """Base dos relatórios de transformador (um módulo por família de ensaios)."""
@@ -337,8 +388,8 @@ class ModuloTransformador:
                     key=lambda c: c.data,
                 )
                 campanhas = anteriores[-(HISTORICO_MAXIMO - 1):] + ([atual] if atual else [])
-                fichas.append(self._ficha(ensaio, params[ensaio.id], resultado, atual, campanhas, trafo,
-                                          ensaio.id in solicitados))
+                fichas.append(montar_ficha(ensaio, params[ensaio.id], resultado, atual, campanhas, trafo,
+                                           ensaio.id in solicitados))
             transformadores.append({
                 "item_id": item.id, "tag": eq.tag, "equipamento": eq.nome,
                 "area": eq.setor.area.nome if eq.setor_id else "—", "setor": eq.setor.nome if eq.setor_id else "—",
@@ -386,38 +437,6 @@ class ModuloTransformador:
             "grupo_ligacao": t.grupo_ligacao if t else "",
             "volume_oleo_l": t.volume_oleo_l if t else None,
             "possui_tanque_expansao": t.possui_tanque_expansao if t else None,
-        }
-
-    def _ficha(self, ensaio, params, resultado, atual, campanhas, trafo, solicitado) -> dict:
-        tipo = TIPO_FICHA.get(ensaio.sigla)
-        if tipo == "RXT":
-            corpo = _ficha_rxt(params, campanhas, atual, trafo)
-        elif tipo == "RXI":
-            corpo = _ficha_rxi(params, atual if resultado and resultado.situacao == REALIZADO else None)
-        elif tipo == "RXO":
-            corpo = _ficha_rxo(params, campanhas, atual, trafo)
-        else:
-            corpo = _ficha_tabela(ensaio, params, campanhas, atual)
-        conformes = corpo.pop("conformes")
-        status = _status(resultado, conformes)
-        r = resultado
-        return {
-            "sigla": ensaio.sigla, "nome": ensaio.nome, "rotulo": ROTULO_CURTO.get(ensaio.sigla, ensaio.sigla),
-            "titulo": ensaio.titulo_ficha, "solicitado": solicitado,
-            "situacao": r.situacao if r else SituacaoResultado.SEM_RESULTADO,
-            "status": status, "status_rotulo": STATUS_ROTULO[status],
-            "avaliados": sum(1 for c in conformes if c is not None),
-            "fora": sum(1 for c in conformes if c is False),
-            "numero_laudo": r.numero_laudo if r else "",
-            "criticidade": r.get_criticidade_display() if r and r.criticidade else "",
-            "data_analise": r.data_analise if r else None, "data_proxima": r.data_proxima if r else None,
-            "conclusao": r.conclusao if r else "", "recomendacao": r.recomendacao if r else "",
-            "informacoes_adicionais": r.informacoes_adicionais if r else "",
-            "instrumento": _instrumento(r.instrumento) if r else "",
-            "rotulos": {"conclusao": ensaio.rotulo_conclusao, "informacoes": ensaio.rotulo_informacoes,
-                        "proxima": ensaio.rotulo_proxima},
-            "notas": [linha.strip() for linha in ensaio.nota_tecnica.splitlines() if linha.strip()],
-            **corpo,
         }
 
     def _kpis(self, transformadores) -> dict:

@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardCheck, Eye, FileCheck2, Trash2 } from "lucide-react";
+import { ClipboardCheck, Eye, FileCheck2, FlaskConical, Trash2 } from "lucide-react";
 import {
   Badge,
   ConfirmDialog,
@@ -17,6 +17,7 @@ import {
   SegmentedControl,
   Select,
   SemDado,
+  Tabs,
   Toolbar,
   useConfirmacao,
   useToast,
@@ -29,10 +30,13 @@ import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { usePermissoes } from "@/lib/permissions";
 import { data as fmtData, plural, texto } from "@/lib/format";
 import { ExigeClienteAtivo } from "@/features/clientes/exige-cliente-ativo";
+import { FilaEnsaiosTransformador } from "@/features/ensaios/fila";
 import type { Achado } from "@/lib/types";
 
 type Tecnologia = { id: number; nome: string };
 type Situacao = "nao" | "sim" | "todas";
+/** Análises/OSPs das inspeções por rota × laudos dos ensaios de transformador. */
+type Visao = "analises" | "ensaios";
 
 /**
  * Análise final — o refino no escritório do que veio do campo.
@@ -57,6 +61,8 @@ function AnaliseFinalConteudo() {
   const [situacao, setSituacao] = useState<Situacao>(
     situacaoInicial === "sim" || situacaoInicial === "todas" ? situacaoInicial : "nao"
   );
+  // Ao voltar do editor de ensaios, a URL pede a visão dos transformadores.
+  const [visao, setVisao] = useState<Visao>(parametros?.get("visao") === "ensaios" ? "ensaios" : "analises");
 
   const tecnologias = useLista<Tecnologia>("/tecnologias-analise/?page_size=500", "tecnologias");
   const lista = useLista<Achado>(
@@ -206,106 +212,119 @@ function AnaliseFinalConteudo() {
       {!clienteAtivo ? (
         <ExigeClienteAtivo oQue="As análises transferidas do campo" />
       ) : (
-        <>
-          <Toolbar
-            busca={
-              <SearchInput
-                value={busca}
-                onChange={setBusca}
-                label="Buscar análise"
-                placeholder="OSP, equipamento, componente…"
-              />
-            }
-            filtros={
-              <>
-                <SegmentedControl
-                  label="Situação da análise"
-                  tamanho="sm"
-                  valor={situacao}
-                  onMudar={setSituacao}
-                  opcoes={[
-                    { valor: "nao", label: "A confirmar" },
-                    { valor: "sim", label: "Confirmadas" },
-                    { valor: "todas", label: "Todas" },
-                  ]}
-                />
-                <div className="w-44">
-                  <Field label="Tecnologia">
-                    <Select value={tecFiltro} onChange={(e) => setTecFiltro(e.target.value)}>
-                      <option value="">Todas</option>
-                      {tecnologias.itens.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nome}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                </div>
-                <div className="flex gap-2">
-                  <Field label="De">
-                    <Input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} />
-                  </Field>
-                  <Field label="Até">
-                    <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
-                  </Field>
-                </div>
-              </>
-            }
-            resumo={
-              lista.itens.length > 0
-                ? `${filtrados.length} de ${plural(lista.itens.length, "análise", "análises")} transferidas`
-                : undefined
-            }
-          />
-
-          {lista.carregando ? (
-            <LoadingState variante="tabela" linhas={8} colunas={6} label="Carregando análises…" />
+        <Tabs<Visao>
+          abas={[
+            { id: "analises", label: "Análises e OSPs", icon: FileCheck2, contador: naoConfirmadas || undefined },
+            { id: "ensaios", label: "Ensaios de transformador", icon: FlaskConical },
+          ]}
+          ativa={visao}
+          onMudar={setVisao}
+        >
+          {visao === "ensaios" ? (
+            <FilaEnsaiosTransformador clienteId={clienteAtivo.id} />
           ) : (
-            <DataTable<Achado>
-              itens={filtrados}
-              colunas={colunas}
-              getId={(a) => a.id}
-              busca={busca}
-              camposBusca={(a) => [a.anomalia_texto, a.tipo_anomalia_nome, String(a.id)]}
-              falha={lista.falha}
-              onRetry={lista.recarregar}
-              onLinhaClick={(a) => router.push(`/inspecoes/final/${a.id}`)}
-              acoes={podeEditar ? acoes : undefined}
-              ordenacaoInicial={{ chave: "data", direcao: "desc" }}
-              porPagina={15}
-              legenda="Análises transferidas do campo, com OSP, equipamento, componente, condição e situação"
-              vazio={
-                situacao !== "todas" || tecFiltro || dataIni || dataFim ? (
-                  <EmptyState
-                    compacto
-                    icon={FileCheck2}
-                    title={
-                      situacao === "nao"
-                        ? "Nenhuma análise aguardando confirmação"
-                        : "Nada corresponde aos filtros"
-                    }
-                    description={
-                      situacao === "nao"
-                        ? "Toda a fila de refino deste cliente está em dia."
-                        : "Ajuste a situação, a tecnologia ou o período."
-                    }
+            <div className="space-y-4">
+              <Toolbar
+                busca={
+                  <SearchInput
+                    value={busca}
+                    onChange={setBusca}
+                    label="Buscar análise"
+                    placeholder="OSP, equipamento, componente…"
                   />
-                ) : (
-                  <EmptyState
-                    icon={ClipboardCheck}
-                    title="Nenhuma análise transferida deste cliente"
-                    description="As análises chegam aqui quando a folha de campo é transferida para o escritório."
-                    comoFunciona={[
-                      "Carregue uma rota em Análise de campo e registre as condições.",
-                      "Lance as análises dos equipamentos que exigem ação.",
-                      "Transfira a rota — as análises aparecem nesta fila para refino.",
-                    ]}
-                  />
-                )
-              }
-            />
+                }
+                filtros={
+                  <>
+                    <SegmentedControl
+                      label="Situação da análise"
+                      tamanho="sm"
+                      valor={situacao}
+                      onMudar={setSituacao}
+                      opcoes={[
+                        { valor: "nao", label: "A confirmar" },
+                        { valor: "sim", label: "Confirmadas" },
+                        { valor: "todas", label: "Todas" },
+                      ]}
+                    />
+                    <div className="w-44">
+                      <Field label="Tecnologia">
+                        <Select value={tecFiltro} onChange={(e) => setTecFiltro(e.target.value)}>
+                          <option value="">Todas</option>
+                          {tecnologias.itens.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.nome}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </div>
+                    <div className="flex gap-2">
+                      <Field label="De">
+                        <Input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} />
+                      </Field>
+                      <Field label="Até">
+                        <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+                      </Field>
+                    </div>
+                  </>
+                }
+                resumo={
+                  lista.itens.length > 0
+                    ? `${filtrados.length} de ${plural(lista.itens.length, "análise", "análises")} transferidas`
+                    : undefined
+                }
+              />
+
+              {lista.carregando ? (
+                <LoadingState variante="tabela" linhas={8} colunas={6} label="Carregando análises…" />
+              ) : (
+                <DataTable<Achado>
+                  itens={filtrados}
+                  colunas={colunas}
+                  getId={(a) => a.id}
+                  busca={busca}
+                  camposBusca={(a) => [a.anomalia_texto, a.tipo_anomalia_nome, String(a.id)]}
+                  falha={lista.falha}
+                  onRetry={lista.recarregar}
+                  onLinhaClick={(a) => router.push(`/inspecoes/final/${a.id}`)}
+                  acoes={podeEditar ? acoes : undefined}
+                  ordenacaoInicial={{ chave: "data", direcao: "desc" }}
+                  porPagina={15}
+                  legenda="Análises transferidas do campo, com OSP, equipamento, componente, condição e situação"
+                  vazio={
+                    situacao !== "todas" || tecFiltro || dataIni || dataFim ? (
+                      <EmptyState
+                        compacto
+                        icon={FileCheck2}
+                        title={
+                          situacao === "nao"
+                            ? "Nenhuma análise aguardando confirmação"
+                            : "Nada corresponde aos filtros"
+                        }
+                        description={
+                          situacao === "nao"
+                            ? "Toda a fila de refino deste cliente está em dia."
+                            : "Ajuste a situação, a tecnologia ou o período."
+                        }
+                      />
+                    ) : (
+                      <EmptyState
+                        icon={ClipboardCheck}
+                        title="Nenhuma análise transferida deste cliente"
+                        description="As análises chegam aqui quando a folha de campo é transferida para o escritório."
+                        comoFunciona={[
+                          "Carregue uma rota em Análise de campo e registre as condições.",
+                          "Lance as análises dos equipamentos que exigem ação.",
+                          "Transfira a rota — as análises aparecem nesta fila para refino.",
+                        ]}
+                      />
+                    )
+                  }
+                />
+              )}
+            </div>
           )}
-        </>
+        </Tabs>
       )}
 
       <ConfirmDialog

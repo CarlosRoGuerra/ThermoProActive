@@ -8,6 +8,7 @@ from .views import (
     RegistroEnsaioEletricoViewSet,
     ResultadoEnsaioViewSet,
     TipoFluidoViewSet,
+    TransformadorInspecaoViewSet,
 )
 
 router = DefaultRouter()
@@ -20,5 +21,7 @@ router.register("itens-checklist-visual", ItemChecklistVisualViewSet, basename="
 router.register("coletas-oleo", ColetaOleoViewSet, basename="coletaoleo")
 router.register("registros-ensaio-eletrico", RegistroEnsaioEletricoViewSet, basename="registroensaioeletrico")
 router.register("resultados-ensaio", ResultadoEnsaioViewSet, basename="resultadoensaio")
+# Fila do lançamento: transformadores das rotas de óleo e de ensaios elétricos
+router.register("transformadores-inspecao", TransformadorInspecaoViewSet, basename="transformadorinspecao")
 
 urlpatterns = router.urls

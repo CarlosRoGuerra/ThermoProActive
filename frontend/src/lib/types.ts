@@ -343,6 +343,8 @@ export interface Carregamento {
   cliente_nome: string;
   tecnologia: number;
   tecnologia_nome: string;
+  /** Módulo técnico da tecnologia ("" = inspeção por rota; OLEO_ISOLANTE/ENSAIO_ELETRICO = transformador). */
+  modulo_tecnico: string;
   relatorio: number | null;
   numero: string | null;
   data_inicio: string | null;
@@ -373,6 +375,7 @@ export interface CarregamentoLista {
   cliente_nome: string;
   tecnologia: number;
   tecnologia_nome: string;
+  modulo_tecnico: string;
   relatorio: number | null;
   numero: string | null;
   data_inicio: string | null;

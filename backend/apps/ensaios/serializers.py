@@ -1,5 +1,8 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from rest_framework import serializers
+
+from apps.coletas.models import ItemInspecao
 
 from .models import (
     ColetaOleo,
@@ -13,6 +16,10 @@ from .models import (
     TipoFluido,
     ValorParametro,
 )
+from .relatorio import avaliar_resultado
+
+# Situações que encerram um ensaio solicitado (o resto ainda espera laudo).
+SITUACOES_FINAIS = ("REALIZADO", "NAO_COLETADO", "NAO_REALIZADO")
 
 
 # ------------------------------- Catálogos ----------------------------------
@@ -136,15 +143,21 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
     """
     Resultado de um ensaio com os valores. `valores`, quando enviados, substituem
     todos os do resultado (mesmo contrato para digitação, planilha ou integração).
+    `avaliacao` devolve a parte calculada da ficha (erro, IP, TG/TGC, conformidade),
+    com as mesmas regras do relatório.
     """
 
     valores = ValorParametroSerializer(many=True, required=False)
     ensaio_sigla = serializers.CharField(source="ensaio.sigla", read_only=True)
     situacao_display = serializers.CharField(source="get_situacao_display", read_only=True)
+    avaliacao = serializers.SerializerMethodField()
 
     class Meta:
         model = ResultadoEnsaio
         exclude = ["ativo"]
+
+    def get_avaliacao(self, obj) -> dict:
+        return avaliar_resultado(obj)
 
     def validate(self, attrs):
         item = attrs.get("item") or getattr(self.instance, "item", None)
@@ -180,3 +193,79 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
             return
         resultado.valores.all().delete()
         ValorParametro.objects.bulk_create([ValorParametro(resultado=resultado, **v) for v in valores])
+
+
+# ------------------------- Fila de lançamento (leitura) -------------------------
+class TransformadorInspecaoSerializer(serializers.ModelSerializer):
+    """
+    Um transformador numa rota de óleo isolante ou de ensaios elétricos, com o que
+    o lançamento precisa: rota, relatório, registro de campo e a situação de cada
+    ensaio do módulo (`pendentes` = solicitados ainda sem laudo).
+    """
+
+    carregamento_status = serializers.CharField(source="carregamento.status", read_only=True)
+    relatorio = serializers.IntegerField(source="carregamento.relatorio_id", read_only=True)
+    numero = serializers.CharField(source="carregamento.relatorio.numero", read_only=True, default=None)
+    cliente = serializers.IntegerField(source="carregamento.cliente_id", read_only=True)
+    cliente_nome = serializers.CharField(source="carregamento.cliente.nome", read_only=True)
+    tecnologia = serializers.IntegerField(source="carregamento.tecnologia_id", read_only=True)
+    tecnologia_nome = serializers.CharField(source="carregamento.tecnologia.nome", read_only=True)
+    modulo = serializers.CharField(source="carregamento.tecnologia.modulo_tecnico", read_only=True)
+    data_coleta = serializers.DateField(source="carregamento.data_coleta", read_only=True)
+    analista_nome = serializers.CharField(source="carregamento.analista.nome", read_only=True)
+    equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
+    equipamento_nome = serializers.CharField(source="equipamento.nome", read_only=True)
+    area_nome = serializers.CharField(source="equipamento.setor.area.nome", read_only=True)
+    setor_nome = serializers.CharField(source="equipamento.setor.nome", read_only=True)
+    condicao_sigla = serializers.CharField(source="condicao.sigla", read_only=True, default=None)
+    condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
+    possui_tanque_expansao = serializers.BooleanField(
+        source="equipamento.dados_transformador.possui_tanque_expansao", read_only=True, default=None
+    )
+    registro = serializers.SerializerMethodField()
+    ensaios = serializers.SerializerMethodField()
+    pendentes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ItemInspecao
+        fields = [
+            "id", "carregamento", "carregamento_status", "relatorio", "numero", "cliente", "cliente_nome",
+            "tecnologia", "tecnologia_nome", "modulo", "data_coleta", "analista_nome", "equipamento",
+            "equipamento_tag", "equipamento_nome", "area_nome", "setor_nome", "condicao", "condicao_sigla",
+            "condicao_nome", "possui_tanque_expansao", "registro", "ensaios", "pendentes",
+        ]
+
+    @staticmethod
+    def _registro(obj):
+        for campo in ("coleta_oleo", "registro_eletrico"):
+            try:
+                return getattr(obj, campo)
+            except ObjectDoesNotExist:
+                continue
+        return None
+
+    def _catalogo(self, modulo):
+        # Uma consulta por módulo na página inteira, não por transformador.
+        cache = self.context.setdefault("_ensaios_por_modulo", {})
+        if modulo not in cache:
+            cache[modulo] = list(Ensaio.objects.ativos().filter(modulo=modulo).order_by("ordem"))
+        return cache[modulo]
+
+    def get_registro(self, obj):
+        r = self._registro(obj)
+        if r is None:
+            return None
+        return {"id": r.id, "data": getattr(r, "data_coleta", None) or getattr(r, "data_ensaio", None)}
+
+    def get_ensaios(self, obj) -> list:
+        registro = self._registro(obj)
+        solicitados = {e.id for e in registro.ensaios.all()} if registro else set()
+        resultados = {r.ensaio_id: r for r in obj.resultados_ensaio.all() if r.ativo}
+        return [
+            {"sigla": e.sigla, "nome": e.nome, "solicitado": e.id in solicitados,
+             "situacao": resultados[e.id].situacao if e.id in resultados else None}
+            for e in self._catalogo(obj.carregamento.tecnologia.modulo_tecnico)
+        ]
+
+    def get_pendentes(self, obj) -> int:
+        return sum(1 for e in self.get_ensaios(obj) if e["solicitado"] and e["situacao"] not in SITUACOES_FINAIS)

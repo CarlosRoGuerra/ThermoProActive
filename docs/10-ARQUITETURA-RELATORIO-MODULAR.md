@@ -484,9 +484,10 @@ Escrita só da equipe interna; o portal consulta o que é da própria empresa
 tecnologia do módulo certo, o parâmetro tem de ser do ensaio, parâmetro calculado não se
 digita e a próxima data não pode ser anterior à análise.
 
-**Ainda não há tela de lançamento** para coleta, registro e resultados: hoje o
-lançamento é pela API ou pelo admin do Django (`/django-admin/`, valores em linha). É o
-próximo passo natural.
+O lançamento pela tela está em 10.7. `ResultadoEnsaio` devolve também `avaliacao` — a
+parte calculada da ficha (`relatorio.avaliar_resultado`, as mesmas regras do relatório) —
+e `/api/transformadores-inspecao/` (só leitura) é a fila do lançamento: transformadores
+das rotas de óleo e de elétricos, com o registro de campo e a situação de cada ensaio.
 
 ### 10.2 Frontend
 
@@ -580,3 +581,33 @@ transferência → coleta/registro → resultados → finalização):
 - No app: óleo com 17 folhas e elétricos com 16, todas com 297 mm; PDF (paged.js) com 17
   e 16 páginas. A termografia continua com 22.
 - `tsc` e `next build`.
+
+### 10.7 Lançamento pela tela (inspeção nova)
+
+A inspeção de óleo ou de ensaios elétricos segue o mesmo caminho das outras:
+
+1. **Análise de campo → Carregar rota**, com a tecnologia de óleo ou de elétricos
+   (instrumentação opcional). A folha escolhe o lançamento por
+   `Carregamento.modulo_tecnico`, nunca pelo nome da tecnologia.
+2. **Folha de campo**: condição de cada transformador, como sempre, e o cartão "Coleta
+   de óleo e ensaios" / "Ensaios elétricos", que abre o lançamento (`?item=`):
+   - óleo: data, amostrador, temperaturas, umidade, ponto de coleta, fluido, ensaios
+     solicitados e inspeção visual OK/NC/NA (NC com observação; atalhos "gerais → OK" e
+     "tanque → NA"; sem tanque de expansão no cadastro, esses itens já começam NA);
+   - elétricos: data, analista, TAP, tensão do TAP, temperaturas, umidade e ensaios
+     solicitados.
+   Em cada ensaio: situação, valores, laudo, datas, instrumento, conclusão e
+   recomendação. Ao salvar, o servidor devolve o que o relatório vai calcular
+   (conformidade por parâmetro, TG/TGC, relação nominal e erro do R×T, IP/IA, R×O por
+   fase e corrigido).
+3. **Transferir** (mesma regra: condição em todos).
+4. **Análise final → Ensaios de transformador**: fila dos transformadores transferidos
+   com o que falta (sem registro de campo, laudos pendentes); abre o mesmo editor
+   (`/inspecoes/final/transformador/<item>`) para os laudos do laboratório.
+5. **Relatório técnico**: o de sempre, com as fichas e o histórico das campanhas.
+
+Números: vírgula ou ponto como decimal; ponto de milhar não é aceito ("5.000" seria
+ambíguo). Validado no navegador com uma inspeção nova do TRF-001 (rota carregada pela
+tela → coleta com uma NC → FQ fora da referência → transferência → CR no escritório →
+relatório RT-AFIM-2026-09-25-00015 com as duas campanhas no histórico) e com os
+editores de R×T, R×I e R×O abertos sobre o relatório 17.

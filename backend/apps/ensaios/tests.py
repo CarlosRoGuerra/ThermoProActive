@@ -12,7 +12,9 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from apps.cadastros.models import (
@@ -508,3 +510,89 @@ class ApiEnsaiosTest(CenarioTransformador, TestCase):
         self.assertEqual([e["sigla"] for e in r.data["results"]], ["RXT", "RXI", "RXO"])
         rxt = r.data["results"][0]
         self.assertEqual(next(p for p in rxt["parametros"] if p["codigo"] == "ERRO")["norma"], "ANSI NETA ATS 2009")
+
+
+# --------------------------- Lançamento pela tela ---------------------------
+class LancamentoTransformadorTest(CenarioTransformador, TestCase):
+    """O que as telas de campo e de escritório usam além do CRUD de ensaios."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.criar_parque()
+        cls.rel_oleo, cls.item_oleo = cls.item_de_rota(ModuloTecnico.OLEO_ISOLANTE)
+        cls.rel_eletrico, cls.item_eletrico = cls.item_de_rota(ModuloTecnico.ENSAIO_ELETRICO)
+        cls.portal_outro = User.objects.create_user(email="pcm@outra.com", password="x", nome="PCM outra",
+                                                    perfil="CLIENTE_PCM", cliente=cls.outro_cliente)
+
+    def setUp(self):
+        self.api = APIClient()
+        self.api.force_authenticate(self.tecnico)
+
+    def test_carregamento_informa_o_modulo_da_tecnologia(self):
+        carreg = self.item_oleo.carregamento
+        self.assertEqual(self.api.get(f"/api/carregamentos/{carreg.pk}/").data["modulo_tecnico"], "OLEO_ISOLANTE")
+        lista = self.api.get("/api/carregamentos/", {"cliente": self.cliente.pk}).data["results"]
+        self.assertEqual({c["modulo_tecnico"] for c in lista}, {"OLEO_ISOLANTE", "ENSAIO_ELETRICO"})
+
+    def test_salvar_resultado_devolve_os_calculos_da_ficha(self):
+        RegistroEnsaioEletrico.objects.create(item=self.item_eletrico, data_ensaio=date(2025, 12, 26), tap="5",
+                                              tensao_tap_v=D("11400"), temperatura_oleo_c=D("45.0"))
+        r = self.api.post("/api/resultados-ensaio/", {
+            "item": self.item_eletrico.pk, "ensaio": self.ensaio["RXT"].pk, "situacao": "REALIZADO",
+            "valores": [{"parametro": self.param[("RXT", "MEDIDA")].pk, "serie": f, "valor": v}
+                        for f, v in RXT_FASES.items()],
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        avaliacao = r.data["avaliacao"]
+        self.assertEqual(avaliacao["status"], "CONFORME")
+        campanha = avaliacao["campanhas"][0]
+        self.assertEqual(q(campanha["nominal"], 3), D("51.818"))
+        self.assertEqual([q(f["erro"]) for f in campanha["fases"]], [D("-0.23"), D("-0.42"), D("-0.36")])
+
+        r = self.api.post("/api/resultados-ensaio/", {
+            "item": self.item_oleo.pk, "ensaio": self.ensaio["CR"].pk, "situacao": "REALIZADO",
+            "valores": [{"parametro": self.param[("CR", k)].pk, "valor": v} for k, v in CR.items()],
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data["avaliacao"]["indicadores"], {"TG": D("60044"), "TGC": D("544")})
+
+    def test_fila_do_lancamento_mostra_o_que_falta_por_transformador(self):
+        coleta = ColetaOleo.objects.create(item=self.item_oleo, data_coleta=date(2025, 12, 26))
+        coleta.ensaios.set([self.ensaio["FQ"], self.ensaio["CR"]])
+        self.resultado(self.item_oleo, "FQ", [("TEOR_AGUA", "14", {})])
+        _, item_vibracao = self.item_de_rota(ModuloTecnico.VIBRACAO)
+
+        r = self.api.get("/api/transformadores-inspecao/", {"carregamento__cliente": self.cliente.pk})
+        self.assertEqual(r.status_code, 200)
+        por_item = {t["id"]: t for t in r.data["results"]}
+        self.assertNotIn(item_vibracao.pk, por_item)  # só rotas dos módulos de transformador
+        oleo = por_item[self.item_oleo.pk]
+        self.assertEqual((oleo["modulo"], oleo["registro"]["id"], oleo["pendentes"]), ("OLEO_ISOLANTE", coleta.pk, 1))
+        self.assertEqual({e["sigla"]: (e["solicitado"], e["situacao"]) for e in oleo["ensaios"]}, {
+            "FQ": (True, "REALIZADO"), "CR": (True, None), "PCB": (False, None), "2FAL": (False, None),
+        })
+        eletrico = por_item[self.item_eletrico.pk]
+        self.assertEqual((eletrico["registro"], eletrico["pendentes"]), (None, 0))
+
+        outro = APIClient()
+        outro.force_authenticate(self.portal_outro)
+        self.assertEqual(outro.get("/api/transformadores-inspecao/").data["results"], [])
+
+    def test_fila_do_lancamento_nao_faz_consulta_por_transformador(self):
+        def consultas():
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.api.get("/api/transformadores-inspecao/").status_code, 200)
+            return len(ctx.captured_queries)
+
+        def mais_um_transformador_com_laudo():
+            _, item = self.item_de_rota(ModuloTecnico.OLEO_ISOLANTE)
+            ColetaOleo.objects.create(item=item, data_coleta=date(2025, 12, 26)).ensaios.set([self.ensaio["FQ"]])
+            self.resultado(item, "FQ", [("TEOR_AGUA", "14", {})])
+
+        # Parte de um cenário que já tem coleta e resultado: sem nenhum, o Django
+        # nem roda os prefetches — a diferença não seria consulta por transformador.
+        mais_um_transformador_com_laudo()
+        antes = consultas()
+        for _ in range(3):
+            mais_um_transformador_com_laudo()
+        self.assertEqual(consultas(), antes)

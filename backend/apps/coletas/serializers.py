@@ -329,6 +329,9 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
 
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
+    # Módulo técnico da tecnologia: a folha de campo abre o lançamento próprio dele
+    # (ex.: óleo isolante e ensaios elétricos), nunca deduzido pelo nome.
+    modulo_tecnico = serializers.CharField(source="tecnologia.modulo_tecnico", read_only=True)
     rota_nome = serializers.CharField(source="rota.nome", read_only=True, default="")
     analista_nome = serializers.CharField(source="analista.nome", read_only=True)
     instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default="")
@@ -347,7 +350,7 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Carregamento
         fields = [
-            "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome",
+            "id", "cliente", "cliente_nome", "tecnologia", "tecnologia_nome", "modulo_tecnico",
             "relatorio", "numero", "data_inicio", "data_termino", "data_coleta",
             "rota", "rota_nome", "instrumento", "instrumento_nome",
             "analista", "analista_nome", "tipo_corretiva",
@@ -384,6 +387,7 @@ class CarregamentoListSerializer(serializers.ModelSerializer):
 class CarregamentoSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True)
+    modulo_tecnico = serializers.CharField(source="tecnologia.modulo_tecnico", read_only=True)
     rota_nome = serializers.CharField(source="rota.nome", read_only=True, default="")
     instrumento_nome = serializers.CharField(source="instrumento.tipo", read_only=True, default="")
     analista_nome = serializers.CharField(source="analista.nome", read_only=True)
