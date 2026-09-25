@@ -42,6 +42,8 @@ type Form = {
   fabricante: string;
   modelo: string;
   numero_serie: string;
+  numero_patrimonio: string;
+  ano_fabricacao: string;
   potencia_kw: string;
   rotacao_nominal_rpm: string;
   tensao_nominal: string;
@@ -52,6 +54,7 @@ type Form = {
 
 const FORM_VAZIO: Form = {
   tag: "", nome: "", tipo_equipamento: "", fabricante: "", modelo: "", numero_serie: "",
+  numero_patrimonio: "", ano_fabricacao: "",
   potencia_kw: "", rotacao_nominal_rpm: "", tensao_nominal: "", fator_potencia_nominal: "",
   classe_iso: "II", criticidade: "",
 };
@@ -161,6 +164,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
           fabricante: e.fabricante ?? "",
           modelo: e.modelo ?? "",
           numero_serie: e.numero_serie ?? "",
+          numero_patrimonio: e.numero_patrimonio ?? "",
+          ano_fabricacao: e.ano_fabricacao ? String(e.ano_fabricacao) : "",
           potencia_kw: e.potencia_kw ? String(e.potencia_kw) : "",
           rotacao_nominal_rpm: e.rotacao_nominal_rpm ? String(e.rotacao_nominal_rpm) : "",
           tensao_nominal: e.tensao_nominal ? String(e.tensao_nominal) : "",
@@ -198,6 +203,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         fabricante: form.fabricante,
         modelo: form.modelo,
         numero_serie: form.numero_serie,
+        numero_patrimonio: form.numero_patrimonio,
+        ano_fabricacao: form.ano_fabricacao === "" ? null : Number(form.ano_fabricacao),
         classe_iso: form.classe_iso,
         criticidade: form.criticidade,
       };
@@ -356,6 +363,23 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
               value={form.numero_serie}
               maxLength={80}
               onChange={(e) => set("numero_serie", e.target.value)}
+            />
+          </Field>
+          <Field label="Número de patrimônio">
+            <Input
+              value={form.numero_patrimonio}
+              maxLength={60}
+              onChange={(e) => set("numero_patrimonio", e.target.value)}
+            />
+          </Field>
+          <Field label="Ano de fabricação">
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1900}
+              max={2100}
+              value={form.ano_fabricacao}
+              onChange={(e) => set("ano_fabricacao", e.target.value)}
             />
           </Field>
         </div>

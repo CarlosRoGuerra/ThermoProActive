@@ -185,7 +185,9 @@ const CAMPOS_TRANSFORMADOR = [
   { chave: "potencia_kva", label: "Potência (kVA)", passo: "0.01" },
   { chave: "tensao_primaria_v", label: "Tensão primária (V)", passo: "0.01" },
   { chave: "tensao_secundaria_v", label: "Tensão secundária (V)", passo: "0.01" },
+  { chave: "tensao_secundaria_fase_v", label: "Tensão secundária de fase (V)", passo: "0.01" },
   { chave: "impedancia_pct", label: "Impedância (%)", passo: "0.01" },
+  { chave: "volume_oleo_l", label: "Volume de óleo (L)", passo: "0.1" },
 ] as const;
 
 export function DadosTransformador({
@@ -208,6 +210,10 @@ export function DadosTransformador({
     )
   );
   const [grupoLigacao, setGrupoLigacao] = useState(dados?.grupo_ligacao ?? "");
+  // "" = não informado (nulo) — o checklist da coleta de óleo depende disso.
+  const [tanque, setTanque] = useState(
+    dados?.possui_tanque_expansao == null ? "" : dados.possui_tanque_expansao ? "sim" : "nao"
+  );
   const [salvando, setSalvando] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -217,7 +223,11 @@ export function DadosTransformador({
     setSalvando(true);
     setErro(null);
     try {
-      const body: Record<string, unknown> = { equipamento: equipamentoId, grupo_ligacao: grupoLigacao };
+      const body: Record<string, unknown> = {
+        equipamento: equipamentoId,
+        grupo_ligacao: grupoLigacao,
+        possui_tanque_expansao: tanque === "" ? null : tanque === "sim",
+      };
       for (const c of CAMPOS_TRANSFORMADOR) body[c.chave] = form[c.chave] || null;
       if (dados) await api(`/dados-tecnicos-transformador/${dados.id}/`, { method: "PATCH", body });
       else await api("/dados-tecnicos-transformador/", { method: "POST", body });
@@ -276,6 +286,13 @@ export function DadosTransformador({
             value={grupoLigacao}
             onChange={(e) => setGrupoLigacao(e.target.value)}
           />
+        </Field>
+        <Field label="Tanque de expansão">
+          <Select disabled={!podeEditar} value={tanque} onChange={(e) => setTanque(e.target.value)}>
+            <option value="">Não informado</option>
+            <option value="sim">Possui</option>
+            <option value="nao">Não possui</option>
+          </Select>
         </Field>
       </div>
 

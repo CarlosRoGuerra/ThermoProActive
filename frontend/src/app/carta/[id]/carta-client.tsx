@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Dossie } from "@/features/relatorio-inspecao/dossie";
-import { CartaCorpo } from "./carta";
+import { CartaDoRelatorio } from "@/features/relatorio-inspecao/shell/documento";
+import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
 /* Regras que o paged.js processa: cada folha da carta é uma A4 física (margens
    internas próprias, timbrado em fluxo). */
@@ -29,7 +29,7 @@ const CHROME_CSS = `
 `;
 
 export default function CartaClient({ relatorioId }: { relatorioId: number }) {
-  const [d, setD] = useState<Dossie | null>(null);
+  const [d, setD] = useState<DossieShell | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState("Carregando dados…");
   const [mostrarFonte, setMostrarFonte] = useState(false);
@@ -37,7 +37,7 @@ export default function CartaClient({ relatorioId }: { relatorioId: number }) {
   const alvoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<Dossie>(`/relatorios-inspecao/${relatorioId}/dossie/`)
+    api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/`)
       .then(setD)
       .catch(() => setErro("Não foi possível carregar os dados da carta."));
   }, [relatorioId]);
@@ -110,7 +110,7 @@ export default function CartaClient({ relatorioId }: { relatorioId: number }) {
 
       {/* Fonte consumida pelo paged.js; revelada se a paginação falhar (fallback). */}
       <div ref={fonteRef} className={mostrarFonte ? "" : "paged-source"}>
-        {d && <CartaCorpo d={d} />}
+        {d && <CartaDoRelatorio d={d} />}
       </div>
 
       {/* paged.js injeta as folhas aqui. */}

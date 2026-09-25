@@ -130,6 +130,15 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
         { valor: "BALANCEAMENTO", texto: "Balanceamento" },
         { valor: "ALINHAMENTO", texto: "Alinhamento a laser" },
       ] },
+      // Qual módulo monta a parte técnica do relatório (medições, quadros de
+      // imagem, tabela da carta). Explícito — nunca deduzido pelo nome.
+      { key: "modulo_tecnico", label: "Módulo técnico do relatório", type: "escolha", escolhas: [
+        { valor: "", texto: "Padrão — inspeção por rota" },
+        { valor: "VIBRACAO", texto: "Vibração" },
+        { valor: "TERMOGRAFIA", texto: "Termografia" },
+        { valor: "OLEO_ISOLANTE", texto: "Óleo isolante (transformador)" },
+        { valor: "ENSAIO_ELETRICO", texto: "Ensaios elétricos (transformador)" },
+      ] },
       { key: "imagem", label: "Imagem/ícone (capa do relatório)", type: "image" },
       { key: "definicao_tecnica", label: "Definição — texto introdutório (item 7 da carta)", type: "textarea" },
       { key: "definicao_fluxo_trabalho", label: "Definição — etapas do fluxo de trabalho (1 por linha)", type: "textarea" },

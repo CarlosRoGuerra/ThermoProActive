@@ -141,7 +141,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             "caminho", "qtd_subitens",
             "tag", "nome", "tipo_equipamento", "tipo_equipamento_nome",
             "categoria_tecnica", "tipo",
-            "fabricante", "modelo", "numero_serie", "potencia_kw",
+            "fabricante", "modelo", "numero_serie", "numero_patrimonio", "ano_fabricacao", "potencia_kw",
             "rotacao_nominal_rpm", "classe_iso", "classe_iso_display",
             "criticidade", "criticidade_display",
             "tensao_nominal", "fator_potencia_nominal",

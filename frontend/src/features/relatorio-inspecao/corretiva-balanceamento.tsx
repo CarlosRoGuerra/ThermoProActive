@@ -4,8 +4,8 @@
  * Metade inferior da folha da OSP quando a intervenção é um BALANCEAMENTO corretivo.
  *
  * O cabeçalho da folha (OSP nº, empresa, TAG, diagnóstico, Grau de Risco) é o mesmo da
- * preditiva e continua em `dossie.tsx` — aqui trocam-se os blocos que não descrevem
- * uma corretiva já executada:
+ * preditiva e continua em `modulos/inspecao/folha-osp.tsx` — aqui trocam-se os blocos
+ * que não descrevem uma corretiva já executada:
  *
  *   Tendência/Espectro  → Mostrador de fase (Trim) e Evolução da Vibração
  *   Planejamento/Corretiva Prog./Finalização → Resultado do Balanceamento

@@ -5,8 +5,10 @@ Cláusula 12.4). Preenchido com os dados do próprio relatório.
 
 Layout: A4, margens 35/15/10/25mm, Segoe UI 12pt justificado, cabeçalho timbrado
 (logo + dados do prestador em cinza) repetido em toda página, itens numerados
-1–8, tabela de severidade ISO-10816-1 colorida, glossário 6.1–6.9, Definição da
-Técnica (texto + imagem de pontos de medição) e assinatura.
+1–8, Definição da Técnica e assinatura. O conteúdo técnico (seções do relatório,
+tabela normativa do item 5 — ex.: ISO-10816 na vibração —, glossário, parágrafo
+das anomalias e considerações) vem do módulo da tecnologia
+(`apps.coletas.relatorio_tecnico.modulos`).
 """
 from __future__ import annotations
 
@@ -24,35 +26,9 @@ CINZA2 = RGBColor(0x9A, 0x9A, 0x9A)
 AZUL = RGBColor(0xC3, 0xDD, 0xF0)
 VERMELHO = RGBColor(0xCC, 0x00, 0x00)
 
-# ----------------------------- Conteúdo fixo (modelo Word) -------------------
-CONTEUDO = [
-    "Seção A – Carta ao Cliente",
-    "Seção B – KPI’s Dashboard",
-    "Seção C – Relação de Equipamentos Contemplados",
-    "Seção D – Ordens de Serviços Preditivos [corretiva orientada pela preditiva]",
-]
-
-GLOSSARIO = [
-    ("6.1", "O.S.P.", "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada."),
-    ("6.2", "G.R.", "Grau de Risco: Determinam o prazo de correção das anomalias detectadas."),
-    ("6.2.1", "GR-1", "Grau de Risco N°.01: Risco eminente – Recomenda-se intervenção imediata pela equipe de manutenção em prazo máximo de 03 dias. Em casos extremos o inspetor poderá solicitar o reparo em caráter de urgência."),
-    ("6.2.2", "GR-2", "Grau de Risco N°.02: Risco elevado – Recomenda-se intervenção pela equipe de manutenção em prazo máximo de 10 dias."),
-    ("6.2.3", "GR-3", "Grau de Risco N°.03: Risco moderado – Recomenda-se intervenção pela equipe de manutenção em prazo máximo de 20 dias."),
-    ("6.2.4", "GR-4", "Grau de Risco N°.04: Risco baixo – Recomenda-se intervenção pela equipe de manutenção em parada programada prazo máximo de 30 dias."),
-    ("6.3", "MP", "Monitoramento Prejudicado: Ocorre em casos em que há existência de obstrução parcial aos equipamentos a serem monitorados. É interessante avaliar o nível de obstrução juntamente com o departamento de segurança do trabalho, sendo possível programar a desobstrução temporária."),
-    ("6.4", "NM", "Não Monitorado: Ocorre em casos em que há existência de obstrução total aos equipamentos a serem monitorados; e/ou que coloque em risco a integridade física dos trabalhadores. É interessante avaliar a possibilidade de desobstrução do equipamento juntamente com o departamento de segurança do trabalho e/ou criar condição segura aos trabalhadores."),
-    ("6.5", "OK", "Normalidade Operacional: Carga ≥ 70,0%. Os circuitos carregados não apresentam anomalias térmicas."),
-    ("6.6", "PDM", "Parado Devido Manutenção: Equipamento encontra-se parado devido algum tipo de intervenção da equipe de manutenção;"),
-    ("6.7", "PDP", "Parado Devido Processo: Equipamento encontra-se parado devido anormalidades do processo produtivo;"),
-    ("6.8", "LA", "Lado Acoplado;"),
-    ("6.9", "LOA", "Lado Oposto ao Acoplamento."),
-]
-
-CONSIDERACOES = [
-    "Os critérios considerados nas análises das anomalias detectadas são técnicos, associados com a vasta experiência do analista que dará diagnóstico preciso referente à condição dinâmica na qual o objeto avaliado está submetido, porém vale lembrar que cada equipamento tem seu nível de criticidade para a planta onde está instalado, e deverá ser levado em consideração pelo controle e planejamento da manutenção durante a elaboração do plano de manutenções corretivas baseadas pela manutenção preditiva.",
-    "As OSP´s emergenciais (GR-1) foram apresentadas, discutidas e tratadas com o planejamento e controle de manutenção ao término das medições.",
-    "Toda anomalia detectada deverá ser corrigida o mais rápido possível, pois o prazo sugerido serve apenas como referência, haja vista que a avaliação contratada não é executada em periodicidade mensal (caso sua planta realize avaliação mensal, desconsiderar este parágrafo).",
-]
+# O conteúdo técnico da carta (itens 3, 6, 7 e 8 e a tabela do item 5) vem do
+# módulo da tecnologia — `apps.coletas.relatorio_tecnico`. Aqui fica só o layout
+# do modelo Word, igual para qualquer tecnologia.
 
 # Tabela ISO-10816-1: velocidades e zonas por classe.
 ISO_VEL = [
@@ -433,6 +409,10 @@ def _tabela_iso(doc):
         _cant_split(row)
 
 
+# Tabelas que um módulo técnico pode pedir no item 5 (`tabelas_normativas`).
+TABELAS_NORMATIVAS = {"ISO_10816": _tabela_iso}
+
+
 # ------------------------------ Coleta dos dados -----------------------------
 def _dados(rel):
     from apps.cadastros.models import Norma
@@ -450,9 +430,9 @@ def _dados(rel):
     return analistas, instrumentos, normas
 
 
-def _escopo(rel):
-    """Escopo do relatório (dados do banco) para os parágrafos gerados do item 7."""
-    from apps.coletas.models import Achado, ItemInspecao
+def _paragrafo_escopo(rel):
+    """Item 7: técnica aplicada e alcance do relatório (equipamentos, setores, áreas)."""
+    from apps.coletas.models import ItemInspecao
 
     equip, setores, areas = set(), set(), set()
     for it in ItemInspecao.objects.filter(carregamento__relatorio=rel).select_related("equipamento__setor__area"):
@@ -462,61 +442,14 @@ def _escopo(rel):
             setores.add(eq.setor_id)
             if eq.setor.area_id:
                 areas.add(eq.setor.area_id)
-    gr_tally, tipos_anom, n_anom = {}, [], 0
-    for a in Achado.objects.filter(item__carregamento__relatorio=rel).select_related("condicao", "tipo_anomalia"):
-        if not (a.tipo_anomalia_id or (a.anomalia_texto or "").strip() or a.tipo_componente_id or (a.componente_texto or "").strip()):
-            continue
-        n_anom += 1
-        if a.condicao_id:
-            sig = (a.condicao.sigla or a.condicao.nome or "").strip()
-            if sig:
-                gr_tally[sig] = gr_tally.get(sig, 0) + 1
-        nome = (a.tipo_anomalia.nome if a.tipo_anomalia_id else (a.anomalia_texto or "")).strip()
-        if nome and nome not in tipos_anom:
-            tipos_anom.append(nome)
-    return {
-        "n_equip": len(equip), "n_setores": len(setores), "n_areas": len(areas),
-        "n_anom": n_anom, "gr_tally": gr_tally, "tipos_anom": tipos_anom,
-    }
-
-
-def _lista(itens):
-    itens = list(itens)
-    if len(itens) <= 1:
-        return itens[0] if itens else ""
-    return ", ".join(itens[:-1]) + " e " + itens[-1]
-
-
-def _paragrafos_gerados(rel, e):
-    """Parágrafos do item 7 montados a partir dos dados do relatório (banco)."""
     tec = rel.tecnologia.nome
-    eq = "1 equipamento" if e["n_equip"] == 1 else f"{e['n_equip']} equipamentos"
-    st = "1 setor" if e["n_setores"] == 1 else f"{e['n_setores']} setores"
-    ar = "1 área" if e["n_areas"] == 1 else f"{e['n_areas']} áreas"
-    p1 = (
+    eq = "1 equipamento" if len(equip) == 1 else f"{len(equip)} equipamentos"
+    st = "1 setor" if len(setores) == 1 else f"{len(setores)} setores"
+    ar = "1 área" if len(areas) == 1 else f"{len(areas)} áreas"
+    return (
         f"Neste relatório aplicou-se a técnica de {tec}, contemplando {eq} monitorado(s) em {st} "
         f"({ar}), com o auxílio da instrumentação descrita no item 4."
     )
-    if e["n_anom"] == 0:
-        p2 = ("A partir das medições realizadas, não foram diagnosticadas anomalias que ensejassem "
-               "Ordens de Serviço Preditivas neste ciclo.")
-    else:
-        n = e["n_anom"]
-        base = ("foi diagnosticada 1 anomalia" if n == 1 else f"foram diagnosticadas {n} anomalias")
-        tipos = _lista(e["tipos_anom"])
-        trecho_tipos = f", do(s) tipo(s): {tipos}" if tipos else ""
-        gr = e["gr_tally"]
-        if gr:
-            dist = "; ".join(f"{k}: {v}" for k, v in sorted(gr.items()))
-            trecho_gr = f" A distribuição por Grau de Risco foi — {dist}."
-        else:
-            trecho_gr = ""
-        p2 = (
-            f"A partir das medições realizadas, {base}{trecho_tipos}. Cada anomalia foi classificada "
-            f"conforme os Graus de Risco descritos no item 6 e convertida em Ordem de Serviço Preditiva "
-            f"na Seção D.{trecho_gr}"
-        )
-    return [p1, p2]
 
 
 # --------------------------------- Documento ---------------------------------
@@ -558,9 +491,16 @@ def construir_carta_docx(rel, prestador) -> Document:
 
     _timbrado(sec, prestador)
 
+    from .relatorio_tecnico.modulos import modulo_da_tecnologia
+    from .relatorio_tecnico.shell import carregar_contexto
+
     cli = rel.cliente
     analistas, instrumentos, normas = _dados(rel)
     tec = rel.tecnologia
+    modulo = modulo_da_tecnologia(tec)
+    # Instrumentação do módulo além da dos carregamentos (ex.: um por ensaio elétrico).
+    vistos = {i.id for i in instrumentos}
+    instrumentos += [i for i in modulo.instrumentos_adicionais(carregar_contexto(rel, None)) if i.id not in vistos]
 
     # ---- Destinatário (rente à margem esquerda, como no modelo Word) ----
     razao = cli.nome + (f"   {cli.nome_fantasia}" if cli.nome_fantasia else "")
@@ -599,7 +539,7 @@ def construir_carta_docx(rel, prestador) -> Document:
 
     # ---- 3. Conteúdo ----
     _titulo(doc, "3. Conteúdo do Relatório")
-    for t in CONTEUDO:
+    for t in modulo.carta_conteudo:
         _p(doc, t, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _blank(doc)
 
@@ -631,7 +571,7 @@ def construir_carta_docx(rel, prestador) -> Document:
         _p(doc, "Não informada.", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
     _blank(doc)
 
-    # ---- 5. Normatização + tabela ISO ----
+    # ---- 5. Normatização + tabela normativa do módulo (ex.: ISO-10816 na vibração) ----
     _titulo(doc, "5. Normatização")
     if normas:
         for n in normas:
@@ -639,13 +579,15 @@ def construir_carta_docx(rel, prestador) -> Document:
             _p(doc, texto, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     else:
         _p(doc, "Não informada.", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
-    _tabela_iso(doc)
+    for tabela in modulo.tabelas_normativas:
+        TABELAS_NORMATIVAS[tabela](doc)
     _blank(doc)
 
     # ---- 6. Glossário ----
     # No modelo, o título usa SemEspaamento com override 1,15 e after=12 pt.
     _titulo(doc, "6. Glossário Técnico", style="SemEspaamento", space_after=12, line_spacing=1.15)
-    for i, (n, sigla, texto) in enumerate(GLOSSARIO):
+    glossario = modulo.carta_glossario
+    for i, (n, sigla, texto) in enumerate(glossario):
         p = doc.add_paragraph(style="SemEspaamento")
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.left_indent = Mm(10)
@@ -653,8 +595,9 @@ def construir_carta_docx(rel, prestador) -> Document:
         p.paragraph_format.space_after = Pt(0)
         # Sem override de line_spacing: herda 1,0 do estilo SemEspaamento.
         _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
-        _fmt_run(p.add_run(f" – {texto}"))
-        if i < len(GLOSSARIO) - 1:
+        if texto:  # sem texto = título de grupo (ex.: "6.1. Temperaturas")
+            _fmt_run(p.add_run(f" – {texto}"))
+        if i < len(glossario) - 1:
             _blank(doc, style="SemEspaamento")
     _blank(doc, style="SemEspaamento")
 
@@ -662,7 +605,9 @@ def construir_carta_docx(rel, prestador) -> Document:
     # Mesmo padrão do item 6: título 1,15 + after=12 pt; corpo simples (1,0).
     _titulo(doc, "7. Definição da Técnica", style="SemEspaamento", space_after=12, line_spacing=1.15)
 
-    definicao_paragrafos = list(_paragrafos_gerados(rel, _escopo(rel)))
+    # Alcance do relatório (comum) + o que o módulo apurou (na inspeção por rota:
+    # anomalias e OSPs), seguidos do texto fixo cadastrado na tecnologia.
+    definicao_paragrafos = [_paragrafo_escopo(rel), *modulo.paragrafos_carta(rel)]
     for campo in ((tec.definicao_tecnica or ""), (getattr(tec, "definicao_fluxo_trabalho", "") or "")):
         for par in campo.strip().splitlines():
             if par.strip():
@@ -680,7 +625,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     _titulo(doc, "8. Considerações Importantes", style="SemEspaamento", line_spacing=1.15)
     _blank(doc, style="SemEspaamento")
 
-    consideracoes = list(CONSIDERACOES)
+    consideracoes = list(modulo.carta_consideracoes)
     if (rel.consideracoes_finais or "").strip():
         consideracoes.extend(par.strip() for par in rel.consideracoes_finais.splitlines() if par.strip())
 

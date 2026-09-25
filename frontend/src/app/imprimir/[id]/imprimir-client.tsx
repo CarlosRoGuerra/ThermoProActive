@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
-import { RelatorioCorpo, type Dossie } from "@/features/relatorio-inspecao/dossie";
+import { RelatorioCorpo } from "@/features/relatorio-inspecao/shell/documento";
+import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
 /* Regras que o paged.js PRECISA processar (transforma @page/running/quebras em
    elementos reais — o navegador sozinho ignora essas regras). Vão pelo polisher. */
@@ -32,7 +33,7 @@ const CHROME_CSS = `
 `;
 
 export default function ImprimirClient({ relatorioId }: { relatorioId: number }) {
-  const [d, setD] = useState<Dossie | null>(null);
+  const [d, setD] = useState<DossieShell | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState("Carregando relatório…");
   const [mostrarFonte, setMostrarFonte] = useState(false);
@@ -40,7 +41,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
   const alvoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<Dossie>(`/relatorios-inspecao/${relatorioId}/dossie/`)
+    api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/`)
       .then(setD)
       .catch(() => setErro("Não foi possível carregar o relatório."));
   }, [relatorioId]);

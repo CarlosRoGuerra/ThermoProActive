@@ -145,7 +145,7 @@ class Command(BaseCommand):
 
         # --- Catálogos usados na classificação ------------------------------
         vib, _ = TecnologiaAnalise.objects.get_or_create(
-            nome="Análise de Vibração", defaults={"sigla": "VIB"}
+            nome="Análise de Vibração", defaults={"sigla": "VIB", "modulo_tecnico": "VIBRACAO"}
         )
         cat_anomalias = {}
         for nome, _rec in ANOMALIAS_RECOMENDACOES:

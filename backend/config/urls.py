@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/", include("apps.accounts.urls")),
     path("api/", include("apps.cadastros.urls")),
     path("api/", include("apps.coletas.urls")),
+    path("api/", include("apps.ensaios.urls")),
     path("api/", include("apps.servicos.urls")),
     path("api/", include("apps.osp.urls")),
     path("api/", include("apps.laudos.urls")),

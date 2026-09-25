@@ -221,6 +221,11 @@ class Equipamento(BaseModel):
     fabricante = models.CharField("Fabricante", max_length=80, blank=True)
     modelo = models.CharField("Modelo", max_length=80, blank=True)
     numero_serie = models.CharField("Número de série", max_length=80, blank=True)
+    numero_patrimonio = models.CharField("Número de patrimônio", max_length=60, blank=True)
+    ano_fabricacao = models.PositiveSmallIntegerField(
+        "Ano de fabricação", null=True, blank=True,
+        validators=[MinValueValidator(1900), MaxValueValidator(2100)],
+    )
     potencia_kw = models.DecimalField("Potência (kW)", max_digits=8, decimal_places=2, null=True, blank=True)
     rotacao_nominal_rpm = models.PositiveIntegerField("Rotação nominal (RPM)", null=True, blank=True)
     # Dados de placa do motor — cadastrados uma vez, reaproveitados na Economia
@@ -407,6 +412,18 @@ class DadosTecnicosTransformador(BaseModel):
     tensao_secundaria_v = models.DecimalField(
         "Tensão secundária (V)", max_digits=9, decimal_places=2, null=True, blank=True,
     )
+    # Placa "380/220 V": linha em `tensao_secundaria_v`, fase aqui (não se calcula
+    # por √3 — a relação nominal do R×T usa o valor de placa).
+    tensao_secundaria_fase_v = models.DecimalField(
+        "Tensão secundária de fase (V)", max_digits=9, decimal_places=2, null=True, blank=True,
+    )
+    volume_oleo_l = models.DecimalField(
+        "Quantidade de óleo (L)", max_digits=9, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    # Decide se os itens de inspeção visual "exclusivos para tanque de expansão"
+    # (relé Buchholz, desumidificador…) se aplicam. Vazio = não informado.
+    possui_tanque_expansao = models.BooleanField("Possui tanque de expansão", null=True, blank=True)
     impedancia_pct = models.DecimalField(
         "Impedância (%)", max_digits=5, decimal_places=2, null=True, blank=True,
         validators=[MinValueValidator(Decimal("0"))],
@@ -527,6 +544,25 @@ class Catalogo(BaseModel):
         return self.nome
 
 
+class ModuloTecnico(models.TextChoices):
+    """
+    Módulo técnico que monta a parte específica do relatório desta tecnologia
+    (medições, quadros de imagem, tabela normativa da carta). Capa, carta, KPIs,
+    relação de equipamentos, paginação e PDF são comuns a todas.
+
+    Vínculo explícito — igual `tipo_corretiva` e `TipoEquipamento.categoria_tecnica` —,
+    nunca inferido pelo nome do catálogo: "Fluídos Isolantes" e "Fluídos
+    Lubrificantes" têm nomes parecidos e relatórios diferentes. Vazio = layout
+    padrão da inspeção por rota. Tecnologia nova com relatório próprio (ex.: óleo
+    isolante de transformador) entra aqui junto com o seu módulo.
+    """
+
+    VIBRACAO = "VIBRACAO", "Vibração"
+    TERMOGRAFIA = "TERMOGRAFIA", "Termografia"
+    OLEO_ISOLANTE = "OLEO_ISOLANTE", "Óleo isolante (transformador)"
+    ENSAIO_ELETRICO = "ENSAIO_ELETRICO", "Ensaios elétricos (transformador)"
+
+
 class TecnologiaAnalise(Catalogo):
     """Tecnologias/Tipos de análise — item 2.2.1.6."""
 
@@ -534,6 +570,12 @@ class TecnologiaAnalise(Catalogo):
     # Vínculo explícito com o contrato corretivo; não inferir pelo nome/sigla.
     tipo_corretiva = models.CharField(
         "Análise corretiva", max_length=15, blank=True, default="", choices=TipoServico.choices,
+    )
+    modulo_tecnico = models.CharField(
+        "Módulo técnico do relatório", max_length=20, blank=True, default="",
+        choices=ModuloTecnico.choices,
+        help_text="Medições, imagens e norma que o relatório técnico desta tecnologia mostra. "
+                  "Vazio = layout padrão da inspeção por rota.",
     )
     # Imagem/ícone que identifica a tecnologia (aparece na capa do relatório).
     imagem = models.ImageField("Imagem/ícone", upload_to="tecnologias/", null=True, blank=True)

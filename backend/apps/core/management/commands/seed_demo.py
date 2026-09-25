@@ -104,8 +104,12 @@ class Command(BaseCommand):
             ("IEEE 43", "Resistência de isolamento de máquinas rotativas", "IEEE"),
         ]:
             Norma.objects.get_or_create(codigo=codigo, defaults={"nome": titulo, "orgao": orgao})
-        for nome, sigla in [("Análise de Vibração", "VIB"), ("Termografia", "TERMO"), ("Ensaios Elétricos", "EE")]:
-            TecnologiaAnalise.objects.get_or_create(nome=nome, defaults={"sigla": sigla})
+        for nome, sigla, modulo in [
+            ("Análise de Vibração", "VIB", "VIBRACAO"),
+            ("Termografia", "TERMO", "TERMOGRAFIA"),
+            ("Ensaios Elétricos", "EE", ""),
+        ]:
+            TecnologiaAnalise.objects.get_or_create(nome=nome, defaults={"sigla": sigla, "modulo_tecnico": modulo})
         for nome in ["Bomba centrífuga", "Motor elétrico", "Ventilador", "Redutor"]:
             TipoEquipamento.objects.get_or_create(nome=nome)
 

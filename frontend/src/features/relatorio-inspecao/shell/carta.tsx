@@ -1,100 +1,17 @@
 import type { ReactNode } from "react";
-import type { Dossie } from "@/features/relatorio-inspecao/dossie";
+import type { DossieShell, Prestador, TermoGlossario } from "../tipos";
+import type { ConteudoCarta } from "../modulos/contrato";
+import { FONTE_RELATORIO } from "./folhas";
+import { ddmmaaaa } from "./formato";
 
 /* ============================================================================
-   CARTA AO CLIENTE — documento independente do relatório, fiel ao modelo Word
-   (VB_Carta_Foroni). Folha A4 física, margens 35/15/10/25mm, Segoe UI 12pt
-   justificado, itens numerados 1–8, tabela de severidade ISO-10816-1,
-   glossário 6.1–6.9, Definição da Técnica e assinatura.
+   CARTA AO CLIENTE — fiel ao modelo Word (VB_Carta_Foroni). Folha A4 física,
+   margens 35/15/10/25mm, Segoe UI 12pt justificado, itens numerados 1–8 e
+   assinatura. O shell desenha os itens; o conteúdo técnico vem do módulo da
+   tecnologia: os textos (seções, glossário, considerações) pelo backend em
+   `d.carta` — a mesma fonte da carta .docx — e a tabela normativa e os
+   parágrafos sobre o que foi apurado pelo módulo do front (`ConteudoCarta`).
    ========================================================================== */
-
-const FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
-const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
-
-type Cab = Dossie["cabecalho"];
-type Prestador = NonNullable<Cab["prestador"]>;
-
-/* ------------------------------- Conteúdo fixo ---------------------------- */
-const CONTEUDO_CARTA = [
-  "Seção A – Carta ao Cliente",
-  "Seção B – KPI’s Dashboard",
-  "Seção C – Relação de Equipamentos Contemplados",
-  "Seção D – Ordens de Serviços Preditivos [corretiva orientada pela preditiva]",
-];
-
-const GLOSSARIO_CARTA: { n: string; sigla: string; texto: string }[] = [
-  { n: "6.1", sigla: "O.S.P.", texto: "Ordem de Serviço Preditivo gerada para correção de cada anomalia detectada." },
-  { n: "6.2", sigla: "G.R.", texto: "Grau de Risco: Determinam o prazo de correção das anomalias detectadas." },
-  { n: "6.2.1", sigla: "GR-1", texto: "Grau de Risco N°.01: Risco eminente – Recomenda-se intervenção imediata pela equipe de manutenção em prazo máximo de 03 dias. Em casos extremos o inspetor poderá solicitar o reparo em caráter de urgência." },
-  { n: "6.2.2", sigla: "GR-2", texto: "Grau de Risco N°.02: Risco elevado – Recomenda-se intervenção pela equipe de manutenção em prazo máximo de 10 dias." },
-  { n: "6.2.3", sigla: "GR-3", texto: "Grau de Risco N°.03: Risco moderado – Recomenda-se intervenção pela equipe de manutenção em prazo máximo de 20 dias." },
-  { n: "6.2.4", sigla: "GR-4", texto: "Grau de Risco N°.04: Risco baixo – Recomenda-se intervenção pela equipe de manutenção em parada programada prazo máximo de 30 dias." },
-  { n: "6.3", sigla: "MP", texto: "Monitoramento Prejudicado: Ocorre em casos em que há existência de obstrução parcial aos equipamentos a serem monitorados. É interessante avaliar o nível de obstrução juntamente com o departamento de segurança do trabalho, sendo possível programar a desobstrução temporária." },
-  { n: "6.4", sigla: "NM", texto: "Não Monitorado: Ocorre em casos em que há existência de obstrução total aos equipamentos a serem monitorados; e/ou que coloque em risco a integridade física dos trabalhadores. É interessante avaliar a possibilidade de desobstrução do equipamento juntamente com o departamento de segurança do trabalho e/ou criar condição segura aos trabalhadores." },
-  { n: "6.5", sigla: "OK", texto: "Normalidade Operacional: Carga ≥ 70,0%. Os circuitos carregados não apresentam anomalias térmicas." },
-  { n: "6.6", sigla: "PDM", texto: "Parado Devido Manutenção: Equipamento encontra-se parado devido algum tipo de intervenção da equipe de manutenção;" },
-  { n: "6.7", sigla: "PDP", texto: "Parado Devido Processo: Equipamento encontra-se parado devido anormalidades do processo produtivo;" },
-  { n: "6.8", sigla: "LA", texto: "Lado Acoplado;" },
-  { n: "6.9", sigla: "LOA", texto: "Lado Oposto ao Acoplamento." },
-];
-
-const CONSIDERACOES_CARTA = [
-  "Os critérios considerados nas análises das anomalias detectadas são técnicos, associados com a vasta experiência do analista que dará diagnóstico preciso referente à condição dinâmica na qual o objeto avaliado está submetido, porém vale lembrar que cada equipamento tem seu nível de criticidade para a planta onde está instalado, e deverá ser levado em consideração pelo controle e planejamento da manutenção durante a elaboração do plano de manutenções corretivas baseadas pela manutenção preditiva.",
-  "As OSP´s emergenciais (GR-1) foram apresentadas, discutidas e tratadas com o planejamento e controle de manutenção ao término das medições.",
-  "Toda anomalia detectada deverá ser corrigida o mais rápido possível, pois o prazo sugerido serve apenas como referência, haja vista que a avaliação contratada não é executada em periodicidade mensal (caso sua planta realize avaliação mensal, desconsiderar este parágrafo).",
-];
-
-/* ------------------------- Tabela ISO-10816-1 ----------------------------- */
-const ISO_VEL: [number, number][] = [
-  [0.28, 0.02], [0.45, 0.03], [0.71, 0.04], [1.12, 0.06], [1.80, 0.10], [2.80, 0.16],
-  [4.50, 0.25], [7.10, 0.40], [11.20, 0.62], [18.00, 1.00], [28.00, 1.56], [45.00, 2.51],
-];
-const ISO_ZONAS: Record<string, [number, number, number]> = {
-  I: [0.71, 1.80, 4.50], II: [1.12, 2.80, 7.10], III: [1.80, 4.50, 11.20], IV: [2.80, 7.10, 18.00],
-};
-function sevISO(v: number, cls: string) {
-  const z = ISO_ZONAS[cls];
-  if (v <= z[0]) return { txt: "Bom", bg: "#22c55e", fg: "#fff" };
-  if (v <= z[1]) return { txt: "Satisfatório", bg: "#a3e635", fg: "#1f2937" };
-  if (v <= z[2]) return { txt: "Alerta", bg: "#f59e0b", fg: "#1f2937" };
-  return { txt: "Perigo", bg: "#ef4444", fg: "#fff" };
-}
-
-function TabelaISO10816() {
-  const classes = ["I", "II", "III", "IV"];
-  const cab: Record<string, [string, string]> = {
-    I: ["Classe I", "< 15 kW"], II: ["Classe II", "15 a 75 kW"],
-    III: ["Classe III", "Rígida · > 75 kW"], IV: ["Classe IV", "Flexível · > 75 kW"],
-  };
-  const th = { border: "0.2mm solid #94a3b8", padding: "1mm", textAlign: "center" as const, fontWeight: 700, background: "#f1f5f9" };
-  const td = { border: "0.2mm solid #94a3b8", padding: "0.8mm", textAlign: "center" as const };
-  return (
-    <table style={{ width: "170mm", margin: "3mm auto", borderCollapse: "collapse", fontSize: "8.5pt", tableLayout: "fixed", breakInside: "avoid" }}>
-      <thead>
-        <tr><th colSpan={6} style={{ ...th, color: "#c00", fontSize: "11pt", background: "#fff" }}>Norma ISO-10816-1 — Severidade · Faixas de Velocidade e Classes de Máquina</th></tr>
-        <tr>
-          <th style={th}>V [mm/s]<br />RMS</th>
-          <th style={th}>V [in/s]<br />Pico</th>
-          {classes.map((cl) => (
-            <th key={cl} style={th}>{cab[cl][0]}<br /><span style={{ fontWeight: 400 }}>{cab[cl][1]}</span></th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {ISO_VEL.map(([mm, pol]) => (
-          <tr key={mm}>
-            <td style={{ ...td, fontWeight: 700 }}>{mm.toFixed(2)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{pol.toFixed(2)}</td>
-            {classes.map((cl) => {
-              const s = sevISO(mm, cl);
-              return <td key={cl} style={{ ...td, background: s.bg, color: s.fg }}>{s.txt}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
 
 /* ------------------------------- Blocos base ------------------------------ */
 /* Cabeçalho institucional (papel timbrado) do Word: logo à esquerda + dados do
@@ -105,7 +22,7 @@ function TabelaISO10816() {
 function Timbrado({ p }: { p: Prestador | null }) {
   if (!p) return null;
   return (
-    <div style={{ position: "absolute", left: "25mm", top: "5mm", width: "170mm", fontFamily: FONTE }}>
+    <div style={{ position: "absolute", left: "25mm", top: "5mm", width: "170mm", fontFamily: FONTE_RELATORIO }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         {p.logomarca && (
           <div style={{ width: "62mm", height: "13mm", display: "flex", alignItems: "center", overflow: "hidden" }}>
@@ -130,16 +47,15 @@ function Timbrado({ p }: { p: Prestador | null }) {
 }
 
 /* Folha A4 física da carta (210×297mm) — MESMAS margens do gerador .docx
-   (`criar_documento_base` em carta_docx.py): topo 35 / direita 15 / baixo 10 /
-   esquerda 25mm. Componente isolado (só usado por CartaCorpo) — não afeta o
-   Relatório Final, que usa PaginaInterna/Timbrado próprios em dossie.tsx. */
+   (carta_docx.py): topo 35 / direita 15 / baixo 10 / esquerda 25mm. Própria da
+   carta — as páginas do relatório usam PaginaInterna/Timbrado de `folhas.tsx`. */
 function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
   return (
     <section
       className="pagina"
       style={{
         position: "relative", width: "210mm", minHeight: "297mm", padding: "35mm 15mm 10mm 25mm", boxSizing: "border-box",
-        background: "#fff", fontFamily: FONTE, fontSize: "12pt", color: "#000", lineHeight: 1.15,
+        background: "#fff", fontFamily: FONTE_RELATORIO, fontSize: "12pt", color: "#000", lineHeight: 1.15,
         WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
       }}
     >
@@ -175,9 +91,10 @@ function CBlank() {
 }
 
 /* ------------------------------ Documento --------------------------------- */
-export function CartaCorpo({ d }: { d: Dossie }) {
+export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta }) {
   const cab = d.cabecalho;
   const p = cab.prestador;
+  const textos = d.carta;
   const rangeMedicao =
     cab.data_inicio && cab.data_termino && cab.data_inicio !== cab.data_termino
       ? `${ddmmaaaa(cab.data_inicio)} a ${ddmmaaaa(cab.data_termino)}`
@@ -186,28 +103,26 @@ export function CartaCorpo({ d }: { d: Dossie }) {
   const linhasDef = (s?: string) => (s || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const introDef = linhasDef(cab.definicao_tecnica);
   const fluxoDef = linhasDef(cab.definicao_fluxo_trabalho);
-  const lista = (arr: string[]) =>
-    arr.length <= 1 ? (arr[0] ?? "") : `${arr.slice(0, -1).join(", ")} e ${arr[arr.length - 1]}`;
-  const nEquip = d.secao_b.equip_monitorados;
-  const nAnom = d.secao_b.anomalias_diagnosticadas;
+  const nEquip = d.secao_c.equip_monitorados;
   const nSetores = new Set(d.secao_c.grupos.map((g) => `${g.area}|${g.setor}`)).size;
   const nAreas = new Set(d.secao_c.grupos.map((g) => g.area)).size;
   const eqTxt = nEquip === 1 ? "1 equipamento" : `${nEquip} equipamentos`;
   const stTxt = nSetores === 1 ? "1 setor" : `${nSetores} setores`;
   const arTxt = nAreas === 1 ? "1 área" : `${nAreas} áreas`;
-  const par7a = `Neste relatório aplicou-se a técnica de ${cab.tecnologia}, contemplando ${eqTxt} monitorado(s) em ${stTxt} (${arTxt}), com o auxílio da instrumentação descrita no item 4.`;
-  let par7b: string;
-  if (nAnom === 0) {
-    par7b = "A partir das medições realizadas, não foram diagnosticadas anomalias que ensejassem Ordens de Serviço Preditivas neste ciclo.";
-  } else {
-    const base = nAnom === 1 ? "foi diagnosticada 1 anomalia" : `foram diagnosticadas ${nAnom} anomalias`;
-    const tipos = lista(d.secao_b.anomalias.map((a) => a.rotulo));
-    const trechoTipos = tipos ? `, do(s) tipo(s): ${tipos}` : "";
-    const dist = d.secao_b.condicoes.map((c) => `${c.rotulo}: ${c.total}`).join("; ");
-    const trechoGr = dist ? ` A distribuição por Grau de Risco foi — ${dist}.` : "";
-    par7b = `A partir das medições realizadas, ${base}${trechoTipos}. Cada anomalia foi classificada conforme os Graus de Risco descritos no item 6 e convertida em Ordem de Serviço Preditiva na Seção D.${trechoGr}`;
-  }
-  const paragrafosGerados = [par7a, par7b];
+  // Alcance do relatório (comum) + o que o módulo apurou (texto do backend e/ou do front).
+  const paragrafosGerados = [
+    `Neste relatório aplicou-se a técnica de ${cab.tecnologia}, contemplando ${eqTxt} monitorado(s) em ${stTxt} (${arTxt}), com o auxílio da instrumentação descrita no item 4.`,
+    ...textos.paragrafos,
+    ...carta.paragrafosDefinicao,
+  ];
+  const Normatizacao = carta.Normatizacao;
+  // Cada folha é uma A4 fixa: um glossário longo (ex.: termografia) segue em
+  // outra folha a partir dos termos que o módulo marca em `quebras_glossario`.
+  const folhasGlossario: TermoGlossario[][] = [[]];
+  textos.glossario.forEach((g, i) => {
+    if (i > 0 && textos.quebras_glossario.includes(g.n)) folhasGlossario.push([]);
+    folhasGlossario[folhasGlossario.length - 1].push(g);
+  });
 
   return (
     <div className="carta-doc">
@@ -233,7 +148,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
         <CBlank />
 
         <CItem n="3.">Conteúdo do Relatório</CItem>
-        {CONTEUDO_CARTA.map((t) => <CP key={t}>{t}</CP>)}
+        {textos.conteudo.map((t) => <CP key={t}>{t}</CP>)}
         <CBlank />
 
         <CItem n="4.">Instrumentação Utilizada</CItem>
@@ -251,22 +166,25 @@ export function CartaCorpo({ d }: { d: Dossie }) {
         )) : <CP ml="22.5mm">Não informada.</CP>}
       </Folha>
 
-      {/* ---- Folha 2: item 5 (Normatização + tabela ISO) ---- */}
+      {/* ---- Folha 2: item 5 (Normatização + tabela normativa do módulo) ---- */}
       <Folha p={p}>
         <CItem n="5.">Normatização</CItem>
         {cab.normas.length ? cab.normas.map((n, k) => (
           <CP key={k}>{[n.codigo, n.nome].filter(Boolean).join(" - ")}</CP>
         )) : <CP>Não informada.</CP>}
-        <TabelaISO10816 />
+        {Normatizacao && <Normatizacao />}
       </Folha>
 
-      {/* ---- Folha 3: item 6 (Glossário) ---- */}
-      <Folha p={p}>
-        <CItem n="6." gap="7mm">Glossário Técnico</CItem>
-        {GLOSSARIO_CARTA.map((g) => (
-          <CP key={g.n} solto><b>{g.n}. {g.sigla}</b> – {g.texto}</CP>
-        ))}
-      </Folha>
+      {/* ---- Folha 3 (e seguintes, se o módulo quebrar): item 6 (Glossário) ---- */}
+      {folhasGlossario.map((termos, f) => (
+        <Folha key={`glossario${f}`} p={p}>
+          {f === 0 && <CItem n="6." gap="7mm">Glossário Técnico</CItem>}
+          {termos.map((g) => (
+            // Sem texto = título de grupo (ex.: "6.1. Temperaturas"), sem travessão.
+            <CP key={g.n} solto><b>{g.n}. {g.sigla}</b>{g.texto ? <> – {g.texto}</> : null}</CP>
+          ))}
+        </Folha>
+      ))}
 
       {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
       <Folha p={p}>
@@ -281,7 +199,7 @@ export function CartaCorpo({ d }: { d: Dossie }) {
       {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}
       <Folha p={p}>
         <CItem n="8." gap="7mm">Considerações Importantes</CItem>
-        {CONSIDERACOES_CARTA.map((t, k) => <CP key={k} solto>{t}</CP>)}
+        {textos.consideracoes.map((t, k) => <CP key={k} solto>{t}</CP>)}
         {cab.consideracoes_finais.trim() && <CP solto><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
         <p style={{ margin: "10mm 0 0 10mm" }}>Atenciosamente,</p>
         <div style={{ marginTop: "18mm", display: "flex", justifyContent: "flex-end", gap: "16mm", flexWrap: "wrap" }}>

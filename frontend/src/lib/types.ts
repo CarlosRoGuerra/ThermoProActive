@@ -94,6 +94,8 @@ export interface Equipamento {
   fabricante: string;
   modelo: string;
   numero_serie: string;
+  numero_patrimonio: string;
+  ano_fabricacao: number | null;
   potencia_kw: string | null;
   rotacao_nominal_rpm: number | null;
   // Placa do motor — preenche a Economia energética do balanceamento automaticamente.
@@ -141,8 +143,12 @@ export interface DadosTecnicosTransformador {
   potencia_kva: string | null;
   tensao_primaria_v: string | null;
   tensao_secundaria_v: string | null;
+  /** Tensão de fase da BT em estrela (ex.: 220 em 380/220 V) — relação nominal do R×T. */
+  tensao_secundaria_fase_v: string | null;
   impedancia_pct: string | null;
   grupo_ligacao: string;
+  volume_oleo_l: string | null;
+  possui_tanque_expansao: boolean | null;
   foto_placa: string | null;
   criado_em: string;
 }

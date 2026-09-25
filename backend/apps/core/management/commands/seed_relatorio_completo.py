@@ -249,7 +249,10 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         vibracao, _ = TecnologiaAnalise.objects.get_or_create(
             nome="Análise de Vibração",
-            defaults={"sigla": "VIB", "descricao": "Medição de vibração global e espectral (ISO 10816/20816)."},
+            defaults={
+                "sigla": "VIB", "modulo_tecnico": "VIBRACAO",
+                "descricao": "Medição de vibração global e espectral (ISO 10816/20816).",
+            },
         )
         balanceamento, _ = TecnologiaAnalise.objects.get_or_create(
             nome="Balanceamento Dinâmico em Campo",
@@ -332,7 +335,7 @@ class Command(BaseCommand):
         termografia, _ = TecnologiaAnalise.objects.get_or_create(
             nome="Termografia Infravermelha",
             defaults={
-                "sigla": "TERMO",
+                "sigla": "TERMO", "modulo_tecnico": "TERMOGRAFIA",
                 "descricao": "Inspeção termográfica de painéis, conexões e máquinas elétricas (NBR 15572).",
             },
         )
