@@ -18,8 +18,11 @@ class AtividadeCorretivaTest(TestCase):
         cls.outro = Cliente.objects.create(nome="Outro cliente", cnpj="22.222.222/0001-22")
         cls.analista = get_user_model().objects.create_user(email="analista@example.com", nome="Analista", perfil="TECNICO")
         cls.leitor = get_user_model().objects.create_user(email="cliente@example.com", nome="Cliente", perfil="CLIENTE_PCM", cliente=cls.cliente)
-        cls.tecnologia = TecnologiaAnalise.objects.create(nome="Balanceamento", sigla="BAL", tipo_corretiva=TipoServico.BALANCEAMENTO)
-        cls.vibracao = TecnologiaAnalise.objects.create(nome="Vibração", sigla="VIB")
+        # Módulo do relatório explícito: sem ele o dossiê recusa (não há módulo "padrão").
+        cls.tecnologia = TecnologiaAnalise.objects.create(
+            nome="Balanceamento", sigla="BAL", tipo_corretiva=TipoServico.BALANCEAMENTO, modulo_tecnico="BALANCEAMENTO",
+        )
+        cls.vibracao = TecnologiaAnalise.objects.create(nome="Vibração", sigla="VIB", modulo_tecnico="VIBRACAO")
         cls.instrumento = Instrumento.objects.create(tipo="Coletor", numero_serie="IN-1")
         cls.instrumento.tecnologias.add(cls.tecnologia)
         setor = Setor.objects.create(area=Area.objects.create(cliente=cls.cliente, nome="Área"), nome="Setor")

@@ -1,11 +1,13 @@
 /**
- * Contratos da API de ensaios de transformador (backend `apps/ensaios`).
+ * Contratos da API de ensaios (backend `apps/ensaios`): transformador (óleo
+ * isolante e ensaios elétricos) e fluidos lubrificantes/hidráulicos.
  *
  * Decimais dos modelos chegam como string ("40.000000", DRF); os da `avaliacao`
  * — a parte calculada da ficha, a mesma do relatório — chegam como number.
  */
 import type {
   EstadoValor,
+  FichaFluido,
   FichaIsolacao,
   FichaOhmica,
   FichaRelacao,
@@ -16,9 +18,20 @@ import type {
 } from "@/features/relatorio-inspecao/tipos";
 
 export type ModuloTransformador = "OLEO_ISOLANTE" | "ENSAIO_ELETRICO";
+export type ModuloFluido = "FLUIDO_LUBRIFICANTE";
+/** Tecnologias cujo lançamento é por equipamento (registro de campo + laudos por ensaio). */
+export type ModuloEnsaio = ModuloTransformador | ModuloFluido;
 
 export function ehModuloTransformador(modulo: string | null | undefined): modulo is ModuloTransformador {
   return modulo === "OLEO_ISOLANTE" || modulo === "ENSAIO_ELETRICO";
+}
+
+export function ehModuloFluido(modulo: string | null | undefined): modulo is ModuloFluido {
+  return modulo === "FLUIDO_LUBRIFICANTE";
+}
+
+export function ehModuloEnsaio(modulo: string | null | undefined): modulo is ModuloEnsaio {
+  return ehModuloTransformador(modulo) || ehModuloFluido(modulo);
 }
 
 /* ------------------------------ Catálogos ------------------------------- */
@@ -27,6 +40,8 @@ export type ParametroCatalogo = {
   ensaio: number;
   codigo: string;
   nome: string;
+  simbolo: string;
+  grupo: string;
   unidade: string;
   norma: string;
   tipo_limite: TipoLimite;
@@ -43,7 +58,7 @@ export type EnsaioCatalogo = {
   id: number;
   sigla: string;
   nome: string;
-  modulo: ModuloTransformador;
+  modulo: ModuloEnsaio;
   titulo_ficha: string;
   ordem: number;
   rotulo_conclusao: string;
@@ -51,6 +66,8 @@ export type EnsaioCatalogo = {
   rotulo_proxima: string;
   nota_tecnica: string;
   parametros: ParametroCatalogo[];
+  /** Fluidos: aplicações em que o ensaio vem marcado por padrão na coleta. */
+  padrao_em: AplicacaoFluido[];
 };
 
 export type Opcao = { id: number; nome: string };
@@ -88,6 +105,48 @@ export type RegistroEletricoApi = {
   ensaios: number[];
 };
 
+export type AplicacaoFluido = "LUBRIFICANTE" | "HIDRAULICO";
+export const APLICACOES: { valor: AplicacaoFluido; label: string }[] = [
+  { valor: "LUBRIFICANTE", label: "Lubrificante" },
+  { valor: "HIDRAULICO", label: "Hidráulico" },
+];
+export type CondicaoOperacional = "" | "EM_OPERACAO" | "APOS_PARADA" | "PARADO";
+export const CONDICOES_OPERACIONAIS: { valor: Exclude<CondicaoOperacional, "">; label: string }[] = [
+  { valor: "EM_OPERACAO", label: "Em operação" },
+  { valor: "APOS_PARADA", label: "Logo após a parada" },
+  { valor: "PARADO", label: "Parado" },
+];
+
+export type ProdutoFluido = {
+  id: number; nome: string; fabricante: string; aplicacao: AplicacaoFluido | ""; grau_viscosidade: string;
+  viscosidade_40c_cst: string | null;
+};
+
+export type ColetaFluidoApi = {
+  id: number;
+  item: number;
+  aplicacao: AplicacaoFluido;
+  produto: number | null;
+  fluido_informado: string;
+  grau_viscosidade: string;
+  identificacao_amostra: string;
+  data_coleta: string;
+  amostrador: string;
+  ponto_coleta: number | null;
+  temperatura_fluido_c: string | null;
+  temperatura_ambiente_c: string | null;
+  condicao_operacional: CondicaoOperacional;
+  horas_equipamento: string | null;
+  horas_fluido: string | null;
+  data_ultima_troca: string | null;
+  complemento_recente: boolean | null;
+  volume_complemento_l: string | null;
+  troca_filtro_recente: boolean | null;
+  intervencao_recente: string;
+  observacoes: string;
+  ensaios: number[];
+};
+
 /* ------------------------------ Resultados ------------------------------ */
 export type ValorApi = {
   parametro: number;
@@ -98,9 +157,22 @@ export type ValorApi = {
   valor_texto: string;
   estado: Exclude<EstadoValor, "">;
   limite_deteccao: string | null;
+  /** Método/norma do laboratório, quando difere da norma do catálogo. */
+  metodo?: string;
 };
 
 export type Criticidade = "" | "ROTINA" | "ALERTA" | "CRITICA";
+
+/** Fluidos: a ficha calculada (referência, estado e tendência por parâmetro; código ISO e meta). */
+export type AvaliacaoFluido = Pick<
+  FichaFluido,
+  "tipo" | "status" | "status_rotulo" | "avaliados" | "fora" | "alertas" | "criticas" | "sem_referencia" |
+  "campanhas" | "linhas" | "grupos" | "codigos" | "meta" | "situacao_meta" | "excesso_meta"
+>;
+
+export function ehAvaliacaoFluido(a: Avaliacao | AvaliacaoFluido | null | undefined): a is AvaliacaoFluido {
+  return !!a && "linhas" in a;
+}
 
 /** Parte calculada da ficha (mesmas regras do relatório), devolvida ao salvar. */
 export type Avaliacao = {
@@ -128,13 +200,25 @@ export type ResultadoApi = {
   recomendacao: string;
   informacoes_adicionais: string;
   instrumento: number | null;
+  laboratorio: string;
   origem: string;
   valores: ValorApi[];
-  avaliacao: Avaliacao;
+  avaliacao: Avaliacao | AvaliacaoFluido;
 };
 
 /* ------------------------- Fila do lançamento --------------------------- */
 export type EnsaioNaFila = { sigla: string; nome: string; solicitado: boolean; situacao: SituacaoEnsaio | null };
+
+/** Um equipamento numa rota de ensaios — base comum de transformador e fluidos. */
+export type ItemEnsaio = Omit<TransformadorInspecao, "modulo" | "possui_tanque_expansao"> & { modulo: ModuloEnsaio };
+
+/** Um equipamento numa rota de fluidos lubrificantes/hidráulicos (`/fluidos-inspecao/`). */
+export type FluidoInspecao = ItemEnsaio & {
+  modulo: ModuloFluido;
+  aplicacao: AplicacaoFluido | null;
+  fluido: string | null;
+  tipo_equipamento_nome: string | null;
+};
 
 /** Um transformador numa rota de óleo ou de ensaios elétricos (`/transformadores-inspecao/`). */
 export type TransformadorInspecao = {
@@ -180,6 +264,7 @@ export const CRITICIDADES: { valor: Criticidade; label: string }[] = [
 ];
 
 /** Como a ficha organiza o ensaio: tabela de parâmetros ou um dos elétricos. */
-export function tipoDoEnsaio(sigla: string): "TABELA" | "RXT" | "RXI" | "RXO" {
+export function tipoDoEnsaio(sigla: string, modulo?: ModuloEnsaio): "TABELA" | "RXT" | "RXI" | "RXO" {
+  if (modulo && modulo !== "ENSAIO_ELETRICO") return "TABELA";
   return sigla === "RXT" || sigla === "RXI" || sigla === "RXO" ? sigla : "TABELA";
 }

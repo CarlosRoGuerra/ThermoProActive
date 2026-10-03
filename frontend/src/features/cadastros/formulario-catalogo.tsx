@@ -118,6 +118,7 @@ export function FormularioCatalogo({
         corpo[f.key] = v === "true";
       } else if (f.type === "ref" || (f.type === "escolha" && f.valorNumerico)) {
         if (v !== "" && v !== undefined) corpo[f.key] = Number(v);
+        else if (editando && f.type === "ref" && !f.required) corpo[f.key] = null; // escopo opcional removido
       } else if (f.type === "escolha") {
         if (editando || (v !== "" && v !== undefined)) corpo[f.key] = v ?? "";
       } else if (f.type === "number") {

@@ -236,6 +236,15 @@ class EconomiaEnergeticaTest(SimpleTestCase):
         # Vão impressas no relatório — sem elas o número não se sustenta em auditoria.
         self.assertTrue(any("trifásica" in p for p in self.calcular().premissas))
 
+    def test_regime_nas_premissas_sem_casa_decimal_em_hora_cheia(self):
+        # O relatório mostra a operação sem casas decimais (pedido do cliente); a
+        # premissa impressa logo abaixo não pode dizer "20.0". Meia hora continua
+        # visível: arredondar mudaria o regime que entrou no cálculo.
+        for horas, texto in ((Decimal("20.0"), "20"), (20, "20"), ("7.5", "7,5")):
+            with self.subTest(horas=horas):
+                premissas = self.calcular(horas_dia=horas, dias_ano=300).premissas
+                self.assertIn(f"Regime de {texto} h/dia × 300 dias/ano.", premissas)
+
 
 class ServicoDaPlanilha1PTest(TestCase):
     """

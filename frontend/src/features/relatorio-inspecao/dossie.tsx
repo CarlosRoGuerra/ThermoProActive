@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
+import { mensagemErroDossie } from "./modulos";
 import { RelatorioCorpo } from "./shell/documento";
 import type { DossieShell } from "./tipos";
 
@@ -31,8 +32,8 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       setD(dossie);
       setDataFim(dossie.cabecalho.data_finalizacao ?? "");
       setConsideracoes(dossie.cabecalho.consideracoes_finais ?? "");
-    } catch {
-      setErro("Não foi possível carregar o relatório.");
+    } catch (e) {
+      setErro(mensagemErroDossie(e, "Não foi possível carregar o relatório."));
     } finally {
       setLoading(false);
     }

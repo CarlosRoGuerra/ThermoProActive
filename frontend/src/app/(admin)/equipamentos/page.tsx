@@ -154,18 +154,20 @@ export default function EquipamentosPage() {
       celula: (e) => (e.fabricante ? texto(e.fabricante) : <SemDado />),
     },
     {
+      // Só existe para tipos avaliados por vibração (vínculo do catálogo);
+      // transformador, painel etc. não têm classe de vibração.
       chave: "iso",
-      header: "Classe ISO",
+      header: "Classe vibração",
       mobile: "meta",
       alinhamento: "centro",
-      valor: (e) => e.classe_iso,
+      valor: (e) => (e.analise_vibracao ? e.classe_iso : ""),
       celula: (e) =>
-        e.classe_iso ? (
+        e.analise_vibracao && e.classe_iso ? (
           <Badge tone="primary" title={e.classe_iso_display}>
             {e.classe_iso}
           </Badge>
         ) : (
-          <SemDado />
+          <SemDado>{e.analise_vibracao ? undefined : "Não se aplica"}</SemDado>
         ),
     },
     {

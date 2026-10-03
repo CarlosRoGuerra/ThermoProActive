@@ -45,10 +45,21 @@ export type TermoGlossario = { n: string; sigla: string; texto: string };
 export type TextosCarta = {
   conteudo: string[]; glossario: TermoGlossario[]; quebras_glossario: string[]; consideracoes: string[];
   paragrafos: string[];
+  /** Vibração/balanceamento: critério de severidade vigente por classe e as notas do que não é da norma. */
+  tabela_severidade?: LinhaSeveridade[];
+  notas_severidade?: string[];
+};
+
+/** Critério aplicado a uma classe na tabela de severidade (limites em mm/s RMS, como string decimal). */
+export type LinhaSeveridade = {
+  classe: string; norma: string; edicao: string; descricao_grupo: string;
+  limites: { ab: string; bc: string; cd: string };
+  origem: "NORMA" | "ACORDO_CLIENTE" | "LEGADO"; origem_display: string; fonte: string;
+  referencia_norma: { limites: { ab: string; bc: string; cd: string } } | null;
 };
 
 export type DossieShell = {
-  /** Chave do módulo técnico da tecnologia ("" = layout padrão). */
+  /** Chave do módulo técnico da tecnologia (sempre explícita; sem módulo o backend recusa). */
   modulo: string;
   cabecalho: Cabecalho;
   secao_c: SecaoC;
@@ -190,3 +201,80 @@ export type DadosTransformador = {
   contato_cliente: { telefone: string; email: string };
 };
 export type DossieTransformador = DossieShell & DadosTransformador;
+
+/* ------------ Módulo: fluidos lubrificantes e hidráulicos (FQ, EF, CP) ------------
+   Espelho de `backend/apps/ensaios/relatorio_fluidos.py`. Cada ficha é uma tabela
+   parâmetro × coleta (até 6, a atual por último); a referência é a cadastrada para
+   o escopo (equipamento/fluido/cliente/aplicação) com origem e vigência. */
+export type EstadoFluido = "ROTINA" | "ALERTA" | "CRITICA";
+export type StatusFluido = EstadoFluido | "SEM_CRITERIO" | Exclude<SituacaoEnsaio, "REALIZADO">;
+export type ReferenciaFluido = {
+  id: number; tipo: "MAXIMO" | "MINIMO" | "VARIACAO" | "CODIGO_ISO" | "QUALITATIVO"; tipo_display: string;
+  valor_base: number | null; limite_alerta: number | null; limite_critico: number | null; referencia_texto: string;
+  /** Pronto para imprimir: "Alerta > 50,0 · Crítico > 100,0 ppm". */
+  texto: string;
+  origem: string; origem_display: string; fonte: string;
+  vigencia_inicio: string | null; vigencia_fim: string | null; escopo: string;
+};
+export type CelulaFluido = { valor: number | null; texto: string; estado: EstadoValor; metodo: string };
+export type TendenciaFluido = {
+  delta_anterior: number; pct_anterior: number | null; pct_primeiro: number | null;
+  direcao: "SOBE" | "DESCE" | "ESTAVEL"; pontos: number;
+} | null;
+export type LinhaFluido = {
+  codigo: string; nome: string; simbolo: string; grupo: string; unidade: string; norma: string; metodo: string;
+  casas: number; no_grafico: boolean; qualitativo: boolean;
+  /** Uma célula por coleta, na ordem de `campanhas`. */
+  valores: CelulaFluido[];
+  referencia: ReferenciaFluido | null; status: EstadoFluido | null; variacao_pct: number | null;
+  /** Tem valor na coleta atual e nenhuma referência cadastrada. */
+  sem_referencia: boolean; tendencia: TendenciaFluido;
+};
+export type CodigoIsoColeta = { data: string | null; atual: boolean; codigo: string | null; escalas: (number | null)[] };
+export type FichaFluido = {
+  sigla: string; nome: string; rotulo: string; titulo: string; solicitado: boolean;
+  situacao: SituacaoEnsaio; status: StatusFluido; status_rotulo: string;
+  avaliados: number; alertas: number; criticas: number; fora: number; sem_referencia: number;
+  numero_laudo: string; criticidade: string; criticidade_codigo: string;
+  data_analise: string | null; data_proxima: string | null;
+  conclusao: string; recomendacao: string; informacoes_adicionais: string; instrumento: string; laboratorio: string;
+  rotulos: { conclusao: string; informacoes: string; proxima: string };
+  notas: string[];
+  campanhas: { data: string | null; atual: boolean }[];
+  linhas: LinhaFluido[]; grupos: string[];
+  tipo: "PARAMETROS" | "CP";
+  /** CP: código ISO 4406 de cada coleta e a meta de limpeza (quando cadastrada). */
+  codigos?: CodigoIsoColeta[]; meta?: ReferenciaFluido | null;
+  situacao_meta?: "DENTRO" | "FORA" | "SEM_META" | null; excesso_meta?: number | null;
+};
+export type ColetaFluidoRelatorio = {
+  data: string | null; identificacao_amostra: string; amostrador: string;
+  aplicacao: "LUBRIFICANTE" | "HIDRAULICO"; aplicacao_display: string;
+  fluido: string; fabricante_fluido: string; grau_viscosidade: string; ponto_coleta: string;
+  temperatura_fluido_c: number | null; temperatura_ambiente_c: number | null; condicao_operacional: string;
+  horas_equipamento: number | null; horas_fluido: number | null; data_ultima_troca: string | null;
+  complemento_recente: boolean | null; volume_complemento_l: number | null; troca_filtro_recente: boolean | null;
+  intervencao_recente: string; observacoes: string;
+};
+export type AmostraFluido = {
+  item_id: number; tag: string; equipamento: string; area: string; setor: string; condicao: string;
+  cadastro: {
+    local: string; identificacao: string; numero_serie: string; numero_patrimonio: string; fabricante: string;
+    modelo: string; ano_fabricacao: number | null; tipo_equipamento: string;
+  };
+  coleta: ColetaFluidoRelatorio | null;
+  tipos_ensaio: { sigla: string; nome: string; solicitado: boolean }[];
+  ensaios: FichaFluido[];
+};
+export type KpisFluido = {
+  amostras: number; equipamentos: number; ensaios_solicitados: number; ensaios_realizados: number;
+  ensaios_pendentes: number; parametros_avaliados: number; parametros_alerta: number; parametros_criticos: number;
+  parametros_sem_referencia: number; laudos_por_criticidade: Dist[]; avaliacao_ensaios: Dist[];
+  limpeza: { dentro: number; fora: number; sem_meta: number };
+  status_por_ensaio: { rotulo: string; status: StatusFluido; status_rotulo: string }[];
+  proxima_data: string | null;
+};
+export type DadosFluido = {
+  amostras: AmostraFluido[]; kpis: KpisFluido; contato_cliente: { telefone: string; email: string };
+};
+export type DossieFluido = DossieShell & DadosFluido;

@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardCheck, Eye, FileCheck2, FlaskConical, Trash2 } from "lucide-react";
+import { ClipboardCheck, Droplets, Eye, FileCheck2, FlaskConical, Trash2 } from "lucide-react";
 import {
   Badge,
   ConfirmDialog,
@@ -31,12 +31,13 @@ import { usePermissoes } from "@/lib/permissions";
 import { data as fmtData, plural, texto } from "@/lib/format";
 import { ExigeClienteAtivo } from "@/features/clientes/exige-cliente-ativo";
 import { FilaEnsaiosTransformador } from "@/features/ensaios/fila";
+import { FilaEnsaiosFluido } from "@/features/ensaios/fila-fluidos";
 import type { Achado } from "@/lib/types";
 
 type Tecnologia = { id: number; nome: string };
 type Situacao = "nao" | "sim" | "todas";
-/** Análises/OSPs das inspeções por rota × laudos dos ensaios de transformador. */
-type Visao = "analises" | "ensaios";
+/** Análises/OSPs das inspeções por rota × laudos dos ensaios de transformador × de fluidos. */
+type Visao = "analises" | "ensaios" | "fluidos";
 
 /**
  * Análise final — o refino no escritório do que veio do campo.
@@ -61,8 +62,9 @@ function AnaliseFinalConteudo() {
   const [situacao, setSituacao] = useState<Situacao>(
     situacaoInicial === "sim" || situacaoInicial === "todas" ? situacaoInicial : "nao"
   );
-  // Ao voltar do editor de ensaios, a URL pede a visão dos transformadores.
-  const [visao, setVisao] = useState<Visao>(parametros?.get("visao") === "ensaios" ? "ensaios" : "analises");
+  // Ao voltar de um editor de ensaios, a URL pede a visão de onde ele saiu.
+  const visaoUrl = parametros?.get("visao");
+  const [visao, setVisao] = useState<Visao>(visaoUrl === "ensaios" || visaoUrl === "fluidos" ? visaoUrl : "analises");
 
   const tecnologias = useLista<Tecnologia>("/tecnologias-analise/?page_size=500", "tecnologias");
   const lista = useLista<Achado>(
@@ -216,12 +218,15 @@ function AnaliseFinalConteudo() {
           abas={[
             { id: "analises", label: "Análises e OSPs", icon: FileCheck2, contador: naoConfirmadas || undefined },
             { id: "ensaios", label: "Ensaios de transformador", icon: FlaskConical },
+            { id: "fluidos", label: "Ensaios de fluidos", icon: Droplets },
           ]}
           ativa={visao}
           onMudar={setVisao}
         >
           {visao === "ensaios" ? (
             <FilaEnsaiosTransformador clienteId={clienteAtivo.id} />
+          ) : visao === "fluidos" ? (
+            <FilaEnsaiosFluido clienteId={clienteAtivo.id} />
           ) : (
             <div className="space-y-4">
               <Toolbar

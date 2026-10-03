@@ -99,7 +99,16 @@ const folhaBalanceamento = {
   },
 };
 
-const dossie = { cabecalho, secao_b: secaoB, secao_c: secaoC, secao_d: [folhaBalanceamento] };
+/* Payload no formato atual do dossiê: módulo explícito (não há módulo "padrão")
+   e os textos da carta vindos do backend. */
+const carta = {
+  conteudo: ["Seção A – Carta ao Cliente"], glossario: [], quebras_glossario: [], consideracoes: [], paragrafos: [],
+  tabela_severidade: [], notas_severidade: [],
+};
+const dossie = {
+  modulo: "BALANCEAMENTO", cabecalho, carta,
+  secao_b: secaoB, secao_c: { ...secaoC, equip_monitorados: 1 }, secao_d: [folhaBalanceamento],
+};
 
 async function mockApiComDossie(page: Page) {
   await page.route("**/api/**", async (route) => {

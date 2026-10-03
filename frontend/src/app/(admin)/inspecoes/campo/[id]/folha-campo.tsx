@@ -23,7 +23,8 @@ import { plural } from "@/lib/format";
 import type { Achado, Carregamento, Condicao, ItemInspecao, Paginated } from "@/lib/types";
 import { AnaliseBalanceamento } from "@/components/analise-balanceamento";
 import { EditorTransformador } from "@/features/ensaios/editor";
-import { ehModuloTransformador, type TransformadorInspecao } from "@/features/ensaios/tipos";
+import { EditorFluido } from "@/features/ensaios/editor-fluido";
+import { ehModuloEnsaio, ehModuloFluido, type ItemEnsaio } from "@/features/ensaios/tipos";
 import {
   Badge,
   Button,
@@ -230,10 +231,11 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
 
   const itemId = params.get("item");
   const ehCorretiva = !!carreg?.tipo_corretiva;
-  // Óleo isolante / ensaios elétricos: cada transformador tem o lançamento próprio (?item=).
-  const moduloTrafo = ehModuloTransformador(carreg?.modulo_tecnico) ? carreg!.modulo_tecnico : null;
+  // Óleo isolante, ensaios elétricos e fluidos: cada equipamento tem o lançamento
+  // próprio (?item=), escolhido pelo módulo técnico da tecnologia — nunca pelo nome.
+  const moduloEnsaio = ehModuloEnsaio(carreg?.modulo_tecnico) ? carreg!.modulo_tecnico : null;
   const podeEditar = !!user?.is_interno && carreg?.status === "EM_CAMPO";
-  const [resumoTrafo, setResumoTrafo] = useState<Map<number, TransformadorInspecao> | null>(null);
+  const [resumoEnsaios, setResumoEnsaios] = useState<Map<number, ItemEnsaio> | null>(null);
 
   const recarregar = useCallback(async () => {
     const d = await api<Carregamento>(`/carregamentos/${carregamentoId}/`);
@@ -263,14 +265,15 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
       .finally(() => setLoading(false));
   }, [carregamentoId]);
 
-  // Resumo dos ensaios por transformador (registro e laudos) para o painel. Relido
-  // ao voltar do lançamento de um transformador, que é onde ele muda.
+  // Resumo dos ensaios por equipamento (registro e laudos) para o painel. Relido
+  // ao voltar do lançamento de um equipamento, que é onde ele muda.
   useEffect(() => {
-    if (!moduloTrafo || itemId) return;
-    api<Paginated<TransformadorInspecao>>(`/transformadores-inspecao/?carregamento=${carregamentoId}&page_size=500`)
-      .then((r) => setResumoTrafo(new Map(r.results.map((t) => [t.id, t]))))
-      .catch(() => setResumoTrafo(new Map()));
-  }, [moduloTrafo, itemId, carregamentoId]);
+    if (!moduloEnsaio || itemId) return;
+    const fila = ehModuloFluido(moduloEnsaio) ? "fluidos-inspecao" : "transformadores-inspecao";
+    api<Paginated<ItemEnsaio>>(`/${fila}/?carregamento=${carregamentoId}&page_size=500`)
+      .then((r) => setResumoEnsaios(new Map(r.results.map((t) => [t.id, t]))))
+      .catch(() => setResumoEnsaios(new Map()));
+  }, [moduloEnsaio, itemId, carregamentoId]);
 
   // Se o item selecionado sair da rota (removido, ou rota recarregada sem ele),
   // volta para a revisão em vez de mostrar um painel de equipamento fantasma.
@@ -493,7 +496,7 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   // cada render e sempre enxerga o estado atual (o React aplica a render de
   // uma tecla antes de entregar a próxima).
   useEffect(() => {
-    if (!carreg || ((ehCorretiva || moduloTrafo) && itemId)) return;
+    if (!carreg || ((ehCorretiva || moduloEnsaio) && itemId)) return;
     const itens = carreg.itens;
     function aoTeclar(e: KeyboardEvent) {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || !selecionado) return;
@@ -533,16 +536,14 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   const pendentes = carreg.itens.filter((i) => i.condicao == null).length;
   const transferida = carreg.status !== "EM_CAMPO";
 
-  // Óleo isolante / ensaios elétricos — lançamento do transformador (registro,
-  // inspeção visual, medições e laudos), o mesmo editor da Análise final.
-  if (moduloTrafo && itemId) {
-    return (
-      <EditorTransformador
-        key={itemId}
-        itemId={Number(itemId)}
-        podeEditar={podeEditar}
-        voltar={{ href: `/inspecoes/campo/${carregamentoId}`, label: "Voltar para equipamentos da rota" }}
-      />
+  // Óleo isolante / ensaios elétricos / fluidos — lançamento do equipamento
+  // (registro de campo e laudos), o mesmo editor da Análise final.
+  if (moduloEnsaio && itemId) {
+    const voltar = { href: `/inspecoes/campo/${carregamentoId}`, label: "Voltar para equipamentos da rota" };
+    return ehModuloFluido(moduloEnsaio) ? (
+      <EditorFluido key={itemId} itemId={Number(itemId)} podeEditar={podeEditar} voltar={voltar} />
+    ) : (
+      <EditorTransformador key={itemId} itemId={Number(itemId)} podeEditar={podeEditar} voltar={voltar} />
     );
   }
 
@@ -750,12 +751,12 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
                 }}
                 onAdicionarLinha={() => adicionarLinha(selecionado)}
                 onRemoverItem={() => remocaoItem.pedir(selecionado)}
-                transformador={
-                  moduloTrafo
+                ensaios={
+                  moduloEnsaio
                     ? {
-                        modulo: moduloTrafo,
-                        resumo: resumoTrafo?.get(selecionado.id) ?? null,
-                        carregando: resumoTrafo == null,
+                        modulo: moduloEnsaio,
+                        resumo: resumoEnsaios?.get(selecionado.id) ?? null,
+                        carregando: resumoEnsaios == null,
                         onAbrir: () => router.push(`/inspecoes/campo/${carregamentoId}?item=${selecionado.id}`),
                       }
                     : undefined
@@ -781,6 +782,7 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
           item={modal?.item ?? null}
           achado={modal?.achado ?? null}
           tecnologiaNome={carreg.tecnologia_nome}
+          tecnologiaModulo={carreg.modulo_tecnico}
           tecnologiaId={carreg.tecnologia}
           onFechar={() => setModal(null)}
           onSalvo={async () => {

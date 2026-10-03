@@ -72,8 +72,89 @@ class RelatorioTecnicoModularTest(TestCase):
     def test_modulo_vem_do_vinculo_explicito_da_tecnologia(self):
         self.assertEqual(self.dossie(self.relatorio(ModuloTecnico.VIBRACAO))["modulo"], "VIBRACAO")
         self.assertEqual(self.dossie(self.relatorio(ModuloTecnico.TERMOGRAFIA))["modulo"], "TERMOGRAFIA")
-        # O nome não decide nada: "Termografia" sem vínculo continua no layout padrão.
-        self.assertEqual(self.dossie(self.relatorio("", nome="Termografia Infravermelha"))["modulo"], "")
+        # O nome não decide nada: "Termografia" sem vínculo não vira termografia nem vibração.
+        r = self.api.get(f"/api/relatorios-inspecao/{self.relatorio('', nome='Termografia Infravermelha').pk}/dossie/")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data["codigo"], "modulo_nao_configurado")
+
+    # --- Sem fallback para a vibração ------------------------------------------
+
+    def test_tecnologia_sem_modulo_nao_herda_o_layout_da_vibracao(self):
+        rel = self.relatorio("", nome="Alinhamento a Laser")
+        r = self.api.get(f"/api/relatorios-inspecao/{rel.pk}/dossie/")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("não tem módulo técnico configurado", r.data["detail"])
+        self.assertNotIn("secao_d", r.data)
+        # A carta .docx também recusa, em vez de sair com a tabela ISO-10816.
+        r = self.api.get(f"/api/relatorios-inspecao/{rel.pk}/carta-docx/")
+        self.assertEqual(r.status_code, 409)
+
+    def test_modulo_planejado_avisa_que_nao_foi_implementado(self):
+        for modulo in (ModuloTecnico.ALINHAMENTO_EIXOS, ModuloTecnico.ENSAIO_ELETRICO_TC,
+                       ModuloTecnico.TERMOGRAFIA_MECANICA):
+            with self.subTest(modulo=modulo):
+                r = self.api.get(f"/api/relatorios-inspecao/{self.relatorio(modulo).pk}/dossie/")
+                self.assertEqual(r.status_code, 409)
+                self.assertEqual(r.data["codigo"], "modulo_nao_implementado")
+                self.assertIn("ainda não foi implementado", r.data["detail"])
+
+    def test_inspecao_generica_e_neutra(self):
+        rel = self.relatorio(ModuloTecnico.INSPECAO_GENERICA, nome="Análise Sensitiva Sensorial")
+        d = self.dossie(rel)
+        self.assertEqual(d["modulo"], "INSPECAO_GENERICA")
+        self.assertEqual(d["secao_b"]["diagnostico_medio"], {"velocidade": None, "aceleracao": None, "temperatura": None})
+        self.assertNotIn("tabela_severidade", d["carta"])
+        siglas = [g["sigla"] for g in d["carta"]["glossario"]]
+        self.assertNotIn("LA", siglas)
+        self.assertNotIn("LOA", siglas)
+        ok = next(g for g in d["carta"]["glossario"] if g["sigla"] == "OK")
+        self.assertNotIn("térmica", ok["texto"])
+        self.assertNotIn("dinâmica", " ".join(d["carta"]["consideracoes"]))
+        xml = self.carta_xml(rel)
+        self.assertNotIn("Faixas de Velocidade", xml)
+        self.assertNotIn("10816", xml)
+        self.assertIn("Seção D – Ordens de Serviços Preditivos", xml)
+
+    def test_balanceamento_mantem_a_tabela_de_severidade_por_escolha_declarada(self):
+        d = self.dossie(self.relatorio(ModuloTecnico.BALANCEAMENTO, nome="Balanceamento"))
+        self.assertEqual(d["modulo"], "BALANCEAMENTO")
+        self.assertTrue(d["carta"]["tabela_severidade"])
+
+    # --- Perfil normativo da vibração na carta ---------------------------------
+
+    def test_tabela_de_severidade_identifica_o_limite_acordado_com_o_cliente(self):
+        rel = self.relatorio(ModuloTecnico.VIBRACAO)
+        carta = self.dossie(rel)["carta"]
+        classe_ii = next(c for c in carta["tabela_severidade"] if c["classe"] == "II")
+        self.assertEqual(classe_ii["limites"]["bc"], Decimal("4.49"))
+        self.assertEqual(classe_ii["origem"], "ACORDO_CLIENTE")
+        self.assertEqual(classe_ii["referencia_norma"]["limites"]["bc"], Decimal("2.80"))
+        classe_i = next(c for c in carta["tabela_severidade"] if c["classe"] == "I")
+        self.assertEqual(classe_i["origem"], "NORMA")
+        self.assertEqual(len(carta["notas_severidade"]), 1)
+        nota = carta["notas_severidade"][0]
+        self.assertIn("4,49", nota)
+        self.assertIn("2,80", nota)
+        self.assertIn("acordo com o cliente", nota)
+        xml = self.carta_xml(rel)
+        self.assertIn("Norma ISO-10816-1", xml)
+        self.assertNotIn("ISO-20816-3", xml)
+        self.assertIn("por acordo com o cliente", xml)
+
+    def test_criterio_do_cliente_prevalece_e_nao_vaza_para_outro_cliente(self):
+        from apps.cadastros.models import CriterioSeveridadeVibracao
+
+        CriterioSeveridadeVibracao.objects.create(
+            norma_codigo="ISO 10816-1", norma_edicao="1995", classe="II", limite_ab=Decimal("1.12"),
+            limite_bc=Decimal("3.50"), limite_cd=Decimal("7.10"), origem="ACORDO_CLIENTE", fonte="Contrato X",
+            cliente=self.cliente,
+        )
+        carta = self.dossie(self.relatorio(ModuloTecnico.VIBRACAO))["carta"]
+        self.assertEqual(next(c for c in carta["tabela_severidade"] if c["classe"] == "II")["limites"]["bc"],
+                         Decimal("3.50"))
+        outro = Cliente.objects.create(nome="Indústria B", cnpj="22.222.222/0001-22")
+        from apps.cadastros.criterios import criterio_vigente
+        self.assertEqual(criterio_vigente("II", cliente_id=outro.id).limite_bc, Decimal("4.49"))
 
     def test_shell_tem_o_proprio_total_de_equipamentos(self):
         d = self.dossie(self.relatorio(ModuloTecnico.VIBRACAO))
@@ -90,8 +171,10 @@ class RelatorioTecnicoModularTest(TestCase):
         d = Decimal
         self.assertEqual(medias(ModuloTecnico.VIBRACAO), (d("4.20"), d("1.10"), None))
         self.assertEqual(medias(ModuloTecnico.TERMOGRAFIA), (None, None, d("78.4")))
-        # Sem módulo próprio: layout de sempre, todas as médias que houver.
-        self.assertEqual(medias(""), (d("4.20"), d("1.10"), d("78.4")))
+        # Balanceamento: o layout de antes (todas as médias que houver), agora declarado.
+        self.assertEqual(medias(ModuloTecnico.BALANCEAMENTO), (d("4.20"), d("1.10"), d("78.4")))
+        # Inspeção genérica: nenhuma grandeza de outra técnica.
+        self.assertEqual(medias(ModuloTecnico.INSPECAO_GENERICA), (None, None, None))
 
     def test_folha_da_osp_segue_com_todas_as_medicoes_do_achado(self):
         folha = self.dossie(self.relatorio(ModuloTecnico.TERMOGRAFIA))["secao_d"][0]
@@ -102,7 +185,8 @@ class RelatorioTecnicoModularTest(TestCase):
     def test_carta_docx_so_traz_a_tabela_iso_quando_o_modulo_pede(self):
         marca = "Faixas de Velocidade e Classes de Máquina"
         self.assertIn(marca, self.carta_xml(self.relatorio(ModuloTecnico.VIBRACAO)))
-        self.assertIn(marca, self.carta_xml(self.relatorio("")))
+        self.assertIn(marca, self.carta_xml(self.relatorio(ModuloTecnico.BALANCEAMENTO)))
+        self.assertNotIn(marca, self.carta_xml(self.relatorio(ModuloTecnico.INSPECAO_GENERICA)))
         termo = self.carta_xml(self.relatorio(ModuloTecnico.TERMOGRAFIA))
         self.assertNotIn(marca, termo)
         # O resto da carta (conteúdo da inspeção por rota) continua igual.
@@ -150,3 +234,22 @@ class RelatorioTecnicoModularTest(TestCase):
         }
         for nome, esperado in casos.items():
             self.assertEqual(migracao.modulo_pelo_nome(nome), esperado, nome)
+
+
+    def test_migracao_associa_modulo_explicito_as_tecnologias_que_caiam_no_padrao(self):
+        from django.apps import apps as registro
+
+        migracao = importlib.import_module("apps.cadastros.migrations.0031_dados_modulo_das_tecnologias")
+        bal = TecnologiaAnalise.objects.create(nome="Balanceamento", sigla="BALDC", tipo_corretiva="BALANCEAMENTO")
+        aflh = TecnologiaAnalise.objects.create(nome="Análise de Fluídos Lubrificantes e Hidráulicos", sigla="AFLH")
+        alee = TecnologiaAnalise.objects.create(nome="Alinhamento a Laser Entre Eixos", sigla="ALEE")
+        asse = TecnologiaAnalise.objects.create(nome="Análise Sensitiva Sensorial", sigla="ASSE")
+        Relatorio.objects.create(cliente=self.cliente, tecnologia=asse, numero="RT-ASSE-1", data_termino=date(2026, 8, 14))
+        aqen = TecnologiaAnalise.objects.create(nome="Análise da Qualidade de Energia", sigla="AQEN")
+        termo = TecnologiaAnalise.objects.create(nome="Termografia", sigla="TI-SE", modulo_tecnico="TERMOGRAFIA")
+        migracao.carregar(registro, None)
+        esperado = {bal: "BALANCEAMENTO", aflh: "FLUIDO_LUBRIFICANTE", alee: "ALINHAMENTO_EIXOS",
+                    asse: "INSPECAO_GENERICA", aqen: "", termo: "TERMOGRAFIA"}
+        for tec, modulo in esperado.items():
+            tec.refresh_from_db()
+            self.assertEqual(tec.modulo_tecnico, modulo, tec.nome)

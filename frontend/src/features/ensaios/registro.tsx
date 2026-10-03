@@ -35,10 +35,10 @@ import type {
    Os ensaios marcados aqui são os que saem como "solicitados" no relatório.
    ========================================================================== */
 
-type Numericos<K extends string> = Record<K, string>;
+export type Numericos<K extends string> = Record<K, string>;
 
 /** Converte os campos numéricos; devolve os erros por campo (texto inválido). */
-function converter<K extends string>(campos: Numericos<K>) {
+export function converter<K extends string>(campos: Numericos<K>) {
   const saida = {} as Record<K, string | null>;
   const erros: Partial<Record<K, string>> = {};
   for (const chave of Object.keys(campos) as K[]) {
@@ -49,7 +49,7 @@ function converter<K extends string>(campos: Numericos<K>) {
   return { saida, erros };
 }
 
-function EnsaiosSolicitados({
+export function EnsaiosSolicitados({
   ensaios, marcados, onMudar, disabled,
 }: {
   ensaios: EnsaioCatalogo[];

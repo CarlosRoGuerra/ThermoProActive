@@ -120,4 +120,5 @@ class EscopoClienteCadastrosTest(TestCase):
 
     def test_catalogo_global_permanece_visivel_ao_cliente(self):
         normas = self.listar(self.usuario_cliente_a, "/api/normas/")
-        self.assertEqual([n["codigo"] for n in normas], ["ISO 10816-3"])
+        # Catálogo global (inclui as normas semeadas pelas migrações): o cliente enxerga.
+        self.assertIn("ISO 10816-3", [n["codigo"] for n in normas])

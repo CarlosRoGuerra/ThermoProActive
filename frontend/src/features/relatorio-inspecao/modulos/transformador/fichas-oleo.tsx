@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { Cabecalho, CelulaEnsaio, FichaEnsaio, FichaTabela, ParametroEnsaio, TipoLimite } from "../../tipos";
 import { ddmmaaaa } from "../../shell/formato";
 import {
-  BlocoValores, CabecalhoLaudo, CaixaTexto, CELULA, FolhaFicha, LINHA, MarcaConformidade, TINTA, TOM,
+  BlocoValores, CabecalhoLaudo, CaixaTexto, CELULA, FolhaFicha, LINHA, MarcaConformidade, TINTA, TOM, type LaudoFicha,
 } from "./folha";
 import { numero } from "./formato";
 import { GraficoReferencia } from "./graficos";
@@ -40,7 +40,7 @@ function textoValor(p: ParametroEnsaio, c: CelulaEnsaio) {
 
 /** Observações, recomendação e o terceiro quadro (informações ou instrumentação). */
 export function TextosFicha({ f, informacoes, complementoConclusao }: {
-  f: FichaEnsaio; informacoes: string; complementoConclusao?: ReactNode;
+  f: LaudoFicha; informacoes: string; complementoConclusao?: ReactNode;
 }) {
   return (
     <>

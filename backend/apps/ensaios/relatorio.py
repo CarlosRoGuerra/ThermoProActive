@@ -120,7 +120,15 @@ class _Campanha:
         item = resultado.item
         self.coleta = _um(item, "coleta_oleo")
         self.registro = _um(item, "registro_eletrico")
-        base = self.coleta.data_coleta if self.coleta else self.registro.data_ensaio if self.registro else None
+        self.coleta_fluido = _um(item, "coleta_fluido")
+        if self.coleta:
+            base = self.coleta.data_coleta
+        elif self.registro:
+            base = self.registro.data_ensaio
+        elif self.coleta_fluido:
+            base = self.coleta_fluido.data_coleta
+        else:
+            base = None
         self.data = base or item.carregamento.data_coleta
 
     def valores(self, codigo=None):
@@ -312,18 +320,19 @@ def avaliar_resultado(resultado) -> dict:
 
 
 # ---------------------------------- Módulo ----------------------------------
-class ModuloTransformador:
-    """Base dos relatórios de transformador (um módulo por família de ensaios)."""
+class ModuloEnsaiosLaboratoriais:
+    """
+    Base dos relatórios de ensaios (transformador e fluidos): a carta vem dos
+    textos do módulo, o item 7 do resumo que `montar` devolve e a instrumentação,
+    dos instrumentos lançados nos resultados dos ensaios do módulo.
+    """
 
     chave = ""
-    oleo = False
     tabelas_normativas = ()
     carta_conteudo = carta_glossario = carta_consideracoes = carta_quebras_glossario = ()
-    # Sujeito do parágrafo do item 7 da carta: (singular, plural com {n}).
-    sujeito = ("foi analisada 1 amostra de óleo isolante", "foram analisadas {n} amostras de óleo isolante")
 
     # --- Carta ---
-    def textos_carta(self, tecnico=None) -> dict:
+    def textos_carta(self, tecnico=None, ctx=None) -> dict:
         return {
             "conteudo": list(self.carta_conteudo),
             "glossario": [{"n": n, "sigla": s, "texto": t} for n, s, t in self.carta_glossario],
@@ -347,6 +356,17 @@ class ModuloTransformador:
                 lista.append(r.instrumento)
         return lista
 
+    def montar(self, ctx) -> dict:
+        raise NotImplementedError
+
+
+class ModuloTransformador(ModuloEnsaiosLaboratoriais):
+    """Base dos relatórios de transformador (um módulo por família de ensaios)."""
+
+    oleo = False
+    # Sujeito do parágrafo do item 7 da carta: (singular, plural com {n}).
+    sujeito = ("foi analisada 1 amostra de óleo isolante", "foram analisadas {n} amostras de óleo isolante")
+
     # --- Payload ---
     def montar(self, ctx) -> dict:
         ensaios = list(Ensaio.objects.ativos().filter(modulo=self.chave).prefetch_related("parametros"))
@@ -359,14 +379,14 @@ class ModuloTransformador:
         resultados = defaultdict(dict)
         for r in (ResultadoEnsaio.objects.ativos().filter(item__in=itens, ensaio__modulo=self.chave)
                   .select_related("ensaio", "instrumento", "item__carregamento", "item__coleta_oleo",
-                                  "item__registro_eletrico")
+                                  "item__registro_eletrico", "item__coleta_fluido")
                   .prefetch_related("valores__parametro")):
             resultados[r.item_id][r.ensaio_id] = r
         historico = defaultdict(list)
         for r in (ResultadoEnsaio.objects.ativos()
                   .filter(item__equipamento_id__in=list(equipamentos), ensaio__modulo=self.chave, situacao=REALIZADO)
                   .exclude(item__in=itens)
-                  .select_related("item__carregamento", "item__coleta_oleo", "item__registro_eletrico")
+                  .select_related("item__carregamento", "item__coleta_oleo", "item__registro_eletrico", "item__coleta_fluido")
                   .prefetch_related("valores__parametro")):
             historico[(r.item.equipamento_id, r.ensaio_id)].append(_Campanha(r))
 

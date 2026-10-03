@@ -1,14 +1,18 @@
 from django.contrib import admin
 
 from .models import (
+    ColetaFluido,
     ColetaOleo,
     Ensaio,
     InspecaoVisualColeta,
     ItemChecklistVisual,
     ParametroEnsaio,
     PontoColeta,
+    ProdutoFluido,
+    ReferenciaParametro,
     RegistroEnsaioEletrico,
     ResultadoEnsaio,
+    SolicitacaoPadraoEnsaio,
     TipoFluido,
     ValorParametro,
 )
@@ -17,8 +21,8 @@ from .models import (
 class ParametroInline(admin.TabularInline):
     model = ParametroEnsaio
     extra = 0
-    fields = ["ordem", "codigo", "nome", "unidade", "norma", "tipo_limite", "limite", "limite_superior",
-              "referencia_texto", "casas_decimais", "calculado", "no_grafico", "ativo"]
+    fields = ["ordem", "codigo", "nome", "simbolo", "grupo", "unidade", "norma", "tipo_limite", "limite",
+              "limite_superior", "referencia_texto", "casas_decimais", "calculado", "no_grafico", "ativo"]
 
 
 @admin.register(Ensaio)
@@ -28,9 +32,41 @@ class EnsaioAdmin(admin.ModelAdmin):
     inlines = [ParametroInline]
 
 
-@admin.register(TipoFluido, PontoColeta)
+@admin.register(TipoFluido)
 class CatalogoEnsaioAdmin(admin.ModelAdmin):
     list_display = ["nome", "ativo"]
+
+
+@admin.register(PontoColeta)
+class PontoColetaAdmin(admin.ModelAdmin):
+    list_display = ["nome", "modulo", "ativo"]
+    list_filter = ["modulo"]
+
+
+@admin.register(ProdutoFluido)
+class ProdutoFluidoAdmin(admin.ModelAdmin):
+    list_display = ["nome", "fabricante", "aplicacao", "grau_viscosidade", "viscosidade_40c_cst", "ativo"]
+    list_filter = ["aplicacao"]
+    search_fields = ["nome", "fabricante"]
+
+
+@admin.register(SolicitacaoPadraoEnsaio)
+class SolicitacaoPadraoEnsaioAdmin(admin.ModelAdmin):
+    list_display = ["aplicacao", "ensaio", "ativo"]
+    list_filter = ["aplicacao"]
+
+
+@admin.register(ReferenciaParametro)
+class ReferenciaParametroAdmin(admin.ModelAdmin):
+    list_display = ["parametro", "tipo", "limite_alerta", "limite_critico", "referencia_texto", "origem",
+                    "cliente", "equipamento", "produto", "aplicacao", "vigencia_inicio", "vigencia_fim", "ativo"]
+    list_filter = ["origem", "tipo", "aplicacao", "parametro__ensaio__modulo"]
+
+
+@admin.register(ColetaFluido)
+class ColetaFluidoAdmin(admin.ModelAdmin):
+    list_display = ["item", "data_coleta", "aplicacao", "produto", "amostrador"]
+    list_filter = ["aplicacao"]
 
 
 @admin.register(ItemChecklistVisual)

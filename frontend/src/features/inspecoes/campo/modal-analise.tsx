@@ -31,6 +31,7 @@ export function ModalAnalise({
   item,
   achado,
   tecnologiaNome,
+  tecnologiaModulo,
   tecnologiaId,
   onFechar,
   onSalvo,
@@ -40,6 +41,8 @@ export function ModalAnalise({
   /** `null` = nova análise. */
   achado: Achado | null;
   tecnologiaNome: string;
+  /** Módulo técnico da tecnologia — decide os campos específicos (vibração, termografia). */
+  tecnologiaModulo: string;
   tecnologiaId: number;
   onFechar: () => void;
   onSalvo: () => void | Promise<void>;
@@ -108,7 +111,7 @@ export function ModalAnalise({
       <AchadoCampos
         form={form}
         setForm={setForm}
-        tipo={tecnologiaTipo(tecnologiaNome)}
+        tipo={tecnologiaTipo(tecnologiaModulo)}
         tecnologiaId={tecnologiaId}
       />
     </Modal>

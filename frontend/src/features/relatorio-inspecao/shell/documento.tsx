@@ -1,5 +1,5 @@
 import type { DossieShell } from "../tipos";
-import { moduloDoRelatorio } from "../modulos";
+import { moduloDoRelatorio, temModulo } from "../modulos";
 import { CartaCorpo } from "./carta";
 import { SecaoEquipamentos } from "./equipamentos";
 import { CapaRelatorio, Contracapa, PaginaInterna } from "./folhas";
@@ -15,7 +15,19 @@ import { CapaRelatorio, Contracapa, PaginaInterna } from "./folhas";
  * `.print-area` (os módulos devolvem fragmentos) — a quebra de página da
  * "Impressão simples" depende disso.
  */
+/** Payload de um módulo que esta versão da tela não conhece: aviso, nunca outro layout. */
+function SemModulo({ d }: { d: DossieShell }) {
+  return (
+    <section className="pagina bg-white p-6" role="alert">
+      <p className="py-12 text-center text-sm text-slate-600">
+        O relatório do módulo técnico «{d.modulo || "não configurado"}» não está disponível nesta versão da tela.
+      </p>
+    </section>
+  );
+}
+
 export function RelatorioCorpo({ d }: { d: DossieShell }) {
+  if (!temModulo(d)) return <SemModulo d={d} />;
   const cab = d.cabecalho;
   const modulo = moduloDoRelatorio(d);
   const { Kpis, Fichas, Conclusoes } = modulo;
@@ -49,5 +61,6 @@ export function RelatorioCorpo({ d }: { d: DossieShell }) {
 
 /** Carta ao Cliente avulsa (rota /carta/[id]) — a mesma do relatório. */
 export function CartaDoRelatorio({ d }: { d: DossieShell }) {
+  if (!temModulo(d)) return <SemModulo d={d} />;
   return <CartaCorpo d={d} carta={moduloDoRelatorio(d).carta(d)} />;
 }

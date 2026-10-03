@@ -207,11 +207,15 @@ class MedicaoVibracao(TimeStampedModel):
         return [m.velocidade_rms for m in qs]
 
     def save(self, *args, **kwargs):
+        from apps.cadastros.criterios import faixas_vigentes
+
+        eq = self.equipamento
         resultado = rules.classificar_vibracao(
-            classe_iso=self.equipamento.classe_iso,
+            classe_iso=eq.classe_iso,
             velocidade_rms=self.velocidade_rms,
             fator_crista=self.fator_crista,
             historico_vrms=self._historico_vrms(),
+            faixas=faixas_vigentes(eq.classe_iso, cliente_id=eq.setor.area.cliente_id if eq.setor_id else None),
         )
         self.zona_iso = resultado.zona_iso
         self.criticidade = resultado.criticidade

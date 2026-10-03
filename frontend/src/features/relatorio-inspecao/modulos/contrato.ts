@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { DossieShell } from "../tipos";
 
 /**
@@ -18,8 +18,8 @@ import type { DossieShell } from "../tipos";
 
 /** Encaixes do módulo na Carta ao Cliente. */
 export type ConteudoCarta = {
-  /** Item 5 — tabela normativa da tecnologia (ex.: severidade ISO‑10816 na vibração). */
-  Normatizacao?: ComponentType;
+  /** Item 5 — tabela normativa da tecnologia (ex.: severidade de vibração), já com os dados do relatório. */
+  normatizacao?: ReactNode;
   /** Item 7 — parágrafos gerados no front a partir do que o módulo apurou (depois do alcance do relatório). */
   paragrafosDefinicao: string[];
 };

@@ -16,7 +16,7 @@ export function RodapeMarca({
 }) {
   return (
     <footer
-      className={`py-6 text-center text-2xs ${onChrome ? "text-chrome-fg-subtle" : "text-fg-subtle"} ${className}`}
+      className={`py-6 text-center text-2xs ${onChrome ? "text-chrome-fg-muted" : "text-fg-muted"} ${className}`}
     >
       by Thermoproactive
     </footer>

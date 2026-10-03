@@ -196,6 +196,11 @@ class AchadoSerializer(serializers.ModelSerializer):
     tecnologia_nome = serializers.CharField(
         source="item.carregamento.tecnologia.nome", read_only=True
     )
+    # Vínculo explícito que decide os campos específicos da análise (vibração,
+    # termografia…) — o front não deduz mais isso pelo nome da tecnologia.
+    tecnologia_modulo = serializers.CharField(
+        source="item.carregamento.tecnologia.modulo_tecnico", read_only=True
+    )
     analista_nome = serializers.CharField(source="item.carregamento.analista.nome", read_only=True)
     # "data" para o escritório/auditoria = data de término do relatório.
     data = serializers.DateField(source="item.carregamento.relatorio.data_termino", read_only=True, default=None)

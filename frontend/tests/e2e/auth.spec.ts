@@ -18,7 +18,7 @@ const admin = {
   is_master: true, pode_excluir: true, pode_curar_dados_sistema: true, empresa: 1, cliente: null,
 };
 
-async function mockApi(page: Page, user: typeof cliente | null = null) {
+async function mockApi(page: Page, user: typeof cliente | typeof admin | null = null) {
   await page.route("**/api/**", async (route) => {
     const url = route.request().url();
     if (url.endsWith("/auth/csrf/")) {
@@ -37,7 +37,7 @@ test.describe("entradas separadas @auth @critical", () => {
   test("portal do cliente tem identidade e cadastro próprios", async ({ page }) => {
     await mockApi(page);
     await page.goto("/portal/login");
-    await expect(page.getByRole("heading", { name: "Bem-vindo ao ThermoProActive" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Bem-vindo ao (ThermoProActive|Pred Ativos)/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Solicitar acesso" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: /^E-mail/ })).toHaveAttribute("autocomplete", "email");
     await expect(page.getByLabel(/^Senha/)).toHaveAttribute("autocomplete", "current-password");
@@ -140,7 +140,7 @@ test.describe("responsividade, teclado e WCAG @a11y", () => {
       await mockApi(page);
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/portal/login");
-      await expect(page.getByRole("heading", { name: "Bem-vindo ao ThermoProActive" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /Bem-vindo ao (ThermoProActive|Pred Ativos)/ })).toBeVisible();
       const tamanhos = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
       expect(tamanhos.scroll).toBeLessThanOrEqual(tamanhos.client);
     });
@@ -150,7 +150,7 @@ test.describe("responsividade, teclado e WCAG @a11y", () => {
     await mockApi(page);
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto("/portal/login");
-    await expect(page.getByRole("heading", { name: "Bem-vindo ao ThermoProActive" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Bem-vindo ao (ThermoProActive|Pred Ativos)/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Entrar" })).toBeVisible();
     const tamanhos = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(tamanhos.scroll).toBeLessThanOrEqual(tamanhos.client);

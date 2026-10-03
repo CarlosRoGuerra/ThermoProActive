@@ -101,8 +101,13 @@ export interface Equipamento {
   // Placa do motor — preenche a Economia energética do balanceamento automaticamente.
   tensao_nominal: string | null;
   fator_potencia_nominal: string | null;
+  /** Grupo no critério de severidade de vibração; "" quando o tipo não é avaliado por vibração. */
   classe_iso: string;
   classe_iso_display: string;
+  /** Vínculo explícito do catálogo (TipoEquipamento.analise_vibracao). */
+  analise_vibracao: boolean;
+  /** Critério de severidade vigente para a classe (perfil normativo) — null sem vibração. */
+  criterio_vibracao: CriterioVibracao | null;
   criticidade: string; // "" | "A" | "B" | "C"
   criticidade_display: string;
   // Datasheet técnico específico — null quando o equipamento não tem um ainda (tipo
@@ -116,6 +121,30 @@ export interface Equipamento {
 
 /** Qual datasheet técnico específico um TipoEquipamento representa (se algum). */
 export type CategoriaTecnica = "" | "MOTOR_ELETRICO" | "TRANSFORMADOR";
+
+/** Item do catálogo "Tipos de equipamento" — decide o cadastro técnico do equipamento. */
+export interface TipoEquipamentoOpcao {
+  id: number;
+  nome: string;
+  categoria_tecnica: CategoriaTecnica;
+  analise_vibracao: boolean;
+}
+
+export type OrigemCriterio = "NORMA" | "ACORDO_CLIENTE" | "LEGADO";
+
+/** Perfil normativo de vibração aplicado a uma classe (limites em mm/s RMS). */
+export interface CriterioVibracao {
+  id: number | null;
+  norma: string;
+  edicao: string;
+  classe: string;
+  descricao_grupo: string;
+  limites: { ab: string; bc: string; cd: string };
+  origem: OrigemCriterio;
+  origem_display: string;
+  fonte: string;
+  cliente: number | null;
+}
 
 export type TipoBase = "" | "RIGIDA" | "FLEXIVEL";
 
@@ -295,6 +324,8 @@ export interface Achado {
   tipo_equipamento_nome: string | null;
   tecnologia: number;
   tecnologia_nome: string;
+  /** TecnologiaAnalise.modulo_tecnico — decide os campos específicos da análise. */
+  tecnologia_modulo: string;
   analista_nome: string;
   data: string;
   imagens: AchadoImagem[];

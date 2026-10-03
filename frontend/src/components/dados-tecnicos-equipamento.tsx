@@ -3,19 +3,25 @@
 import { useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import type { DadosTecnicosMotor, DadosTecnicosTransformador, TipoBase } from "@/lib/types";
+import type { CategoriaTecnica, DadosTecnicosMotor, DadosTecnicosTransformador } from "@/lib/types";
 import { Button, Card, Field, Input, Select } from "@/components/ds";
 
 /**
  * Datasheet técnico específico por tipo de equipamento (Motor Elétrico, Transformador).
- * Mesmo padrão de criar/editar já usado em Economia energética e Trial/Trim Run:
- * PATCH se já existe, POST se ainda não — mesmo endpoint que um OCR futuro usaria
- * (pré-preenche este formulário, o técnico revisa e clica salvar — nada grava sozinho).
+ *
+ * Os campos entram no quadro "Dados técnicos" do formulário do equipamento assim
+ * que o tipo é escolhido e são gravados junto com ele (inclusive no cadastro) —
+ * PATCH se o datasheet já existe, POST se não. Mesmo endpoint que um OCR futuro
+ * usaria (pré-preenche, o técnico revisa e salva — nada grava sozinho).
  */
 
-/* ===================== Motor elétrico ===================== */
+type Datasheet = DadosTecnicosMotor | DadosTecnicosTransformador;
+/** Valores do datasheet como estão nos campos (texto). */
+export type ValoresDatasheet = Record<string, string>;
 
-const CAMPOS_MOTOR = [
+type CampoNum = { chave: string; label: string; passo: string; dica?: string };
+
+const CAMPOS_MOTOR: CampoNum[] = [
   { chave: "potencia_kw", label: "Potência (kW)", passo: "0.01" },
   { chave: "tensao_v", label: "Tensão (V)", passo: "0.01" },
   { chave: "corrente_a", label: "Corrente (A)", passo: "0.01" },
@@ -23,316 +29,197 @@ const CAMPOS_MOTOR = [
   { chave: "fator_potencia", label: "Fator de potência (FP)", passo: "0.001" },
   { chave: "fator_servico", label: "Fator de serviço (FS)", passo: "0.01" },
   { chave: "rendimento_pct", label: "Rendimento (%)", passo: "0.01" },
-] as const;
+];
+const TEXTOS_MOTOR = ["classe_isolacao", "rolamento_loa", "rolamento_la", "tipo_base"];
 
-export function DadosMotor({
-  equipamentoId,
-  dados,
-  podeEditar,
-  onMudou,
+const CAMPOS_TRANSFORMADOR: CampoNum[] = [
+  { chave: "potencia_kva", label: "Potência (kVA)", passo: "0.01" },
+  { chave: "tensao_primaria_v", label: "Tensão primária (V)", passo: "0.01" },
+  { chave: "tensao_secundaria_v", label: "Tensão secundária (V)", passo: "0.01" },
+  {
+    chave: "tensao_secundaria_fase_v", label: "Tensão secundária de fase (V)", passo: "0.01",
+    dica: "Ex.: 220 num 380/220 V — entra na relação nominal do R×T",
+  },
+  { chave: "impedancia_pct", label: "Impedância (%)", passo: "0.01" },
+  { chave: "volume_oleo_l", label: "Volume de óleo (L)", passo: "0.1" },
+];
+const TEXTOS_TRANSFORMADOR = ["grupo_ligacao", "possui_tanque_expansao"];
+
+const ENDPOINT: Record<Exclude<CategoriaTecnica, "">, string> = {
+  MOTOR_ELETRICO: "/dados-tecnicos-motor/",
+  TRANSFORMADOR: "/dados-tecnicos-transformador/",
+};
+
+function chaves(categoria: CategoriaTecnica) {
+  if (categoria === "MOTOR_ELETRICO") return [...CAMPOS_MOTOR.map((c) => c.chave), ...TEXTOS_MOTOR];
+  if (categoria === "TRANSFORMADOR") return [...CAMPOS_TRANSFORMADOR.map((c) => c.chave), ...TEXTOS_TRANSFORMADOR];
+  return [];
+}
+
+/** Valores iniciais dos campos, a partir do datasheet salvo (ou vazios). */
+export function datasheetInicial(dados: Datasheet | null): ValoresDatasheet {
+  const v: ValoresDatasheet = {};
+  if (!dados) return v;
+  for (const [k, valor] of Object.entries(dados)) {
+    if (k === "possui_tanque_expansao") v[k] = valor == null ? "" : valor ? "sim" : "nao";
+    else if (valor != null && typeof valor !== "object") v[k] = String(valor);
+  }
+  return v;
+}
+
+/** Algum campo do datasheet foi preenchido? (sem nada, não se cria datasheet vazio) */
+export function datasheetPreenchido(categoria: CategoriaTecnica, valores: ValoresDatasheet) {
+  return chaves(categoria).some((k) => (valores[k] ?? "").trim() !== "");
+}
+
+/**
+ * Grava o datasheet do equipamento (POST ou PATCH). Devolve o datasheet salvo,
+ * ou null quando a categoria não tem datasheet ou não há nada a gravar.
+ */
+export async function salvarDatasheet(
+  categoria: CategoriaTecnica,
+  equipamentoId: number,
+  existente: Datasheet | null,
+  valores: ValoresDatasheet
+): Promise<Datasheet | null> {
+  if (!categoria || (!existente && !datasheetPreenchido(categoria, valores))) return null;
+  const body: Record<string, unknown> = { equipamento: equipamentoId };
+  for (const k of chaves(categoria)) {
+    const texto = (valores[k] ?? "").trim();
+    if (k === "possui_tanque_expansao") body[k] = texto === "" ? null : texto === "sim";
+    else if (k === "tipo_base") body[k] = texto || null;
+    else if (TEXTOS_MOTOR.includes(k) || TEXTOS_TRANSFORMADOR.includes(k)) body[k] = texto;
+    else body[k] = texto === "" ? null : texto;
+  }
+  const base = ENDPOINT[categoria];
+  return existente
+    ? api<Datasheet>(`${base}${existente.id}/`, { method: "PATCH", body })
+    : api<Datasheet>(base, { method: "POST", body });
+}
+
+/** Campos do datasheet da categoria, dentro do quadro "Dados técnicos". */
+export function CamposDatasheet({
+  categoria, valores, onMudar, disabled = false,
 }: {
-  equipamentoId: number;
-  dados: DadosTecnicosMotor | null;
-  podeEditar: boolean;
-  onMudou: () => Promise<void>;
+  categoria: CategoriaTecnica;
+  valores: ValoresDatasheet;
+  onMudar: (v: ValoresDatasheet) => void;
+  disabled?: boolean;
 }) {
-  const [form, setForm] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      CAMPOS_MOTOR.map((c) => [c.chave, dados ? String(dados[c.chave as keyof DadosTecnicosMotor] ?? "") : ""])
-    )
+  const set = (k: string, valor: string) => onMudar({ ...valores, [k]: valor });
+  const numero = (c: CampoNum) => (
+    <Field key={c.chave} label={c.label} hint={c.dica}>
+      <Input
+        type="number"
+        step={c.passo}
+        inputMode="decimal"
+        disabled={disabled}
+        value={valores[c.chave] ?? ""}
+        onChange={(e) => set(c.chave, e.target.value)}
+      />
+    </Field>
   );
-  const [classeIsolacao, setClasseIsolacao] = useState(dados?.classe_isolacao ?? "");
-  const [rolamentoLoa, setRolamentoLoa] = useState(dados?.rolamento_loa ?? "");
-  const [rolamentoLa, setRolamentoLa] = useState(dados?.rolamento_la ?? "");
-  const [tipoBase, setTipoBase] = useState<TipoBase>(dados?.tipo_base ?? "");
-  const [salvando, setSalvando] = useState(false);
-  const [enviandoFoto, setEnviandoFoto] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const inputFoto = useRef<HTMLInputElement>(null);
 
-  async function salvar() {
-    setSalvando(true);
-    setErro(null);
-    try {
-      const body: Record<string, unknown> = {
-        equipamento: equipamentoId,
-        classe_isolacao: classeIsolacao,
-        rolamento_loa: rolamentoLoa,
-        rolamento_la: rolamentoLa,
-        tipo_base: tipoBase || null,
-      };
-      for (const c of CAMPOS_MOTOR) body[c.chave] = form[c.chave] || null;
-      if (dados) await api(`/dados-tecnicos-motor/${dados.id}/`, { method: "PATCH", body });
-      else await api("/dados-tecnicos-motor/", { method: "POST", body });
-      await onMudou();
-    } catch (e) {
-      setErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao salvar os dados do motor.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function enviarFoto(file: File) {
-    if (!dados) {
-      setErro("Salve os dados do motor antes de anexar a foto da placa.");
-      return;
-    }
-    setEnviandoFoto(true);
-    setErro(null);
-    try {
-      const fd = new FormData();
-      fd.append("foto_placa", file);
-      await api(`/dados-tecnicos-motor/${dados.id}/`, { method: "PATCH", body: fd });
-      await onMudou();
-    } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Falha ao enviar a foto da placa.");
-    } finally {
-      setEnviandoFoto(false);
-      if (inputFoto.current) inputFoto.current.value = "";
-    }
-  }
-
-  return (
-    <Card className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-fg">Dados técnicos — Motor elétrico</h2>
-        <p className="text-xs text-fg-muted">
-          Potência e tipo de base definem a Classe ISO automaticamente (acima de 75 kW).
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {CAMPOS_MOTOR.map((c) => (
-          <Field key={c.chave} label={c.label}>
-            <Input
-              type="number"
-              step={c.passo}
-              inputMode="decimal"
-              disabled={!podeEditar}
-              value={form[c.chave]}
-              onChange={(e) => setForm({ ...form, [c.chave]: e.target.value })}
-            />
-          </Field>
-        ))}
+  if (categoria === "MOTOR_ELETRICO") {
+    return (
+      <>
+        {CAMPOS_MOTOR.map(numero)}
         <Field label="Classe de isolação (ISOL)">
-          <Input
-            placeholder="Ex.: F"
-            disabled={!podeEditar}
-            value={classeIsolacao}
-            onChange={(e) => setClasseIsolacao(e.target.value)}
-          />
+          <Input placeholder="Ex.: F" disabled={disabled} value={valores.classe_isolacao ?? ""}
+            onChange={(e) => set("classe_isolacao", e.target.value)} />
         </Field>
         <Field label="Rolamento LOA (lado oposto ao acoplamento)">
-          <Input disabled={!podeEditar} value={rolamentoLoa} onChange={(e) => setRolamentoLoa(e.target.value)} />
+          <Input disabled={disabled} value={valores.rolamento_loa ?? ""} onChange={(e) => set("rolamento_loa", e.target.value)} />
         </Field>
         <Field label="Rolamento LA (lado do acoplamento)">
-          <Input disabled={!podeEditar} value={rolamentoLa} onChange={(e) => setRolamentoLa(e.target.value)} />
+          <Input disabled={disabled} value={valores.rolamento_la ?? ""} onChange={(e) => set("rolamento_la", e.target.value)} />
         </Field>
         <Field label="Tipo de base">
-          <Select disabled={!podeEditar} value={tipoBase} onChange={(e) => setTipoBase(e.target.value as TipoBase)}>
+          <Select disabled={disabled} value={valores.tipo_base ?? ""} onChange={(e) => set("tipo_base", e.target.value)}>
             <option value="">— não informado —</option>
             <option value="RIGIDA">Rígida</option>
             <option value="FLEXIVEL">Flexível</option>
           </Select>
         </Field>
-      </div>
-
-      {erro && <p className="text-sm text-danger-fg">{erro}</p>}
-
-      {podeEditar && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <input
-              ref={inputFoto}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) enviarFoto(f);
-              }}
-            />
-            <Button
-              variant="secondary"
-              icon={ImagePlus}
-              loading={enviandoFoto}
-              onClick={() => inputFoto.current?.click()}
-            >
-              {dados?.foto_placa ? "Trocar foto da placa" : "Anexar foto da placa"}
-            </Button>
-          </div>
-          <Button onClick={salvar} loading={salvando}>
-            {dados ? "Salvar dados do motor" : "Criar dados do motor"}
-          </Button>
-        </div>
-      )}
-
-      {dados?.foto_placa && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={dados.foto_placa}
-          alt="Placa de identificação do motor"
-          className="max-h-48 rounded-lg border border-border object-contain"
-        />
-      )}
-    </Card>
-  );
-}
-
-/* ===================== Transformador ===================== */
-
-const CAMPOS_TRANSFORMADOR = [
-  { chave: "potencia_kva", label: "Potência (kVA)", passo: "0.01" },
-  { chave: "tensao_primaria_v", label: "Tensão primária (V)", passo: "0.01" },
-  { chave: "tensao_secundaria_v", label: "Tensão secundária (V)", passo: "0.01" },
-  { chave: "tensao_secundaria_fase_v", label: "Tensão secundária de fase (V)", passo: "0.01" },
-  { chave: "impedancia_pct", label: "Impedância (%)", passo: "0.01" },
-  { chave: "volume_oleo_l", label: "Volume de óleo (L)", passo: "0.1" },
-] as const;
-
-export function DadosTransformador({
-  equipamentoId,
-  dados,
-  podeEditar,
-  onMudou,
-}: {
-  equipamentoId: number;
-  dados: DadosTecnicosTransformador | null;
-  podeEditar: boolean;
-  onMudou: () => Promise<void>;
-}) {
-  const [form, setForm] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      CAMPOS_TRANSFORMADOR.map((c) => [
-        c.chave,
-        dados ? String(dados[c.chave as keyof DadosTecnicosTransformador] ?? "") : "",
-      ])
-    )
-  );
-  const [grupoLigacao, setGrupoLigacao] = useState(dados?.grupo_ligacao ?? "");
-  // "" = não informado (nulo) — o checklist da coleta de óleo depende disso.
-  const [tanque, setTanque] = useState(
-    dados?.possui_tanque_expansao == null ? "" : dados.possui_tanque_expansao ? "sim" : "nao"
-  );
-  const [salvando, setSalvando] = useState(false);
-  const [enviandoFoto, setEnviandoFoto] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const inputFoto = useRef<HTMLInputElement>(null);
-
-  async function salvar() {
-    setSalvando(true);
-    setErro(null);
-    try {
-      const body: Record<string, unknown> = {
-        equipamento: equipamentoId,
-        grupo_ligacao: grupoLigacao,
-        possui_tanque_expansao: tanque === "" ? null : tanque === "sim",
-      };
-      for (const c of CAMPOS_TRANSFORMADOR) body[c.chave] = form[c.chave] || null;
-      if (dados) await api(`/dados-tecnicos-transformador/${dados.id}/`, { method: "PATCH", body });
-      else await api("/dados-tecnicos-transformador/", { method: "POST", body });
-      await onMudou();
-    } catch (e) {
-      setErro(e instanceof ApiError ? JSON.stringify(e.data) : "Falha ao salvar os dados do transformador.");
-    } finally {
-      setSalvando(false);
-    }
+      </>
+    );
   }
-
-  async function enviarFoto(file: File) {
-    if (!dados) {
-      setErro("Salve os dados do transformador antes de anexar a foto da placa.");
-      return;
-    }
-    setEnviandoFoto(true);
-    setErro(null);
-    try {
-      const fd = new FormData();
-      fd.append("foto_placa", file);
-      await api(`/dados-tecnicos-transformador/${dados.id}/`, { method: "PATCH", body: fd });
-      await onMudou();
-    } catch (e) {
-      setErro(e instanceof ApiError ? e.message : "Falha ao enviar a foto da placa.");
-    } finally {
-      setEnviandoFoto(false);
-      if (inputFoto.current) inputFoto.current.value = "";
-    }
-  }
-
-  return (
-    <Card className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-fg">Dados técnicos — Transformador</h2>
-        <p className="text-xs text-fg-muted">Campos específicos deste tipo — não usa os campos de motor.</p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {CAMPOS_TRANSFORMADOR.map((c) => (
-          <Field key={c.chave} label={c.label}>
-            <Input
-              type="number"
-              step={c.passo}
-              inputMode="decimal"
-              disabled={!podeEditar}
-              value={form[c.chave]}
-              onChange={(e) => setForm({ ...form, [c.chave]: e.target.value })}
-            />
-          </Field>
-        ))}
-        <Field label="Grupo de ligação">
-          <Input
-            placeholder="Ex.: Dyn1"
-            disabled={!podeEditar}
-            value={grupoLigacao}
-            onChange={(e) => setGrupoLigacao(e.target.value)}
-          />
+  if (categoria === "TRANSFORMADOR") {
+    return (
+      <>
+        {CAMPOS_TRANSFORMADOR.map(numero)}
+        <Field label="Grupo de ligação" hint="Ex.: Dyn1">
+          <Input disabled={disabled} value={valores.grupo_ligacao ?? ""} onChange={(e) => set("grupo_ligacao", e.target.value)} />
         </Field>
-        <Field label="Tanque de expansão">
-          <Select disabled={!podeEditar} value={tanque} onChange={(e) => setTanque(e.target.value)}>
+        <Field label="Tanque de expansão" hint="Sem tanque, os itens exclusivos da inspeção visual já vêm NA">
+          <Select disabled={disabled} value={valores.possui_tanque_expansao ?? ""}
+            onChange={(e) => set("possui_tanque_expansao", e.target.value)}>
             <option value="">Não informado</option>
             <option value="sim">Possui</option>
             <option value="nao">Não possui</option>
           </Select>
         </Field>
-      </div>
+      </>
+    );
+  }
+  return null;
+}
 
-      {erro && <p className="text-sm text-danger-fg">{erro}</p>}
+/** Foto da placa — só depois que o datasheet existe (é um arquivo do datasheet). */
+export function FotoPlaca({
+  categoria, dados, onMudou,
+}: {
+  categoria: Exclude<CategoriaTecnica, "">;
+  dados: Datasheet;
+  onMudou: () => Promise<void>;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const alvo = categoria === "MOTOR_ELETRICO" ? "do motor" : "do transformador";
 
-      {podeEditar && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <input
-              ref={inputFoto}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) enviarFoto(f);
-              }}
-            />
-            <Button
-              variant="secondary"
-              icon={ImagePlus}
-              loading={enviandoFoto}
-              onClick={() => inputFoto.current?.click()}
-            >
-              {dados?.foto_placa ? "Trocar foto da placa" : "Anexar foto da placa"}
-            </Button>
-          </div>
-          <Button onClick={salvar} loading={salvando}>
-            {dados ? "Salvar dados do transformador" : "Criar dados do transformador"}
-          </Button>
+  async function enviar(file: File) {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const fd = new FormData();
+      fd.append("foto_placa", file);
+      await api(`${ENDPOINT[categoria]}${dados.id}/`, { method: "PATCH", body: fd });
+      await onMudou();
+    } catch (e) {
+      setErro(e instanceof ApiError ? e.message : "Falha ao enviar a foto da placa.");
+    } finally {
+      setEnviando(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-fg">Foto da placa {alvo}</h2>
+          <p className="text-xs text-fg-muted">Registro da placa de identificação para conferência dos dados técnicos.</p>
         </div>
-      )}
-
-      {dados?.foto_placa && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={dados.foto_placa}
-          alt="Placa de identificação do transformador"
-          className="max-h-48 rounded-lg border border-border object-contain"
+        <input
+          ref={input}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) enviar(f);
+          }}
         />
+        <Button variant="secondary" icon={ImagePlus} loading={enviando} onClick={() => input.current?.click()}>
+          {dados.foto_placa ? "Trocar foto da placa" : "Anexar foto da placa"}
+        </Button>
+      </div>
+      {erro && <p className="text-sm text-danger-fg">{erro}</p>}
+      {dados.foto_placa && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={dados.foto_placa} alt={`Placa de identificação ${alvo}`}
+          className="max-h-48 rounded-lg border border-border object-contain" />
       )}
     </Card>
   );

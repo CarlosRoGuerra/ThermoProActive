@@ -3,11 +3,15 @@ import type { Achado } from "./types";
 
 export type TecnologiaTipo = "vibracao" | "termografia" | "outro";
 
-/** Deduz o grupo de campos específicos a partir do nome da tecnologia (catálogo livre). */
-export function tecnologiaTipo(nome: string | null | undefined): TecnologiaTipo {
-  const n = (nome ?? "").toLowerCase();
-  if (n.includes("vibra")) return "vibracao";
-  if (n.includes("termo") || n.includes("termografia") || n.includes("infraverm")) return "termografia";
+/**
+ * Grupo de campos específicos da análise pelo módulo técnico da tecnologia
+ * (`TecnologiaAnalise.modulo_tecnico`) — vínculo explícito, nunca o nome do
+ * catálogo. Tecnologia de outro módulo não ganha campos de outra técnica (o
+ * balanceamento tem o próprio formulário, o da manutenção corretiva).
+ */
+export function tecnologiaTipo(modulo: string | null | undefined): TecnologiaTipo {
+  if (modulo === "VIBRACAO") return "vibracao";
+  if (modulo === "TERMOGRAFIA") return "termografia";
   return "outro";
 }
 

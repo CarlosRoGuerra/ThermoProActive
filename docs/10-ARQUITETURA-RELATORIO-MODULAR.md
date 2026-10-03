@@ -35,6 +35,13 @@ Regra: **o shell nunca lê dado do módulo**. O módulo pode ler dado do shell. 
 
 ## 2. Como o módulo é escolhido
 
+> **Atualizado em 01/10/2026 (doc 11, seção 3):** não existe mais "layout padrão".
+> `modulo_tecnico` vazio, ou um módulo planejado ainda sem relatório, gera um aviso
+> claro (HTTP 409 no dossiê e na carta) — nunca o relatório da vibração. Opções atuais:
+> `VIBRACAO`, `BALANCEAMENTO`, `TERMOGRAFIA`, `OLEO_ISOLANTE`, `ENSAIO_ELETRICO`,
+> `FLUIDO_LUBRIFICANTE`, `INSPECAO_GENERICA` e os planejados. O texto abaixo é o
+> histórico da primeira versão.
+
 Pelo campo explícito **`TecnologiaAnalise.modulo_tecnico`** (`ModuloTecnico`:
 `VIBRACAO`, `TERMOGRAFIA`, `OLEO_ISOLANTE`, `ENSAIO_ELETRICO`; vazio = layout padrão), editável em Cadastros → Tecnologias
 de análise → "Módulo técnico do relatório". Mesmo padrão de `tipo_corretiva` e
@@ -58,7 +65,7 @@ por ela.
 | `shell.py` | `cabecalho`, `secao_c` (com `equip_monitorados`) e o `ContextoRelatorio` (itens da rota carregados uma vez, reaproveitados pelo módulo) |
 | `inspecao.py` | Família "inspeção por rota": `secao_b` (KPIs), `secao_d` (folhas de OSP), textos padrão da carta (modelo Word) e o parágrafo das anomalias |
 | `termografia.py` | Glossário e considerações da carta de termografia, transcritos do RT.TE-2026.02.12.02307 |
-| `modulos.py` | Registro `MODULOS` e `modulo_da_tecnologia()`; módulos `VIBRACAO`, `TERMOGRAFIA`, `PADRAO` e os de transformador (`OLEO_ISOLANTE`, `ENSAIO_ELETRICO`, definidos em `apps/ensaios/relatorio.py` — seção 10) |
+| `modulos.py` | Registro `MODULOS` e `modulo_da_tecnologia()`; módulos `VIBRACAO`, `BALANCEAMENTO`, `TERMOGRAFIA`, `INSPECAO_GENERICA` (`generico.py`), os de transformador (`OLEO_ISOLANTE`, `ENSAIO_ELETRICO`, em `apps/ensaios/relatorio.py` — seção 10) e o de fluidos (`FLUIDO_LUBRIFICANTE`, em `apps/ensaios/relatorio_fluidos.py` — doc 11). Sem módulo padrão: `ModuloNaoConfigurado` / `ModuloNaoImplementado` |
 
 `RelatorioViewSet.dossie()` só chama `montar_dossie`. `carta_docx.py` ficou só com o
 layout do modelo Word: pede ao módulo o conteúdo técnico e desenha as tabelas que o
@@ -96,7 +103,7 @@ shell/equipamentos.tsx   Relação de Equipamentos Monitorados
 shell/kpis.tsx           primitivas: StatTile, GraficoDistribuicao, Medidor, paleta
 shell/formato.ts         datas e números
 modulos/contrato.ts      ModuloRelatorio e ConteudoCarta (tabela normativa e parágrafos do item 7)
-modulos/index.ts         registro (espelho de modulos.py) e o módulo padrão
+modulos/index.ts         registro (espelho de modulos.py); sem módulo padrão (doc 11)
 modulos/inspecao/        família inspeção por rota: KPIs, folha da OSP, parágrafo das anomalias
 modulos/vibracao.tsx     amplitudes, quadros Tendência/Espectro, tabela ISO‑10816
 modulos/termografia.tsx  medições do RT.TE (temperaturas, carga, corrigidas, correntes), quadro Imagem Térmica
@@ -127,7 +134,10 @@ Decisões do Carlos em 24/09/2026:
 - **Tecnologia sem módulo próprio** (Sensitiva, Balanceamento, Qualidade de Energia…):
   **mantém o layout de sempre**, que é o da vibração (tabela ISO‑10816 na carta, bloco
   de amplitudes na OSP). Agora isso é uma escolha explícita do módulo padrão, não um
-  acoplamento do shell.
+  acoplamento do shell. **Revogado em 01/10/2026** (doc 11, seção 3): Balanceamento
+  ganhou o módulo `BALANCEAMENTO` (mesmo layout, por escolha declarada), a Sensitiva
+  usa `INSPECAO_GENERICA` (neutro, sem vibração) e as demais avisam que estão sem
+  módulo.
 - **Termografia**: a folha da OSP mostra a **imagem térmica** no quadro da direita, no
   lugar de Tendência/Espectro (antes a imagem térmica enviada na Análise final nunca
   aparecia). A carta da termografia não traz a tabela de severidade de vibração.

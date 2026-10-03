@@ -69,3 +69,40 @@ CONSIDERACOES_ELETRICO = (
     "A resistência ôhmica é corrigida para 75 °C e a relação de transformação é comparada com a relação nominal do TAP ensaiado; a comparação com ensaios anteriores e com os valores de fábrica completa o diagnóstico.",
     "Recomenda-se manter a periodicidade indicada em cada ficha, para acompanhar a evolução dos resultados ao longo das campanhas.",
 )
+
+
+# ------------------- Fluidos lubrificantes e hidráulicos --------------------
+# Proposta de 01/10/2026 (validar com o cliente): mesma estrutura de carta das
+# outras tecnologias, com os ensaios FQ, EF e CP. Nenhuma norma de outra técnica.
+CONTEUDO_FLUIDO = (
+    "Seção A – Carta ao Cliente",
+    "Seção B – KPI’s Dashboard",
+    "Seção C – Relação de Equipamentos Contemplados",
+    "Seção D – Fichas da Análise de Fluidos [coleta da amostra e resultados FQ, EF e CP]",
+)
+
+GLOSSARIO_FLUIDO = (
+    ("6.1", "Ensaios", ""),
+    ("6.1.1", "FQ", "Físico-Química: propriedades do fluido — viscosidade cinemática a 40 °C (e a 100 °C, quando contratada), teor de água, número de acidez (TAN), aparência e demais parâmetros informados pelo laboratório."),
+    ("6.1.2", "EF", "Espectrofotometria (análise elementar): teor dos elementos químicos dissolvidos ou em suspensão fina no fluido, em ppm — metais de desgaste, contaminantes e elementos dos aditivos."),
+    ("6.1.3", "CP", "Contagem de Partículas: quantidade de partículas sólidas por mL nos tamanhos > 4, > 6 e > 14 µm(c), que forma o código de limpeza ISO 4406. Solicitada por padrão nos fluidos hidráulicos."),
+    ("6.2", "Termos", ""),
+    ("6.2.1", "cSt", "Centistokes (mm²/s): unidade da viscosidade cinemática."),
+    ("6.2.2", "TAN", "Número de acidez total, em mgKOH/g: o aumento em relação ao óleo novo indica oxidação ou contaminação."),
+    ("6.2.3", "ppm", "Partes por milhão, em massa (mg/kg)."),
+    ("6.2.4", "ISO 4406", "Código de limpeza X/Y/Z: um número de escala para cada tamanho de partícula (> 4, > 6 e > 14 µm(c)); cada grau a mais corresponde a aproximadamente o dobro de partículas."),
+    ("6.2.5", "Meta de limpeza", "Código ISO 4406 alvo do sistema, definido para o equipamento, o fabricante ou o contrato. Sem meta cadastrada, o código é informado sem classificação."),
+    ("6.2.6", "Referência", "Limite de alerta e de crítico de cada parâmetro, com a origem (norma, fabricante, laboratório, acordo ou óleo novo) e a vigência. Sem referência cadastrada, o valor é informado sem classificação."),
+    ("6.2.7", "Tendência", "Evolução do parâmetro nas coletas anteriores do mesmo equipamento; um resultado isolado não basta para um diagnóstico definitivo."),
+    ("6.3", "Situação", ""),
+    ("6.3.1", "Rotina", "Resultado dentro das referências: manter a periodicidade de coleta."),
+    ("6.3.2", "Alerta", "Resultado além do limite de alerta, ou código de limpeza acima da meta: investigar a causa e intensificar o monitoramento."),
+    ("6.3.3", "Crítica", "Resultado além do limite crítico: intervenção recomendada no prazo indicado na ficha."),
+    ("6.3.4", "LD / LQ", "Limites de detecção e de quantificação do método do laboratório."),
+)
+
+CONSIDERACOES_FLUIDO = (
+    "Os resultados representam a condição do fluido na data da coleta e dependem da representatividade da amostra; por isso o ponto de coleta, a condição operacional e o histórico do fluido (horas, trocas, complementos e filtros) ficam registrados na ficha de coleta.",
+    "Cada resultado é avaliado pela referência cadastrada para o equipamento, o fluido ou o contrato, e pela tendência das coletas anteriores. Resultado isolado fora da referência deve ser confirmado com o histórico e, quando necessário, com nova amostragem antes de uma intervenção.",
+    "Recomenda-se manter a periodicidade de coleta indicada em cada ficha, para acompanhar a evolução dos resultados ao longo das campanhas.",
+)

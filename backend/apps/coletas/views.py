@@ -54,6 +54,17 @@ def escopo_cliente(qs, user, campo_cliente="cliente"):
     return qs
 
 
+def _modulo_indisponivel(erro):
+    """
+    Relatório de tecnologia sem módulo utilizável: 409 com o motivo, para a tela
+    explicar o que configurar — nunca o layout de outra técnica no lugar.
+    """
+    return Response(
+        {"detail": erro.mensagem, "codigo": erro.codigo, "tecnologia": erro.tecnologia.nome},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
 def recorte_cliente(qs, request, campo_cliente="cliente"):
     """
     `escopo_cliente` (segurança) + recorte opcional pelo CLIENTE ATIVO (UX).
@@ -273,9 +284,12 @@ class RelatorioViewSet(viewsets.ModelViewSet):
         equipamentos) + a parte do módulo técnico da tecnologia (KPIs e fichas).
         Montagem em `apps.coletas.relatorio_tecnico`.
         """
-        from .relatorio_tecnico import montar_dossie
+        from .relatorio_tecnico import ModuloIndisponivel, montar_dossie
 
-        return Response(montar_dossie(self.get_object(), request))
+        try:
+            return Response(montar_dossie(self.get_object(), request))
+        except ModuloIndisponivel as e:
+            return _modulo_indisponivel(e)
 
     @action(detail=True, methods=["get"], url_path="carta-docx")
     def carta_docx(self, request, pk=None):
@@ -288,9 +302,14 @@ class RelatorioViewSet(viewsets.ModelViewSet):
 
         from .carta_docx import construir_carta_docx
 
+        from .relatorio_tecnico import ModuloIndisponivel
+
         rel = self.get_object()
         prestador = Empresa.objects.ativos().order_by("id").first()
-        doc = construir_carta_docx(rel, prestador)
+        try:
+            doc = construir_carta_docx(rel, prestador)
+        except ModuloIndisponivel as e:
+            return _modulo_indisponivel(e)
         buf = BytesIO()
         doc.save(buf)
         buf.seek(0)

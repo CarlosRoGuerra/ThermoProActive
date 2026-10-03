@@ -319,7 +319,7 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
   if (loading) return <LoadingState variante="formulario" linhas={4} label="Carregando a análise…" />;
   if (!achado || !form) return <Card><p className="text-sm text-danger-fg">{msg ?? "Análise não encontrada."}</p></Card>;
 
-  const tipo = tecnologiaTipo(achado.tecnologia_nome);
+  const tipo = tecnologiaTipo(achado.tecnologia_modulo);
 
   const infos: [string, string][] = [
     ["Analista", achado.analista_nome],

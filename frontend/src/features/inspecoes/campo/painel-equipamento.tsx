@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ChevronDown,
   CircleCheck,
@@ -26,7 +26,7 @@ import {
 } from "@/components/ds";
 import { useRecurso } from "@/lib/recurso";
 import { ResumoEnsaiosCampo } from "@/features/ensaios/resumo-campo";
-import type { ModuloTransformador, TransformadorInspecao } from "@/features/ensaios/tipos";
+import type { ItemEnsaio, ModuloEnsaio } from "@/features/ensaios/tipos";
 import { numeroUnidade, plural } from "@/lib/format";
 import type { Achado, Condicao, Equipamento, ItemInspecao } from "@/lib/types";
 import { EXPLICACAO_ESTADO, ROTULO_ESTADO, estadoDoItem } from "./progresso";
@@ -45,6 +45,33 @@ import { SeletorCondicao, Tecla } from "./seletor-condicao";
    consulta ocasional.
    ========================================================================== */
 
+/** Itens de placa da ficha técnica, pela categoria técnica do tipo do equipamento. */
+function dadosDePlaca(e: Equipamento): { label: string; value: ReactNode; tecnico?: boolean }[] {
+  const ou = (v: string | number | null | undefined, unidade: string) =>
+    v != null && v !== "" ? numeroUnidade(String(v), unidade) : <SemDado />;
+  if (e.categoria_tecnica === "TRANSFORMADOR") {
+    const t = e.dados_transformador;
+    return [
+      { label: "Potência", value: ou(t?.potencia_kva, "kVA"), tecnico: true },
+      { label: "Tensão primária", value: ou(t?.tensao_primaria_v, "V"), tecnico: true },
+      { label: "Tensão secundária", value: ou(t?.tensao_secundaria_v, "V"), tecnico: true },
+      { label: "Grupo de ligação", value: t?.grupo_ligacao || <SemDado />, tecnico: true },
+    ];
+  }
+  if (e.categoria_tecnica === "MOTOR_ELETRICO") {
+    const m = e.dados_motor;
+    return [
+      { label: "Potência", value: ou(m?.potencia_kw ?? e.potencia_kw, "kW"), tecnico: true },
+      {
+        label: "Rotação",
+        value: (m?.rotacao_rpm ?? e.rotacao_nominal_rpm) ? `${m?.rotacao_rpm ?? e.rotacao_nominal_rpm} RPM` : <SemDado />,
+        tecnico: true,
+      },
+    ];
+  }
+  return [];
+}
+
 export function PainelEquipamento({
   item,
   condicoes,
@@ -58,7 +85,7 @@ export function PainelEquipamento({
   onAnalisarCorretiva,
   onAdicionarLinha,
   onRemoverItem,
-  transformador,
+  ensaios,
 }: {
   item: ItemInspecao;
   condicoes: Condicao[];
@@ -72,10 +99,10 @@ export function PainelEquipamento({
   onAnalisarCorretiva: () => void;
   onAdicionarLinha: () => void;
   onRemoverItem: () => void;
-  /** Rotas de óleo isolante e de ensaios elétricos: coleta/registro e laudos do transformador. */
-  transformador?: {
-    modulo: ModuloTransformador;
-    resumo: TransformadorInspecao | null;
+  /** Rotas de ensaios (óleo isolante, elétricos, fluidos): registro de campo e laudos do equipamento. */
+  ensaios?: {
+    modulo: ModuloEnsaio;
+    resumo: ItemEnsaio | null;
     carregando: boolean;
     onAbrir: () => void;
   };
@@ -202,13 +229,13 @@ export function PainelEquipamento({
         <FichaTecnica equipamentoId={item.equipamento} />
       </Card>
 
-      {transformador && (
+      {ensaios && (
         <ResumoEnsaiosCampo
-          modulo={transformador.modulo}
-          resumo={transformador.resumo}
-          carregando={transformador.carregando}
+          modulo={ensaios.modulo}
+          resumo={ensaios.resumo}
+          carregando={ensaios.carregando}
           podeEditar={podeEditar}
-          onAbrir={transformador.onAbrir}
+          onAbrir={ensaios.onAbrir}
         />
       )}
 
@@ -384,26 +411,21 @@ function FichaTecnica({ equipamentoId }: { equipamentoId: number }) {
                 { label: "Fabricante", value: dados.fabricante || <SemDado /> },
                 { label: "Modelo", value: dados.modelo || <SemDado /> },
                 { label: "Nº de série", value: dados.numero_serie || <SemDado />, tecnico: true },
-                {
-                  label: "Potência",
-                  value: dados.potencia_kw ? numeroUnidade(dados.potencia_kw, "kW") : <SemDado />,
-                  tecnico: true,
-                },
-                {
-                  label: "Rotação",
-                  value: dados.rotacao_nominal_rpm ? `${dados.rotacao_nominal_rpm} RPM` : <SemDado />,
-                  tecnico: true,
-                },
-                {
-                  label: "Classe ISO",
-                  value: dados.classe_iso ? (
-                    <Badge tone="primary" title={dados.classe_iso_display}>
-                      {dados.classe_iso}
-                    </Badge>
-                  ) : (
-                    <SemDado />
-                  ),
-                },
+                // Dados de placa conforme a ficha técnica do tipo — nunca campos de
+                // motor num transformador, nem classe de vibração onde não se aplica.
+                ...dadosDePlaca(dados),
+                ...(dados.analise_vibracao
+                  ? [{
+                      label: "Classe de vibração",
+                      value: dados.classe_iso ? (
+                        <Badge tone="primary" title={dados.classe_iso_display}>
+                          {dados.classe_iso}
+                        </Badge>
+                      ) : (
+                        <SemDado />
+                      ),
+                    }]
+                  : []),
                 {
                   label: "Classe do ativo",
                   value: dados.criticidade ? dados.criticidade_display : <SemDado />,

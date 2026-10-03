@@ -118,12 +118,14 @@ function Cadastros() {
     if (relacionais.length === 0) return;
     const controle = new AbortController();
     for (const f of relacionais) {
+      // O endpoint pode trazer um filtro fixo ("ensaios?modulo=…"); as opções
+      // ficam guardadas pela chave completa, que é o que o formulário procura.
       const endpoint = f.optionsEndpoint!;
-      const query =
-        f.escopoClienteAtivo && clienteAtivo
-          ? `?cliente=${clienteAtivo.id}&page_size=500`
-          : "?page_size=500";
-      api<{ results: Opcao[] }>(`/${endpoint}/${query}`, { signal: controle.signal })
+      const [base, filtro] = endpoint.split("?");
+      const params = new URLSearchParams(filtro ?? "");
+      params.set("page_size", "500");
+      if (f.escopoClienteAtivo && clienteAtivo) params.set("cliente", String(clienteAtivo.id));
+      api<{ results: Opcao[] }>(`/${base}/?${params}`, { signal: controle.signal })
         .then((d) => setOpcoes((atual) => ({ ...atual, [endpoint]: d.results })))
         .catch(() => {
           /* opção indisponível: o campo fica vazio e o Field mostra o vazio */

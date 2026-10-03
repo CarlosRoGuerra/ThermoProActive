@@ -4,6 +4,7 @@ from rest_framework.pagination import PageNumberPagination
 
 from apps.accounts.permissions import (
     InternoEditaClienteVisualiza,
+    IsInterno,
     MasterEditaDemaisVisualizam,
 )
 
@@ -13,6 +14,7 @@ from .models import (
     Cliente,
     Componente,
     Condicao,
+    CriterioSeveridadeVibracao,
     DadosTecnicosMotor,
     DadosTecnicosTransformador,
     Empresa,
@@ -37,6 +39,7 @@ from .serializers import (
     ClienteSerializer,
     ComponenteSerializer,
     CondicaoSerializer,
+    CriterioSeveridadeVibracaoSerializer,
     DadosTecnicosMotorSerializer,
     DadosTecnicosTransformadorSerializer,
     EmpresaSerializer,
@@ -266,6 +269,21 @@ class TecnologiaAnaliseViewSet(CatalogoViewSet):
 class TipoEquipamentoViewSet(CatalogoViewSet):
     queryset = TipoEquipamento.objects.ativos()
     serializer_class = TipoEquipamentoSerializer
+
+
+class CriterioSeveridadeVibracaoViewSet(BaseCadastroViewSet):
+    """
+    Perfil normativo da vibração (limites por grupo de máquina, com norma,
+    origem e vigência). Só a equipe interna consulta — um acordo de um cliente
+    não aparece para outro —, e só o Master altera (dados de sistema).
+    """
+
+    permission_classes = [IsInterno, MasterEditaDemaisVisualizam]
+    queryset = CriterioSeveridadeVibracao.objects.ativos().select_related("cliente")
+    serializer_class = CriterioSeveridadeVibracaoSerializer
+    pagination_class = CatalogoPagination
+    filterset_fields = ["classe", "origem", "cliente"]
+    search_fields = ["norma_codigo", "fonte", "descricao_grupo"]
 
 
 class ClassificacaoInspecaoViewSet(CatalogoViewSet):

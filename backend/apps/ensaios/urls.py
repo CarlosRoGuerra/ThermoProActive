@@ -1,12 +1,20 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    ColetaFluidoViewSet,
     ColetaOleoViewSet,
     EnsaioViewSet,
+    FluidoHistoricoView,
+    FluidoInspecaoViewSet,
     ItemChecklistVisualViewSet,
+    ParametroEnsaioViewSet,
     PontoColetaViewSet,
+    ProdutoFluidoViewSet,
+    ReferenciaParametroViewSet,
     RegistroEnsaioEletricoViewSet,
     ResultadoEnsaioViewSet,
+    SolicitacaoPadraoEnsaioViewSet,
     TipoFluidoViewSet,
     TransformadorInspecaoViewSet,
 )
@@ -23,5 +31,14 @@ router.register("registros-ensaio-eletrico", RegistroEnsaioEletricoViewSet, base
 router.register("resultados-ensaio", ResultadoEnsaioViewSet, basename="resultadoensaio")
 # Fila do lançamento: transformadores das rotas de óleo e de ensaios elétricos
 router.register("transformadores-inspecao", TransformadorInspecaoViewSet, basename="transformadorinspecao")
+# Fluidos lubrificantes e hidráulicos: catálogos, referências, coleta e a fila do lançamento
+router.register("parametros-ensaio", ParametroEnsaioViewSet, basename="parametroensaio")
+router.register("produtos-fluido", ProdutoFluidoViewSet, basename="produtofluido")
+router.register("solicitacoes-padrao-ensaio", SolicitacaoPadraoEnsaioViewSet, basename="solicitacaopadraoensaio")
+router.register("referencias-parametro", ReferenciaParametroViewSet, basename="referenciaparametro")
+router.register("coletas-fluido", ColetaFluidoViewSet, basename="coletafluido")
+router.register("fluidos-inspecao", FluidoInspecaoViewSet, basename="fluidoinspecao")
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    path("fluidos-historico/", FluidoHistoricoView.as_view(), name="fluidos-historico"),
+]

@@ -4,19 +4,30 @@ from rest_framework import serializers
 
 from apps.coletas.models import ItemInspecao
 
+from apps.cadastros.models import ModuloTecnico
+
 from .models import (
+    ColetaFluido,
     ColetaOleo,
     Ensaio,
     InspecaoVisualColeta,
     ItemChecklistVisual,
+    OrigemReferencia,
     ParametroEnsaio,
     PontoColeta,
+    ProdutoFluido,
+    ReferenciaParametro,
     RegistroEnsaioEletrico,
     ResultadoEnsaio,
+    SolicitacaoPadraoEnsaio,
     TipoFluido,
+    TipoReferencia,
     ValorParametro,
 )
 from .relatorio import avaliar_resultado
+from .relatorio_fluidos import avaliar_resultado_fluido, ensaios_padrao
+
+FLUIDO = ModuloTecnico.FLUIDO_LUBRIFICANTE
 
 # Situações que encerram um ensaio solicitado (o resto ainda espera laudo).
 SITUACOES_FINAIS = ("REALIZADO", "NAO_COLETADO", "NAO_REALIZADO")
@@ -24,18 +35,112 @@ SITUACOES_FINAIS = ("REALIZADO", "NAO_COLETADO", "NAO_REALIZADO")
 
 # ------------------------------- Catálogos ----------------------------------
 class ParametroEnsaioSerializer(serializers.ModelSerializer):
+    # "EF — Ferro (Fe)": rótulo para escolher o parâmetro (vários ensaios têm nomes iguais).
+    identificacao = serializers.SerializerMethodField()
+
     class Meta:
         model = ParametroEnsaio
         exclude = ["ativo"]
+
+    def get_identificacao(self, obj) -> str:
+        simbolo = f" ({obj.simbolo})" if obj.simbolo else ""
+        return f"{obj.ensaio.sigla} — {obj.nome}{simbolo}"
 
 
 class EnsaioSerializer(serializers.ModelSerializer):
     parametros = ParametroEnsaioSerializer(many=True, read_only=True)
     modulo_display = serializers.CharField(source="get_modulo_display", read_only=True)
+    # Fluidos: aplicações em que o ensaio vem marcado por padrão na coleta.
+    padrao_em = serializers.SerializerMethodField()
 
     class Meta:
         model = Ensaio
         exclude = ["ativo"]
+
+    def get_padrao_em(self, obj) -> list:
+        return sorted({s.aplicacao for s in obj.solicitacoes_padrao.all() if s.ativo})
+
+
+class ProdutoFluidoSerializer(serializers.ModelSerializer):
+    aplicacao_display = serializers.CharField(source="get_aplicacao_display", read_only=True)
+
+    class Meta:
+        model = ProdutoFluido
+        exclude = ["ativo"]
+
+
+class SolicitacaoPadraoEnsaioSerializer(serializers.ModelSerializer):
+    ensaio_sigla = serializers.CharField(source="ensaio.sigla", read_only=True)
+    aplicacao_display = serializers.CharField(source="get_aplicacao_display", read_only=True)
+
+    class Meta:
+        model = SolicitacaoPadraoEnsaio
+        exclude = ["ativo"]
+
+    def validate_ensaio(self, ensaio):
+        if ensaio.modulo != FLUIDO:
+            raise serializers.ValidationError("Só ensaios de fluidos lubrificantes e hidráulicos.")
+        return ensaio
+
+
+class ReferenciaParametroSerializer(serializers.ModelSerializer):
+    """
+    Referência de um parâmetro de fluido, com escopo, origem e vigência. As regras
+    abaixo impedem referência que o classificador não saberia aplicar.
+    """
+
+    parametro_codigo = serializers.CharField(source="parametro.codigo", read_only=True)
+    parametro_nome = serializers.CharField(source="parametro.nome", read_only=True)
+    parametro_unidade = serializers.CharField(source="parametro.unidade", read_only=True)
+    ensaio_sigla = serializers.CharField(source="parametro.ensaio.sigla", read_only=True)
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    origem_display = serializers.CharField(source="get_origem_display", read_only=True)
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True, default=None)
+    equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True, default=None)
+    produto_nome = serializers.CharField(source="produto.nome", read_only=True, default=None)
+
+    class Meta:
+        model = ReferenciaParametro
+        exclude = ["ativo"]
+
+    def validate(self, attrs):
+        def valor(campo):
+            return attrs.get(campo, getattr(self.instance, campo, None))
+
+        parametro, tipo = valor("parametro"), valor("tipo")
+        alerta, critico, base = valor("limite_alerta"), valor("limite_critico"), valor("valor_base")
+        texto = (valor("referencia_texto") or "").strip()
+        if parametro is not None and parametro.ensaio.modulo != FLUIDO:
+            raise serializers.ValidationError({"parametro": "Referências por escopo valem para os ensaios de fluidos."})
+        if tipo == TipoReferencia.CODIGO_ISO:
+            from .calculos_fluidos import ler_codigo
+            from .relatorio_fluidos import CODIGO_ISO4406
+
+            if parametro is not None and parametro.codigo != CODIGO_ISO4406:
+                raise serializers.ValidationError({"tipo": "Meta ISO 4406 só no parâmetro do código ISO da CP."})
+            if ler_codigo(texto) is None:
+                raise serializers.ValidationError({"referencia_texto": "Informe a meta no formato X/Y/Z (ex.: 17/15/12)."})
+        elif tipo == TipoReferencia.QUALITATIVO:
+            if not texto:
+                raise serializers.ValidationError({"referencia_texto": "Informe o resultado esperado."})
+        else:
+            if alerta is None and critico is None:
+                raise serializers.ValidationError("Informe o limite de alerta, o crítico ou os dois.")
+            if tipo == TipoReferencia.VARIACAO and not base:
+                raise serializers.ValidationError({"valor_base": "A variação precisa do valor de base (óleo novo/nominal)."})
+            if alerta is not None and critico is not None:
+                fora_de_ordem = critico < alerta if tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO) else critico > alerta
+                if fora_de_ordem:
+                    raise serializers.ValidationError({"limite_critico": "O limite crítico precisa ser mais severo que o de alerta."})
+        inicio, fim = valor("vigencia_inicio"), valor("vigencia_fim")
+        if inicio and fim and fim < inicio:
+            raise serializers.ValidationError({"vigencia_fim": "O fim da vigência não pode ser anterior ao início."})
+        equipamento, cliente = valor("equipamento"), valor("cliente")
+        if equipamento is not None and cliente is not None and equipamento.setor.area.cliente_id != cliente.id:
+            raise serializers.ValidationError({"equipamento": "O equipamento é de outro cliente."})
+        if valor("origem") != OrigemReferencia.NORMA and not (valor("fonte") or "").strip():
+            raise serializers.ValidationError({"fonte": "Informe a fonte (manual, laudo, contrato, acordo) da referência."})
+        return attrs
 
 
 class TipoFluidoSerializer(serializers.ModelSerializer):
@@ -45,6 +150,8 @@ class TipoFluidoSerializer(serializers.ModelSerializer):
 
 
 class PontoColetaSerializer(serializers.ModelSerializer):
+    modulo_display = serializers.CharField(source="get_modulo_display", read_only=True)
+
     class Meta:
         model = PontoColeta
         exclude = ["ativo"]
@@ -115,6 +222,48 @@ class ColetaOleoSerializer(serializers.ModelSerializer):
         InspecaoVisualColeta.objects.bulk_create([InspecaoVisualColeta(coleta=coleta, **i) for i in checklist])
 
 
+class ColetaFluidoSerializer(serializers.ModelSerializer):
+    """
+    Coleta da amostra de fluido lubrificante/hidráulico. Na criação sem `ensaios`,
+    marca os ensaios padrão da aplicação (lubrificante: FQ + EF; hidráulico: FQ +
+    EF + CP) — o técnico pode marcar ou desmarcar depois.
+    """
+
+    aplicacao_display = serializers.CharField(source="get_aplicacao_display", read_only=True)
+    produto_nome = serializers.CharField(source="produto.nome", read_only=True, default=None)
+
+    class Meta:
+        model = ColetaFluido
+        exclude = ["ativo"]
+        extra_kwargs = {"ensaios": {"required": False}}
+
+    def validate(self, attrs):
+        item = attrs.get("item") or getattr(self.instance, "item", None)
+        _checar_modulo(item, FLUIDO)
+        for ensaio in attrs.get("ensaios", []):
+            if ensaio.modulo != FLUIDO:
+                raise serializers.ValidationError({"ensaios": f"{ensaio.sigla} não é um ensaio de fluidos."})
+        ponto = attrs.get("ponto_coleta")
+        if ponto is not None and ponto.modulo not in ("", FLUIDO):
+            raise serializers.ValidationError({"ponto_coleta": "Ponto de coleta de outra tecnologia."})
+        aplicacao = attrs.get("aplicacao", getattr(self.instance, "aplicacao", ""))
+        produto = attrs.get("produto", getattr(self.instance, "produto", None))
+        if produto is not None and produto.aplicacao and produto.aplicacao != aplicacao:
+            raise serializers.ValidationError({
+                "produto": f"O fluido «{produto.nome}» está cadastrado como {produto.get_aplicacao_display().lower()}.",
+            })
+        coleta = attrs.get("data_coleta", getattr(self.instance, "data_coleta", None))
+        troca_ = attrs.get("data_ultima_troca", getattr(self.instance, "data_ultima_troca", None))
+        if coleta and troca_ and troca_ > coleta:
+            raise serializers.ValidationError({"data_ultima_troca": "A última troca não pode ser depois da coleta."})
+        return attrs
+
+    def create(self, validated_data):
+        if "ensaios" not in validated_data:
+            validated_data["ensaios"] = ensaios_padrao(validated_data.get("aplicacao"))
+        return super().create(validated_data)
+
+
 class RegistroEnsaioEletricoSerializer(serializers.ModelSerializer):
     class Meta:
         model = RegistroEnsaioEletrico
@@ -157,6 +306,8 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
         exclude = ["ativo"]
 
     def get_avaliacao(self, obj) -> dict:
+        if obj.ensaio.modulo == FLUIDO:
+            return avaliar_resultado_fluido(obj)
         return avaliar_resultado(obj)
 
     def validate(self, attrs):
@@ -196,12 +347,14 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
 
 
 # ------------------------- Fila de lançamento (leitura) -------------------------
-class TransformadorInspecaoSerializer(serializers.ModelSerializer):
+class ItemEnsaioSerializer(serializers.ModelSerializer):
     """
-    Um transformador numa rota de óleo isolante ou de ensaios elétricos, com o que
-    o lançamento precisa: rota, relatório, registro de campo e a situação de cada
+    Um equipamento numa rota de ensaios (transformador ou fluidos), com o que o
+    lançamento precisa: rota, relatório, registro de campo e a situação de cada
     ensaio do módulo (`pendentes` = solicitados ainda sem laudo).
     """
+
+    REGISTROS = ("coleta_oleo", "registro_eletrico", "coleta_fluido")
 
     carregamento_status = serializers.CharField(source="carregamento.status", read_only=True)
     relatorio = serializers.IntegerField(source="carregamento.relatorio_id", read_only=True)
@@ -219,9 +372,6 @@ class TransformadorInspecaoSerializer(serializers.ModelSerializer):
     setor_nome = serializers.CharField(source="equipamento.setor.nome", read_only=True)
     condicao_sigla = serializers.CharField(source="condicao.sigla", read_only=True, default=None)
     condicao_nome = serializers.CharField(source="condicao.nome", read_only=True, default=None)
-    possui_tanque_expansao = serializers.BooleanField(
-        source="equipamento.dados_transformador.possui_tanque_expansao", read_only=True, default=None
-    )
     registro = serializers.SerializerMethodField()
     ensaios = serializers.SerializerMethodField()
     pendentes = serializers.SerializerMethodField()
@@ -232,12 +382,12 @@ class TransformadorInspecaoSerializer(serializers.ModelSerializer):
             "id", "carregamento", "carregamento_status", "relatorio", "numero", "cliente", "cliente_nome",
             "tecnologia", "tecnologia_nome", "modulo", "data_coleta", "analista_nome", "equipamento",
             "equipamento_tag", "equipamento_nome", "area_nome", "setor_nome", "condicao", "condicao_sigla",
-            "condicao_nome", "possui_tanque_expansao", "registro", "ensaios", "pendentes",
+            "condicao_nome", "registro", "ensaios", "pendentes",
         ]
 
-    @staticmethod
-    def _registro(obj):
-        for campo in ("coleta_oleo", "registro_eletrico"):
+    @classmethod
+    def _registro(cls, obj):
+        for campo in cls.REGISTROS:
             try:
                 return getattr(obj, campo)
             except ObjectDoesNotExist:
@@ -269,3 +419,40 @@ class TransformadorInspecaoSerializer(serializers.ModelSerializer):
 
     def get_pendentes(self, obj) -> int:
         return sum(1 for e in self.get_ensaios(obj) if e["solicitado"] and e["situacao"] not in SITUACOES_FINAIS)
+
+
+class TransformadorInspecaoSerializer(ItemEnsaioSerializer):
+    """Transformador numa rota de óleo isolante ou de ensaios elétricos."""
+
+    possui_tanque_expansao = serializers.BooleanField(
+        source="equipamento.dados_transformador.possui_tanque_expansao", read_only=True, default=None
+    )
+
+    class Meta(ItemEnsaioSerializer.Meta):
+        fields = ItemEnsaioSerializer.Meta.fields + ["possui_tanque_expansao"]
+
+
+class FluidoInspecaoSerializer(ItemEnsaioSerializer):
+    """Equipamento numa rota de fluidos lubrificantes e hidráulicos, com o fluido da coleta."""
+
+    aplicacao = serializers.SerializerMethodField()
+    fluido = serializers.SerializerMethodField()
+    tipo_equipamento_nome = serializers.CharField(source="equipamento.tipo_equipamento.nome", read_only=True,
+                                                  default=None)
+
+    class Meta(ItemEnsaioSerializer.Meta):
+        fields = ItemEnsaioSerializer.Meta.fields + ["aplicacao", "fluido", "tipo_equipamento_nome"]
+
+    def _coleta(self, obj):
+        try:
+            return obj.coleta_fluido
+        except ObjectDoesNotExist:
+            return None
+
+    def get_aplicacao(self, obj):
+        c = self._coleta(obj)
+        return c.aplicacao if c else None
+
+    def get_fluido(self, obj):
+        c = self._coleta(obj)
+        return c.nome_fluido if c else None

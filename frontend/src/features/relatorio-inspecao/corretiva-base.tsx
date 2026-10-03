@@ -114,6 +114,11 @@ export type EconomiaCorretiva = {
   premissas: string[];
 };
 
+/** Regime de operação sem casa decimal quando a hora é cheia (20 → "20"); meia hora
+ *  continua visível ("7,5") — arredondar mudaria o regime usado no cálculo. */
+const horas = (v: string | null) =>
+  v == null || v === "" ? AUSENTE : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+
 type Par = [rotulo: string, valor: string];
 type Colunas = { esquerda: Par[]; direita: Par[] };
 
@@ -160,6 +165,9 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
   // 44mm de coluna, "R$ 36.897,12" quebraria a linha e empurraria a folha para fora
   // do A4. Os cartões de destaque acima mostram o valor formatado por extenso.
   //
+  // Todos os valores com 2 casas decimais (pedido do cliente, 24/09/2026), menos
+  // o regime de operação. O cálculo usa a precisão cheia; só a exibição arredonda.
+  //
   // Ordem e rótulos do Fabrício (23/09/2026): grandezas elétricas à esquerda,
   // regime de operação e custo à direita. "Corrente Elétrica (antes) [A]", como
   // ele escreveu, quebrava linha nos 44mm da coluna (medido) — ficou
@@ -167,14 +175,14 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
   const entradas: Colunas = {
     esquerda: [
       ["Tensão Elétrica [V]", nt(economia.tensao_v)],
-      ["Fator de Potência", nt(economia.fator_potencia, 3)],
+      ["Fator de Potência", nt(economia.fator_potencia)],
       ["Corrente (antes) [A]", nt(economia.corrente_antes_a)],
       ["Corrente (após) [A]", nt(economia.corrente_apos_a)],
     ],
     direita: [
-      ["Operação [h/dia]", nt(economia.horas_dia, 1)],
+      ["Operação [h/dia]", horas(economia.horas_dia)],
       ["Operação [dias/ano]", economia.dias_ano == null ? AUSENTE : String(economia.dias_ano)],
-      ["Custo Energia [R$/kWh]", nt(economia.custo_kwh, 4)],
+      ["Custo Energia [R$/kWh]", nt(economia.custo_kwh)],
       ["Investimento [R$]", nt(economia.investimento)],
     ],
   };
@@ -182,14 +190,14 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
   // calculada (a redução de demanda depende dela) e aparece no painel do serviço.
   const resultados: Colunas = {
     esquerda: [
-      ["Redução demanda [kW]", nt(economia.reducao_kw, 4)],
+      ["Redução demanda [kW]", nt(economia.reducao_kw)],
       ["Economia [kWh/ano]", nt(economia.economia_kwh_ano)],
       ["Economia [R$/ano]", nt(economia.economia_rs_ano)],
     ],
     direita: [
-      ["Payback [dias]", nt(economia.payback_dias, 1)],
+      ["Payback [dias]", nt(economia.payback_dias)],
       ["Payback [meses]", nt(economia.payback_meses)],
-      ["Retorno [×/ano]", nt(economia.retorno_ano, 2)],
+      ["Retorno [×/ano]", nt(economia.retorno_ano)],
     ],
   };
 
@@ -200,7 +208,7 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
       <div className="bal-destaques">
         <div className="bal-destaque">
           <span>Economia [kWh/ano]</span>
-          <strong>{nt(economia.economia_kwh_ano, 0)}</strong>
+          <strong>{nt(economia.economia_kwh_ano)}</strong>
         </div>
         <div className="bal-destaque">
           <span>Economia [R$/ano]</span>
@@ -212,7 +220,7 @@ export function EconomiaGerada({ economia }: { economia: EconomiaCorretiva | nul
         </div>
         <div className="bal-destaque">
           <span>Retorno [×/ano]</span>
-          <strong>{nt(economia.retorno_ano, 2)}</strong>
+          <strong>{nt(economia.retorno_ano)}</strong>
         </div>
       </div>
 

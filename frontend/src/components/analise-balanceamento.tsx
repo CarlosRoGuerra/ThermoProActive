@@ -95,10 +95,17 @@ export function AnaliseBalanceamento({ atividadeId, item, podeEditar, onSaved }:
         <Field label="Tipo de componente"><Select value={form.tipo_componente} onChange={(e) => alterar("tipo_componente", e.target.value)}><Opcoes itens={catalogos.tipos_componente} selecionado={form.tipo_componente} /></Select></Field>
         <Field label="Componente"><Input value={form.componente_texto} maxLength={120} onChange={(e) => alterar("componente_texto", e.target.value)} /></Field>
         <Field label="Detalhe do componente"><Input value={form.detalhe} maxLength={200} onChange={(e) => alterar("detalhe", e.target.value)} /></Field>
-        <Field label="Tipo de anomalia"><Select value={form.tipo_anomalia} onChange={(e) => alterar("tipo_anomalia", e.target.value)}><Opcoes itens={catalogos.tipos_anomalia} selecionado={form.tipo_anomalia} /></Select></Field>
-        <Field label="Recomendação"><Select value={form.recomendacao} disabled={!form.tipo_anomalia || buscandoRecomendacoes} onChange={(e) => alterar("recomendacao", e.target.value)}><Opcoes itens={recomendacoes} selecionado={form.recomendacao} /></Select></Field>
-        <Field label="Anomalia — complemento"><Textarea value={form.anomalia_texto} onChange={(e) => alterar("anomalia_texto", e.target.value)} /></Field>
-        <Field label="Recomendação — complemento"><Textarea value={form.recomendacao_texto} onChange={(e) => alterar("recomendacao_texto", e.target.value)} /></Field>
+        {/* Cada complemento colado no seu campo: no celular a grade vira uma coluna só
+            e seguia a ordem do HTML — os dois selects antes dos dois complementos. Em
+            pares, o desktop continua igual (uma coluna para cada par). */}
+        <div className="grid gap-4">
+          <Field label="Tipo de anomalia"><Select value={form.tipo_anomalia} onChange={(e) => alterar("tipo_anomalia", e.target.value)}><Opcoes itens={catalogos.tipos_anomalia} selecionado={form.tipo_anomalia} /></Select></Field>
+          <Field label="Anomalia — complemento"><Textarea value={form.anomalia_texto} onChange={(e) => alterar("anomalia_texto", e.target.value)} /></Field>
+        </div>
+        <div className="grid gap-4">
+          <Field label="Recomendação"><Select value={form.recomendacao} disabled={!form.tipo_anomalia || buscandoRecomendacoes} onChange={(e) => alterar("recomendacao", e.target.value)}><Opcoes itens={recomendacoes} selecionado={form.recomendacao} /></Select></Field>
+          <Field label="Recomendação — complemento"><Textarea value={form.recomendacao_texto} onChange={(e) => alterar("recomendacao_texto", e.target.value)} /></Field>
+        </div>
         <Field label="Rotação (Hz)"><Input type="number" min="0" step="0.01" value={rotacao} onChange={(e) => { setRotacao(e.target.value); setSalvo(false); }} /></Field>
         <Field label="Observações"><Textarea value={form.observacoes} onChange={(e) => alterar("observacoes", e.target.value)} /></Field>
       </fieldset>

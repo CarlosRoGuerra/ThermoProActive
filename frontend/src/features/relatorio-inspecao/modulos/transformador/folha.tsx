@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { Cabecalho, DossieTransformador, FichaEnsaio } from "../../tipos";
+import type { Cabecalho } from "../../tipos";
 import { PaginaInterna } from "../../shell/folhas";
 import { STATUS_KPI } from "../../shell/kpis";
 import { data } from "./formato";
@@ -8,8 +8,18 @@ import { data } from "./formato";
    Peças das fichas de transformador — folha A4 do relatório (timbrado do
    shell) com o conteúdo das fichas de referência 2025-12_TRF-001: quadros de
    campos (rótulo pequeno em cima, valor embaixo), cabeçalho do laudo, bloco
-   "Valores Obtidos na Análise" e quadros de texto.
+   "Valores Obtidos na Análise" e quadros de texto. Reusadas pelas fichas de
+   fluidos lubrificantes/hidráulicos (mesma identidade, conteúdo próprio).
    ========================================================================== */
+
+/** O que o quadro do cliente lê do dossiê (transformador ou fluidos). */
+type DossieComContato = { cabecalho: Cabecalho; contato_cliente: { telefone: string; email: string } };
+/** O que o cabeçalho do laudo e os quadros de texto leem de uma ficha. */
+export type LaudoFicha = {
+  numero_laudo: string; criticidade: string; data_analise: string | null; data_proxima: string | null;
+  conclusao: string; recomendacao: string; informacoes_adicionais: string;
+  rotulos: { conclusao: string; informacoes: string; proxima: string };
+};
 
 export const AZUL_TITULO = "#1d4ed8"; // mesmo azul do título da OSP
 export const TINTA = { primaria: "#0b0b0b", secundaria: "#52514e", suave: "#898781" };
@@ -58,7 +68,7 @@ export function Campo({
 }
 
 /** Quadro do cliente — igual nas fichas de registro do óleo e dos ensaios elétricos. */
-export function QuadroCliente({ d }: { d: DossieTransformador }) {
+export function QuadroCliente({ d }: { d: DossieComContato }) {
   const cab = d.cabecalho;
   return (
     <Quadro colunas={4}>
@@ -94,7 +104,7 @@ export function TiposEnsaio({ tipos, rotulos }: {
 }
 
 /** Número do laudo, criticidade e datas — cabeçalho de toda ficha de ensaio. */
-export function CabecalhoLaudo({ f }: { f: FichaEnsaio }) {
+export function CabecalhoLaudo({ f }: { f: LaudoFicha }) {
   return (
     <Quadro colunas={4}>
       <Campo rotulo="Número do Laudo">{f.numero_laudo}</Campo>

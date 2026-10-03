@@ -83,17 +83,23 @@ def calcular_reducao(reference_mms, trim_mms) -> tuple[Decimal, Decimal]:
     return residual, 100 - residual
 
 
-def avaliar_ponto(classe_iso: str, reference_mms, trim_mms) -> ResultadoBalanceamento:
+def avaliar_ponto(
+    classe_iso: str, reference_mms, trim_mms, faixas: dict | None = None, criterio: str = ""
+) -> ResultadoBalanceamento:
     """
-    Avalia um ponto: quanto reduziu **e** se o resultado final está dentro da norma.
+    Avalia um ponto: quanto reduziu **e** se o resultado final está dentro do
+    critério de severidade.
 
     A planilha só responde a primeira metade ("reduziu 86,2%"). A segunda vem do motor
     de vibração que já existe (`apps.coletas.rules`): 1,70 mm/s numa máquina classe II
     é zona B — ou seja, o serviço não só reduziu, como entregou a máquina aprovada.
+
+    `faixas`/`criterio`: limites e descrição do critério vigente
+    (`apps.cadastros.criterios`); sem eles, a tabela de reserva do motor de vibração.
     """
     residual_pct, reducao_pct = calcular_reducao(reference_mms, trim_mms)
     vibracao = rules_vibracao.classificar_vibracao(
-        classe_iso=classe_iso, velocidade_rms=_d(trim_mms)
+        classe_iso=classe_iso, velocidade_rms=_d(trim_mms), faixas=faixas
     )
     eficaz = reducao_pct >= REDUCAO_MINIMA_ACEITAVEL
 
@@ -101,9 +107,8 @@ def avaliar_ponto(classe_iso: str, reference_mms, trim_mms) -> ResultadoBalancea
         f"Vibração reduzida de {_d(reference_mms):.2f} para {_d(trim_mms):.2f} mm/s "
         f"({reducao_pct:.1f}% de redução; {residual_pct:.1f}% residual)."
     ]
-    partes.append(
-        f"Resultado final em zona {vibracao.zona_iso} (ISO 10816/20816, classe {classe_iso})."
-    )
+    criterio = criterio or f"critério de severidade da classe {classe_iso or '—'}"
+    partes.append(f"Resultado final em zona {vibracao.zona_iso} ({criterio}).")
     if not eficaz:
         partes.append(
             f"Redução abaixo do mínimo esperado ({REDUCAO_MINIMA_ACEITAVEL}%) — "
@@ -152,6 +157,13 @@ def hz_para_rpm(hz) -> int:
 # =============================================================================
 # Economia energética (vale para balanceamento E alinhamento)
 # =============================================================================
+
+
+def _horas_br(v) -> str:
+    """Horas em texto pt-BR, como no relatório: sem casa decimal quando a hora é
+    cheia (Decimal("20.0") → "20") e com vírgula na meia hora ("7.5" → "7,5")."""
+    h = _d(v)
+    return f"{h:.0f}" if h == h.to_integral_value() else f"{h:.1f}".replace(".", ",")
 
 
 @dataclass
@@ -220,7 +232,7 @@ def calcular_economia(
         "Carga trifásica equilibrada.",
         "Tensão e fator de potência inalterados entre a medição anterior e a posterior.",
         "Correntes medidas no mesmo ponto e na mesma condição de operação.",
-        f"Regime de {_d(horas_dia):g} h/dia × {dias_ano} dias/ano.",
+        f"Regime de {_horas_br(horas_dia)} h/dia × {dias_ano} dias/ano.",
     ]
 
     return ResultadoEconomia(

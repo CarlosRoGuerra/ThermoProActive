@@ -11,12 +11,19 @@ from dataclasses import dataclass
 from decimal import Decimal
 from statistics import mean
 
-# Limite SUPERIOR de velocidade RMS (mm/s) de cada zona, por classe ISO.
+# Limite SUPERIOR de velocidade RMS (mm/s) de cada zona, por classe.
 # zona D = acima do limite da zona C.
+#
+# A fonte de verdade é o cadastro `CriterioSeveridadeVibracao` (perfil normativo,
+# com norma, edição, origem e vigência — `apps.cadastros.criterios`). Esta tabela
+# é só o valor de reserva quando o banco não tem critério (e a carga inicial do
+# cadastro). Origem de cada número:
+#   - Classes I, III e IV e os limites A/B e C/D da Classe II: ISO 10816-1:1995,
+#     Anexo B (norma substituída pela ISO 20816-1:2016).
+#   - Classe II, B/C = 4,49 mm/s: ACORDO COM O CLIENTE (confirmado em 2026-09-16);
+#     a ISO 10816-1 publica 2,80 mm/s. Não é valor da norma.
 FAIXAS_ISO_VRMS = {
     "I":   {"A": Decimal("0.71"), "B": Decimal("1.80"), "C": Decimal("4.50")},
-    # Limite B/C da Classe II confirmado com o cliente em 2026-09-16 (Guerra IT usa
-    # 4,49 mm/s como o corte, não os 2,80 mm/s da tabela ISO 10816-1 impressa padrão).
     "II":  {"A": Decimal("1.12"), "B": Decimal("4.49"), "C": Decimal("7.10")},
     "III": {"A": Decimal("1.80"), "B": Decimal("4.50"), "C": Decimal("11.20")},
     "IV":  {"A": Decimal("2.80"), "B": Decimal("7.10"), "C": Decimal("18.00")},
@@ -45,8 +52,10 @@ class ResultadoVibracao:
     diagnostico: str
 
 
-def _zona_por_vrms(classe_iso: str, vrms: Decimal) -> str:
-    faixa = FAIXAS_ISO_VRMS.get(classe_iso, FAIXAS_ISO_VRMS["II"])
+def _zona_por_vrms(classe_iso: str, vrms: Decimal, faixas: dict | None = None) -> str:
+    # Sem classe (ou classe desconhecida) o legado avalia pela Classe II — o
+    # diagnóstico diz isso (ver `classificar_vibracao`), nunca em silêncio.
+    faixa = faixas or FAIXAS_ISO_VRMS.get(classe_iso, FAIXAS_ISO_VRMS["II"])
     if vrms <= faixa["A"]:
         return "A"
     if vrms <= faixa["B"]:
@@ -66,6 +75,7 @@ def classificar_vibracao(
     velocidade_rms: Decimal,
     fator_crista: Decimal | None = None,
     historico_vrms: list[Decimal] | None = None,
+    faixas: dict | None = None,
 ) -> ResultadoVibracao:
     """
     Classifica uma medição de vibração.
@@ -75,8 +85,10 @@ def classificar_vibracao(
         velocidade_rms: velocidade RMS global em mm/s.
         fator_crista: fator de crista (opcional) — alta = impactos/rolamento.
         historico_vrms: Vrms das medições anteriores do mesmo ponto (mais recentes).
+        faixas: limites {A, B, C} do critério vigente (`apps.cadastros.criterios`);
+            sem eles, `FAIXAS_ISO_VRMS`.
     """
-    zona = _zona_por_vrms(classe_iso, velocidade_rms)
+    zona = _zona_por_vrms(classe_iso, velocidade_rms, faixas)
     criticidade = ZONA_PARA_CRITICIDADE[zona]
     diagnosticos = []
 
@@ -106,6 +118,8 @@ def classificar_vibracao(
         "D": "Vibração na zona D (inadmissível — risco de dano; intervenção recomendada).",
     }[zona]
     diagnosticos.insert(0, base)
+    if not faixas and classe_iso not in FAIXAS_ISO_VRMS:
+        diagnosticos.insert(1, "Classe da máquina não definida no cadastro: avaliado pelos limites da Classe II.")
 
     return ResultadoVibracao(
         zona_iso=zona,

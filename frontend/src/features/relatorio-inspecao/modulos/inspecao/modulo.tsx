@@ -18,10 +18,13 @@ export function criarModuloInspecao(tecnologia: TecnologiaInspecao): ModuloRelat
   }
   return {
     chave: tecnologia.chave,
-    carta: (d) => ({
-      Normatizacao: tecnologia.Normatizacao,
-      paragrafosDefinicao: [paragrafoAnomalias(d)],
-    }),
+    carta: (d) => {
+      const { Normatizacao } = tecnologia;
+      return {
+        normatizacao: Normatizacao ? <Normatizacao d={d} /> : undefined,
+        paragrafosDefinicao: [paragrafoAnomalias(d)],
+      };
+    },
     Kpis: KpisInspecao,
     Fichas,
   };

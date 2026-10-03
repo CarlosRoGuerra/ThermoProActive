@@ -164,8 +164,11 @@ class CenarioTransformador:
             tensao_secundaria_fase_v=D("220"), impedancia_pct=D("4.49"), grupo_ligacao="DYn1",
             volume_oleo_l=D("540"), possui_tanque_expansao=False,
         )
-        cls.ensaio = {e.sigla: e for e in Ensaio.objects.all()}
-        cls.param = {(p.ensaio.sigla, p.codigo): p for p in ParametroEnsaio.objects.select_related("ensaio")}
+        # Só os módulos de transformador: "FQ" também é sigla dos fluidos lubrificantes.
+        transformador = (ModuloTecnico.OLEO_ISOLANTE, ModuloTecnico.ENSAIO_ELETRICO)
+        cls.ensaio = {e.sigla: e for e in Ensaio.objects.filter(modulo__in=transformador)}
+        cls.param = {(p.ensaio.sigla, p.codigo): p
+                     for p in ParametroEnsaio.objects.select_related("ensaio").filter(ensaio__modulo__in=transformador)}
 
     @classmethod
     def item_de_rota(cls, modulo, data=date(2025, 12, 26), equipamento=None, cliente=None):

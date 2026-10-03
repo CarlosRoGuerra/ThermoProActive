@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
+import { mensagemErroDossie } from "@/features/relatorio-inspecao/modulos";
 import { CartaDoRelatorio } from "@/features/relatorio-inspecao/shell/documento";
 import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
@@ -39,7 +40,7 @@ export default function CartaClient({ relatorioId }: { relatorioId: number }) {
   useEffect(() => {
     api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/`)
       .then(setD)
-      .catch(() => setErro("Não foi possível carregar os dados da carta."));
+      .catch((e) => setErro(mensagemErroDossie(e, "Não foi possível carregar os dados da carta.")));
   }, [relatorioId]);
 
   // Nome do PDF = "Carta" + número + razão social.

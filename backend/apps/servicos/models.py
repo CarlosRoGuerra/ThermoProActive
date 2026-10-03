@@ -259,10 +259,17 @@ class BalanceamentoPonto(BaseModel):
 
     def save(self, *args, **kwargs):
         if self.completo:
+            from apps.cadastros import criterios
+
+            equipamento = self.servico.equipamento
+            cliente_id = equipamento.setor.area.cliente_id if equipamento.setor_id else None
+            criterio = criterios.criterio_vigente(equipamento.classe_iso, cliente_id=cliente_id)
             resultado = rules.avaliar_ponto(
-                classe_iso=self.servico.equipamento.classe_iso,
+                classe_iso=equipamento.classe_iso,
                 reference_mms=self.reference_mms,
                 trim_mms=self.trim_mms,
+                faixas=criterios.faixas_vigentes(equipamento.classe_iso, cliente_id=cliente_id),
+                criterio=criterios.descricao_curta(criterio),
             )
             self.residual_pct = resultado.residual_pct
             self.reducao_pct = resultado.reducao_pct

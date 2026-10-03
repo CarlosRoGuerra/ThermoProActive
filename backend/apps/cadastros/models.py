@@ -239,9 +239,15 @@ class Equipamento(BaseModel):
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("1"))],
         help_text="Da placa de identificação do motor.",
     )
+    # Grupo da máquina no critério de severidade de vibração. Só tem sentido quando
+    # o tipo do equipamento é avaliado por vibração (`TipoEquipamento.analise_vibracao`);
+    # nos demais fica vazio. Os limites ficam em `CriterioSeveridadeVibracao` (perfil
+    # normativo), não aqui.
     classe_iso = models.CharField(
-        "Classe ISO (vibração)", max_length=3, choices=ClasseISO.choices,
-        default=ClasseISO.II, help_text="Define os limiares de severidade da análise de vibração.",
+        "Classe ISO (vibração)", max_length=3, choices=ClasseISO.choices, blank=True,
+        default=ClasseISO.II,
+        help_text="Grupo da máquina no critério de severidade de vibração. Vazio quando o tipo "
+                  "do equipamento não é avaliado por vibração.",
     )
     criticidade = models.CharField(
         "Criticidade (importância)", max_length=1, choices=CriticidadeEquip.choices,
@@ -552,15 +558,42 @@ class ModuloTecnico(models.TextChoices):
 
     Vínculo explícito — igual `tipo_corretiva` e `TipoEquipamento.categoria_tecnica` —,
     nunca inferido pelo nome do catálogo: "Fluídos Isolantes" e "Fluídos
-    Lubrificantes" têm nomes parecidos e relatórios diferentes. Vazio = layout
-    padrão da inspeção por rota. Tecnologia nova com relatório próprio (ex.: óleo
-    isolante de transformador) entra aqui junto com o seu módulo.
+    Lubrificantes" têm nomes parecidos e relatórios diferentes.
+
+    Não há módulo "padrão": tecnologia sem módulo configurado não gera relatório
+    (o sistema avisa), e nenhuma tecnologia herda o conteúdo de outra — a
+    vibração só aparece onde a tecnologia é de vibração. `INSPECAO_GENERICA` é a
+    escolha deliberada de uma inspeção por rota sem medições específicas.
+
+    As opções de `MODULOS_PLANEJADOS` já existem para o cadastro, mas o relatório
+    delas ainda não foi implementado: a tecnologia ligada a uma delas recebe o
+    aviso de "módulo não implementado", nunca o layout de outra.
     """
 
     VIBRACAO = "VIBRACAO", "Vibração"
+    BALANCEAMENTO = "BALANCEAMENTO", "Balanceamento dinâmico (corretiva)"
     TERMOGRAFIA = "TERMOGRAFIA", "Termografia"
     OLEO_ISOLANTE = "OLEO_ISOLANTE", "Óleo isolante (transformador)"
-    ENSAIO_ELETRICO = "ENSAIO_ELETRICO", "Ensaios elétricos (transformador)"
+    ENSAIO_ELETRICO = "ENSAIO_ELETRICO", "Ensaios elétricos — transformador (TRF)"
+    FLUIDO_LUBRIFICANTE = "FLUIDO_LUBRIFICANTE", "Fluidos lubrificantes e hidráulicos"
+    INSPECAO_GENERICA = "INSPECAO_GENERICA", "Inspeção genérica (sem medições específicas)"
+    # Planejados — relatório ainda não implementado (ver MODULOS_PLANEJADOS).
+    ALINHAMENTO_EIXOS = "ALINHAMENTO_EIXOS", "Alinhamento a laser entre eixos (não implementado)"
+    ALINHAMENTO_POLIAS = "ALINHAMENTO_POLIAS", "Alinhamento a laser entre polias (não implementado)"
+    TERMOGRAFIA_MECANICA = "TERMOGRAFIA_MECANICA", "Termografia — sistemas mecânicos (não implementado)"
+    ENSAIO_ELETRICO_TC = "ENSAIO_ELETRICO_TC", "Ensaios elétricos — TC (não implementado)"
+    ENSAIO_ELETRICO_TP = "ENSAIO_ELETRICO_TP", "Ensaios elétricos — TP (não implementado)"
+    ENSAIO_ELETRICO_DJ = "ENSAIO_ELETRICO_DJ", "Ensaios elétricos — disjuntor (não implementado)"
+    ENSAIO_ELETRICO_CS = "ENSAIO_ELETRICO_CS", "Ensaios elétricos — chave seccionadora (não implementado)"
+    ENSAIO_ELETRICO_RP = "ENSAIO_ELETRICO_RP", "Ensaios elétricos — relé de proteção (não implementado)"
+
+
+#: Módulos já cadastráveis cujo relatório ainda não existe.
+MODULOS_PLANEJADOS = frozenset({
+    ModuloTecnico.ALINHAMENTO_EIXOS, ModuloTecnico.ALINHAMENTO_POLIAS, ModuloTecnico.TERMOGRAFIA_MECANICA,
+    ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_TP, ModuloTecnico.ENSAIO_ELETRICO_DJ,
+    ModuloTecnico.ENSAIO_ELETRICO_CS, ModuloTecnico.ENSAIO_ELETRICO_RP,
+})
 
 
 class TecnologiaAnalise(Catalogo):
@@ -575,7 +608,7 @@ class TecnologiaAnalise(Catalogo):
         "Módulo técnico do relatório", max_length=20, blank=True, default="",
         choices=ModuloTecnico.choices,
         help_text="Medições, imagens e norma que o relatório técnico desta tecnologia mostra. "
-                  "Vazio = layout padrão da inspeção por rota.",
+                  "Vazio = não configurado: o relatório não é gerado até a escolha.",
     )
     # Imagem/ícone que identifica a tecnologia (aparece na capa do relatório).
     imagem = models.ImageField("Imagem/ícone", upload_to="tecnologias/", null=True, blank=True)
@@ -626,7 +659,15 @@ class CategoriaTecnica(models.TextChoices):
 
 
 class TipoEquipamento(Catalogo):
-    """Tipo de equipamento/máquina — item 2.2.1.7."""
+    """
+    Tipo de equipamento/máquina — item 2.2.1.7.
+
+    O tipo decide o que o cadastro técnico do equipamento mostra, sempre por
+    vínculo explícito (nunca pelo nome digitado no catálogo):
+      - `categoria_tecnica`: qual datasheet (motor, transformador…);
+      - `analise_vibracao`: se o equipamento tem grupo/classe no critério de
+        severidade de vibração.
+    """
 
     categoria_tecnica = models.CharField(
         "Categoria técnica", max_length=20, blank=True, default="",
@@ -634,10 +675,84 @@ class TipoEquipamento(Catalogo):
         help_text="Define qual datasheet técnico específico (motor, transformador…) "
                    "os equipamentos deste tipo podem ter. Vazio = sem datasheet específico.",
     )
+    analise_vibracao = models.BooleanField(
+        "Avaliado por severidade de vibração", default=False,
+        help_text="Marque nos tipos de máquina rotativa monitorados por análise de vibração: "
+                  "o equipamento passa a ter a classe do critério de severidade. "
+                  "Não se aplica a transformador.",
+    )
 
     class Meta(Catalogo.Meta):
         verbose_name = "Tipo de equipamento"
         verbose_name_plural = "Tipos de equipamento"
+
+
+class OrigemCriterio(models.TextChoices):
+    """De onde vem um limite técnico — o relatório nunca apresenta um acordo como norma."""
+
+    NORMA = "NORMA", "Norma (valor publicado)"
+    ACORDO_CLIENTE = "ACORDO_CLIENTE", "Acordo com o cliente / contrato"
+    LEGADO = "LEGADO", "Legado (origem não documentada)"
+
+
+class TipoSuporte(models.TextChoices):
+    RIGIDO = "RIGIDO", "Rígido"
+    FLEXIVEL = "FLEXIVEL", "Flexível"
+
+
+class CriterioSeveridadeVibracao(BaseModel):
+    """
+    Perfil normativo de severidade de vibração: os limites de velocidade RMS
+    (mm/s) entre as zonas A/B, B/C e C/D de um grupo de máquina, com a norma, a
+    edição, a origem do valor e a vigência.
+
+    Fica separado do Equipamento: o equipamento diz só o grupo (`classe_iso`);
+    os limites vêm daqui. Norma nova = registro novo com vigência, nunca edição
+    do anterior — os relatórios antigos continuam reproduzíveis.
+
+    Um acordo com o cliente (ex.: Classe II com B/C em 4,49 mm/s, quando a
+    ISO 10816-1 publica 2,80) é um registro com origem `ACORDO_CLIENTE` e
+    prevalece sobre o da norma no mesmo escopo; a carta mostra a diferença.
+    `cliente` vazio = vale para todos os clientes.
+    """
+
+    norma_codigo = models.CharField("Norma", max_length=40, help_text="Ex.: ISO 10816-1")
+    norma_edicao = models.CharField("Edição", max_length=20, blank=True, help_text="Ex.: 1995")
+    classe = models.CharField("Grupo/classe da máquina", max_length=3, choices=ClasseISO.choices)
+    suporte = models.CharField("Suporte", max_length=10, choices=TipoSuporte.choices, blank=True,
+                               help_text="Vazio = vale para qualquer suporte.")
+    descricao_grupo = models.CharField("Descrição do grupo", max_length=120, blank=True,
+                                       help_text="Ex.: Máquinas pequenas, até 15 kW")
+    limite_ab = models.DecimalField("Limite A/B (mm/s RMS)", max_digits=6, decimal_places=2,
+                                    validators=[MinValueValidator(Decimal("0"))])
+    limite_bc = models.DecimalField("Limite B/C (mm/s RMS)", max_digits=6, decimal_places=2,
+                                    validators=[MinValueValidator(Decimal("0"))])
+    limite_cd = models.DecimalField("Limite C/D (mm/s RMS)", max_digits=6, decimal_places=2,
+                                    validators=[MinValueValidator(Decimal("0"))])
+    origem = models.CharField("Origem", max_length=15, choices=OrigemCriterio.choices,
+                              default=OrigemCriterio.NORMA)
+    fonte = models.CharField("Fonte", max_length=250, blank=True,
+                             help_text="Tabela/anexo da norma, ata, contrato ou e-mail que sustenta o valor.")
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, null=True, blank=True,
+                                related_name="criterios_vibracao",
+                                help_text="Vazio = vale para todos os clientes.")
+    vigencia_inicio = models.DateField("Vigência — início", null=True, blank=True)
+    vigencia_fim = models.DateField("Vigência — fim", null=True, blank=True)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Critério de severidade de vibração"
+        verbose_name_plural = "Critérios de severidade de vibração"
+        ordering = ["classe", "origem", "-vigencia_inicio"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(limite_ab__lte=models.F("limite_bc")) & models.Q(limite_bc__lte=models.F("limite_cd")),
+                name="criterio_vibracao_limites_crescentes",
+            ),
+        ]
+
+    def __str__(self):
+        base = f"{self.norma_codigo}{':' + self.norma_edicao if self.norma_edicao else ''} — Classe {self.classe}"
+        return f"{base} ({self.get_origem_display()})"
 
 
 class ClassificacaoInspecao(Catalogo):

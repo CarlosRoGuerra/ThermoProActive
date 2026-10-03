@@ -1,5 +1,5 @@
 import { Fragment, type ComponentType } from "react";
-import type { Avaliacao, Cabecalho, DossieInspecao, ImagemOsp, OspD } from "../../tipos";
+import type { Avaliacao, Cabecalho, DossieInspecao, DossieShell, ImagemOsp, OspD } from "../../tipos";
 import { Contracapa, PaginaInterna } from "../../shell/folhas";
 import { ddmmaaaa, moeda, num, qtd } from "../../shell/formato";
 import { CorpoBalanceamento } from "../../corretiva-balanceamento";
@@ -23,8 +23,8 @@ export type TecnologiaInspecao = {
   Medicoes: ComponentType<{ o: OspD }>;
   /** Quadros de imagem da coluna direita (80×60mm, 10mm entre eles). */
   quadros: QuadroImagem[];
-  /** Tabela normativa do item 5 da carta. */
-  Normatizacao?: ComponentType;
+  /** Tabela normativa do item 5 da carta, montada com os critérios que vêm no payload. */
+  Normatizacao?: ComponentType<{ d: DossieShell }>;
 };
 
 /** Linha do bloco de medições — módulo de 5mm do gabarito. */

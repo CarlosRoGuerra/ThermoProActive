@@ -146,18 +146,27 @@ class ModuloInspecaoRota:
         """Parte técnica do payload: `secao_b` (KPIs) e `secao_d` (folhas de OSP)."""
         return _montar_inspecao(ctx, self)
 
-    def textos_carta(self, tecnico=None) -> dict:
+    def textos_carta(self, tecnico=None, ctx=None) -> dict:
         """
         Textos técnicos da carta (itens 3, 6 e 8) — os mesmos do .docx, para a carta em
         PDF. O parágrafo do item 7 desta família é montado no front a partir da Seção B.
+        Com a tabela de severidade de vibração no item 5, vão também os critérios
+        vigentes na data do relatório (limites, norma e origem de cada um).
         """
-        return {
+        textos = {
             "conteudo": list(self.carta_conteudo),
             "glossario": [{"n": n, "sigla": sigla, "texto": texto} for n, sigla, texto in self.carta_glossario],
             "quebras_glossario": list(self.carta_quebras_glossario),
             "consideracoes": list(self.carta_consideracoes),
             "paragrafos": [],
         }
+        if "ISO_10816" in self.tabelas_normativas and ctx is not None:
+            from apps.cadastros.criterios import notas_tabela_severidade, tabela_severidade
+
+            linhas = tabela_severidade(ctx.rel.data_termino, ctx.rel.cliente_id)
+            textos["tabela_severidade"] = linhas
+            textos["notas_severidade"] = notas_tabela_severidade(linhas)
+        return textos
 
     def instrumentos_adicionais(self, ctx) -> list:
         """Instrumentação além da dos carregamentos — nenhuma nesta família."""

@@ -5,6 +5,7 @@ from .models import (
     ClassificacaoInspecao,
     Cliente,
     Componente,
+    CriterioSeveridadeVibracao,
     Empresa,
     Equipamento,
     FalhaRecorrente,
@@ -85,9 +86,22 @@ class TipoCriticidadeAdmin(admin.ModelAdmin):
 
 
 # Catálogos simples (nome + descrição) — registro genérico.
+@admin.register(TipoEquipamento)
+class TipoEquipamentoAdmin(admin.ModelAdmin):
+    list_display = ["nome", "categoria_tecnica", "analise_vibracao", "ativo"]
+    list_filter = ["categoria_tecnica", "analise_vibracao"]
+    search_fields = ["nome"]
+
+
+@admin.register(CriterioSeveridadeVibracao)
+class CriterioSeveridadeVibracaoAdmin(admin.ModelAdmin):
+    list_display = ["norma_codigo", "norma_edicao", "classe", "limite_ab", "limite_bc", "limite_cd",
+                    "origem", "cliente", "vigencia_inicio", "vigencia_fim", "ativo"]
+    list_filter = ["classe", "origem"]
+
+
 @admin.register(
     TecnologiaAnalise,
-    TipoEquipamento,
     ClassificacaoInspecao,
     TipoInspecao,
     FalhaRecorrente,

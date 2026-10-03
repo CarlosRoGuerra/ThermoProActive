@@ -115,7 +115,6 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
     ...textos.paragrafos,
     ...carta.paragrafosDefinicao,
   ];
-  const Normatizacao = carta.Normatizacao;
   // Cada folha é uma A4 fixa: um glossário longo (ex.: termografia) segue em
   // outra folha a partir dos termos que o módulo marca em `quebras_glossario`.
   const folhasGlossario: TermoGlossario[][] = [[]];
@@ -166,14 +165,18 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
         )) : <CP ml="22.5mm">Não informada.</CP>}
       </Folha>
 
-      {/* ---- Folha 2: item 5 (Normatização + tabela normativa do módulo) ---- */}
+      {/* ---- Folha 2: item 5 (Normatização) ---- */}
       <Folha p={p}>
         <CItem n="5.">Normatização</CItem>
         {cab.normas.length ? cab.normas.map((n, k) => (
           <CP key={k}>{[n.codigo, n.nome].filter(Boolean).join(" - ")}</CP>
         )) : <CP>Não informada.</CP>}
-        {Normatizacao && <Normatizacao />}
       </Folha>
+
+      {/* ---- Tabela normativa do módulo (ex.: severidade de vibração) em folha
+          própria, como na carta .docx (quebra antes da tabela): com muitas normas
+          cadastradas, lista + tabela não cabem numa A4. ---- */}
+      {carta.normatizacao && <Folha p={p}>{carta.normatizacao}</Folha>}
 
       {/* ---- Folha 3 (e seguintes, se o módulo quebrar): item 6 (Glossário) ---- */}
       {folhasGlossario.map((termos, f) => (

@@ -30,21 +30,19 @@ VERMELHO = RGBColor(0xCC, 0x00, 0x00)
 # módulo da tecnologia — `apps.coletas.relatorio_tecnico`. Aqui fica só o layout
 # do modelo Word, igual para qualquer tecnologia.
 
-# Tabela ISO-10816-1: velocidades e zonas por classe.
+# Tabela de severidade de vibração: linhas de velocidade fixas; as zonas de cada
+# classe vêm do critério vigente na data do relatório (`apps.cadastros.criterios`).
 ISO_VEL = [
     (0.28, 0.02), (0.45, 0.03), (0.71, 0.04), (1.12, 0.06), (1.80, 0.10), (2.80, 0.16),
     (4.50, 0.25), (7.10, 0.40), (11.20, 0.62), (18.00, 1.00), (28.00, 1.56), (45.00, 2.51),
 ]
-ISO_ZONAS = {"I": (0.71, 1.80, 4.50), "II": (1.12, 4.49, 7.10),
-             "III": (1.80, 4.50, 11.20), "IV": (2.80, 7.10, 18.00)}
 _SEV = [("Bom", "22C55E", RGBColor(0xFF, 0xFF, 0xFF)),
         ("Satisfatório", "A3E635", PRETO),
         ("Alerta", "F59E0B", PRETO),
         ("Perigo", "EF4444", RGBColor(0xFF, 0xFF, 0xFF))]
 
 
-def _sev(v, cls):
-    z = ISO_ZONAS[cls]
+def _sev(v, z):
     if v <= z[0]:
         return _SEV[0]
     if v <= z[1]:
@@ -364,8 +362,13 @@ def _timbrado(section, prestador):
 
 
 # --------------------------------- Tabela ISO --------------------------------
-def _tabela_iso(doc):
-    classes = ["I", "II", "III", "IV"]
+def _tabela_iso(doc, rel):
+    from apps.cadastros.criterios import notas_tabela_severidade, tabela_severidade
+
+    linhas = tabela_severidade(rel.data_termino, rel.cliente_id)
+    zonas = {c["classe"]: tuple(float(c["limites"][k]) for k in ("ab", "bc", "cd")) for c in linhas}
+    classes = [c for c in ["I", "II", "III", "IV"] if c in zonas]
+    norma = next((c["norma"] for c in linhas), "ISO 10816-1")
     cab = {"I": ("Classe I", "< 15 kW"), "II": ("Classe II", "15 a 75 kW"),
            "III": ("Classe III", "Rígida · > 75 kW"), "IV": ("Classe IV", "Flexível · > 75 kW")}
     # A tabela começa em página nova: garante que ela caiba INTEIRA numa folha
@@ -374,7 +377,7 @@ def _tabela_iso(doc):
     quebra.paragraph_format.page_break_before = True
     quebra.paragraph_format.space_after = Pt(0)
     quebra.paragraph_format.space_before = Pt(0)
-    tab = doc.add_table(rows=2, cols=6)
+    tab = doc.add_table(rows=2, cols=2 + len(classes))
     tab.style = "Table Grid"
     tab.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -387,8 +390,8 @@ def _tabela_iso(doc):
 
     # Título (linha mesclada) + subcabeçalho.
     top = tab.rows[0].cells
-    top[0].merge(top[5])
-    _cell(top[0], "Norma ISO-20816-3 — Severidade · Faixas de Velocidade e Classes de Máquina",
+    top[0].merge(top[-1])
+    _cell(top[0], f"Norma {norma.replace(' ', '-')} — Severidade · Faixas de Velocidade e Classes de Máquina",
           bold=True, size=10, color=VERMELHO)
     hdr = tab.rows[1].cells
     _cell(hdr[0], "V [mm/s] RMS", fill="F1F5F9")
@@ -401,12 +404,16 @@ def _tabela_iso(doc):
         _cell(row[0], f"{mm:.2f}", bold=True)
         _cell(row[1], f"{pol:.2f}", bold=True)
         for i, cl in enumerate(classes):
-            txt, fill, fg = _sev(mm, cl)
+            txt, fill, fg = _sev(mm, zonas[cl])
             _cell(row[2 + i], txt, bold=True, color=fg, fill=fill)
 
     # Reforço: nenhuma LINHA da tabela pode ser dividida entre páginas.
     for row in tab.rows:
         _cant_split(row)
+
+    # Limite que não é da norma sai identificado, nunca como valor oficial.
+    for nota in notas_tabela_severidade(linhas):
+        _p(doc, nota, size=8, align=WD_ALIGN_PARAGRAPH.JUSTIFY, italic=True)
 
 
 # Tabelas que um módulo técnico pode pedir no item 5 (`tabelas_normativas`).
@@ -580,7 +587,7 @@ def construir_carta_docx(rel, prestador) -> Document:
     else:
         _p(doc, "Não informada.", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     for tabela in modulo.tabelas_normativas:
-        TABELAS_NORMATIVAS[tabela](doc)
+        TABELAS_NORMATIVAS[tabela](doc, rel)
     _blank(doc)
 
     # ---- 6. Glossário ----

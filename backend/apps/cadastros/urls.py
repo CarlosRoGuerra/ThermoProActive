@@ -6,6 +6,7 @@ from .views import (
     ClienteViewSet,
     ComponenteViewSet,
     CondicaoViewSet,
+    CriterioSeveridadeVibracaoViewSet,
     DadosTecnicosMotorViewSet,
     DadosTecnicosTransformadorViewSet,
     EmpresaViewSet,
@@ -41,6 +42,7 @@ router.register("rotas", RotaViewSet)
 router.register("normas", NormaViewSet)
 router.register("tecnologias-analise", TecnologiaAnaliseViewSet)
 router.register("tipos-equipamento", TipoEquipamentoViewSet)
+router.register("criterios-vibracao", CriterioSeveridadeVibracaoViewSet)
 router.register("classificacoes-inspecao", ClassificacaoInspecaoViewSet)
 router.register("tipos-inspecao", TipoInspecaoViewSet)
 router.register("falhas-recorrentes", FalhaRecorrenteViewSet)

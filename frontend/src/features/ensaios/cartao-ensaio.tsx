@@ -16,19 +16,32 @@ import {
   useToast,
   type Tom,
 } from "@/components/ds";
-import type { SituacaoEnsaio, StatusEnsaio } from "@/features/relatorio-inspecao/tipos";
-import { CRITICIDADES, SITUACOES, type Criticidade, type EnsaioCatalogo, type InstrumentoOpcao, type ResultadoApi } from "./tipos";
+import type { SituacaoEnsaio, StatusEnsaio, StatusFluido } from "@/features/relatorio-inspecao/tipos";
+import {
+  CRITICIDADES,
+  SITUACOES,
+  ehAvaliacaoFluido,
+  type Criticidade,
+  type EnsaioCatalogo,
+  type InstrumentoOpcao,
+  type ResultadoApi,
+} from "./tipos";
 import { EditorValores, camposIniciais, valoresParaApi, type CamposValores } from "./valores";
+import { EditorValoresFluido, valoresFluidoParaApi, type BaseContagem } from "./valores-fluido";
 
 /* ==========================================================================
-   Um ensaio do transformador (FQ, CR, PCB, 2-FAL, R×T, R×I, R×O): situação,
-   valores e laudo. Gravar devolve a avaliação calculada pelo servidor — erro
-   do R×T, IP/IA, TG/TGC, conformidade — com as regras do relatório.
+   Um ensaio (transformador: FQ, CR, PCB, 2-FAL, R×T, R×I, R×O; fluidos: FQ,
+   EF, CP): situação, valores e laudo. Gravar devolve a avaliação calculada pelo
+   servidor — erro do R×T, IP/IA, TG/TGC, conformidade; nos fluidos, estado pela
+   referência, tendência e código ISO 4406 — com as regras do relatório.
    ========================================================================== */
 
-const TOM_STATUS: Record<StatusEnsaio, Tom> = {
+const TOM_STATUS: Record<StatusEnsaio | StatusFluido, Tom> = {
   CONFORME: "success",
   NAO_CONFORME: "danger",
+  ROTINA: "success",
+  ALERTA: "warning",
+  CRITICA: "danger",
   SEM_CRITERIO: "neutral",
   NAO_COLETADO: "warning",
   NAO_REALIZADO: "warning",
@@ -48,6 +61,7 @@ type Laudo = {
   data_analise: string;
   data_proxima: string;
   instrumento: string;
+  laboratorio: string;
   conclusao: string;
   recomendacao: string;
   informacoes_adicionais: string;
@@ -61,6 +75,7 @@ function laudoDe(r: ResultadoApi | null): Laudo {
     data_analise: r?.data_analise ?? "",
     data_proxima: r?.data_proxima ?? "",
     instrumento: r?.instrumento ? String(r.instrumento) : "",
+    laboratorio: r?.laboratorio ?? "",
     conclusao: r?.conclusao ?? "",
     recomendacao: r?.recomendacao ?? "",
     informacoes_adicionais: r?.informacoes_adicionais ?? "",
@@ -81,6 +96,8 @@ export function CartaoEnsaio({
   podeEditar: boolean;
   onSalvo: (r: ResultadoApi) => void;
 }) {
+  const fluido = ensaio.modulo === "FLUIDO_LUBRIFICANTE";
+  const [base, setBase] = useState<BaseContagem>("ML");
   const toast = useToast();
   // Aberto quando há resultado ou o registro de campo pediu o ensaio (inclusive se
   // o pedido chega depois, ao salvar a coleta); os demais, só por escolha.
@@ -104,7 +121,9 @@ export function CartaoEnsaio({
   }
 
   async function salvar() {
-    const { valores, erros: errosValores } = semValores ? { valores: [], erros: {} } : valoresParaApi(ensaio, campos);
+    const { valores, erros: errosValores } = semValores
+      ? { valores: [], erros: {} }
+      : fluido ? valoresFluidoParaApi(ensaio, campos, base) : valoresParaApi(ensaio, campos);
     setErros(errosValores);
     if (Object.keys(errosValores).length) {
       toast.erro("Há valores inválidos", { descricao: "Corrija os campos marcados antes de salvar." });
@@ -181,17 +200,36 @@ export function CartaoEnsaio({
           {!semValores && (
             <section>
               <h3 className="mb-2 text-sm font-semibold text-fg">Valores obtidos</h3>
-              <EditorValores
-                ensaio={ensaio}
-                campos={campos}
-                onMudar={(c) => {
-                  setCampos(c);
-                  setAlterado(true);
-                }}
-                erros={erros}
-                avaliacao={avaliacao}
-                disabled={bloqueado}
-              />
+              {fluido ? (
+                <EditorValoresFluido
+                  ensaio={ensaio}
+                  campos={campos}
+                  onMudar={(c) => {
+                    setCampos(c);
+                    setAlterado(true);
+                  }}
+                  erros={erros}
+                  avaliacao={ehAvaliacaoFluido(avaliacao) ? avaliacao : null}
+                  disabled={bloqueado}
+                  base={base}
+                  onBase={(b) => {
+                    setBase(b);
+                    setAlterado(true);
+                  }}
+                />
+              ) : (
+                <EditorValores
+                  ensaio={ensaio}
+                  campos={campos}
+                  onMudar={(c) => {
+                    setCampos(c);
+                    setAlterado(true);
+                  }}
+                  erros={erros}
+                  avaliacao={ehAvaliacaoFluido(avaliacao) ? null : avaliacao}
+                  disabled={bloqueado}
+                />
+              )}
               {alterado && resultado && (
                 <p className="mt-2 text-xs text-fg-subtle">Alterações ainda não salvas — os cálculos voltam depois de salvar.</p>
               )}
@@ -207,6 +245,12 @@ export function CartaoEnsaio({
               <Input type="date" value={laudo.data_proxima} disabled={bloqueado}
                 onChange={(e) => mudarLaudo({ data_proxima: e.target.value })} />
             </Field>
+            {fluido && (
+              <Field label="Laboratório">
+                <Input value={laudo.laboratorio} maxLength={120} disabled={bloqueado}
+                  onChange={(e) => mudarLaudo({ laboratorio: e.target.value })} />
+              </Field>
+            )}
             <Field label="Instrumento" hint={instrumentos.length ? undefined : "Nenhum instrumento vinculado a esta tecnologia"}>
               <Select value={laudo.instrumento} disabled={bloqueado || !instrumentos.length}
                 onChange={(e) => mudarLaudo({ instrumento: e.target.value })}>
