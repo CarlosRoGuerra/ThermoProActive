@@ -20,10 +20,21 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
-from apps.cadastros.models import Area, Cliente, Equipamento, ModuloTecnico, Setor, TecnologiaAnalise, TipoEquipamento
+from apps.cadastros.models import (
+    Area,
+    Cliente,
+    Equipamento,
+    Instrumento,
+    ModuloTecnico,
+    Norma,
+    Setor,
+    TecnologiaAnalise,
+    TipoEquipamento,
+)
 from apps.coletas.models import Carregamento, ItemInspecao, Relatorio
 
 from . import calculos_fluidos as cf
+from . import grau_risco_fluidos as gr
 from .models import (
     ColetaFluido,
     Ensaio,
@@ -389,7 +400,11 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         texto = json.dumps(d, default=str, ensure_ascii=False)
         for termo in ("10816", "20816", "Classe ISO", "mm/s", "Velocidade"):
             self.assertNotIn(termo, texto)
-        self.assertEqual([g["sigla"] for g in d["carta"]["glossario"] if g["n"].startswith("6.1.")], ["FQ", "EF", "CP"])
+        ensaios = {g["n"]: g["sigla"] for g in d["carta"]["glossario"]}
+        self.assertEqual((ensaios["6.8"], ensaios["6.9"], ensaios["6.10"]), ("FQ", "EF", "CP"))
+        # O glossário traz os graus de risco, os prazos e os ensaios do relatório-modelo.
+        self.assertEqual([ensaios[n] for n in ("6.1", "6.2.1", "6.2.4", "6.5")], ["O.S.P.", "GR-1", "GR-4", "OK / GR-0"])
+        self.assertIn("TBN", ensaios.values())
         self.assertIn("Neste ciclo foram analisadas 2 amostras", d["carta"]["paragrafos"][0])
         r = self.api.get(f"/api/relatorios-inspecao/{self.rel.pk}/carta-docx/")
         self.assertEqual(r.status_code, 200)
@@ -398,6 +413,47 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         self.assertIn("Contagem de Partículas", xml)
         self.assertNotIn("Faixas de Velocidade", xml)
         self.assertNotIn("10816", xml)
+
+    def test_grau_de_risco_por_amostra(self):
+        red, uh = self.dossie()["amostras"]
+        # Redutor: só o EF foi avaliado e o ferro passou da referência → 1 ensaio com anomalia.
+        self.assertEqual(red["grau_risco"]["sigla"], "GR-4")
+        self.assertEqual(red["grau_risco"]["prazo_dias"], 90)
+        self.assertEqual((red["grau_risco"]["ensaios_com_anomalia"], red["grau_risco"]["ensaios_avaliados"]), (1, 1))
+        self.assertEqual(uh["grau_risco"]["sigla"], "GR-4")  # CP acima da meta
+
+    def test_observacoes_geradas_so_com_referencia_cadastrada(self):
+        red, uh = self.dossie()["amostras"]
+        fq, ef = red["ensaios"]
+        self.assertEqual(fq["observacoes_geradas"], [])  # FQ sem referência: nada a dizer
+        self.assertEqual(len(ef["observacoes_geradas"]), 1)
+        self.assertIn("Ferro: 58,0 ppm, em alerta (referência: Alerta > 50,0 · Crítico > 150,0 ppm)",
+                      ef["observacoes_geradas"][0])
+        cp = uh["ensaios"][2]
+        self.assertIn("Código de limpeza ISO 4406 19/17/14 acima da meta 17/15/12 em 2 graus",
+                      cp["observacoes_geradas"][-1])
+
+    def test_graficos_gerenciais(self):
+        g = self.dossie()["graficos"]
+        self.assertEqual({x["rotulo"]: x["total"] for x in g["condicoes"]}, {"GR-4": 2})
+        self.assertEqual({x["rotulo"]: x["total"] for x in g["componentes"]}, {"Redutor": 2})
+        self.assertEqual({x["rotulo"] for x in g["anomalias"]}, {"Ferro", "Código ISO 4406"})
+        # Março: só a UH foi avaliada (CP acima da meta); setembro: os dois equipamentos.
+        self.assertEqual(g["graus_tempo"]["meses"], ["mar/26", "set/26"])
+        gr4 = next(s for s in g["graus_tempo"]["series"] if s["gr"] == "GR-4")
+        self.assertEqual(gr4["valores"], [1, 2])
+        self.assertEqual(g["equipamentos_anomalias"],
+                         {"meses": ["mar/26", "set/26"], "monitorados": [1, 2], "anomalias": [1, 2]})
+        # A anomalia da UH continua (reincidente); a do redutor é nova (aberta).
+        osp = {x["gr"]: x["valores"] for x in g["osp"]["linhas"]}
+        self.assertEqual(g["osp"]["colunas"], ["Aberta", "Corrigida", "Reincidente", "Não reavaliada"])
+        self.assertEqual(osp["GR-4"], [1, 0, 1, 0])
+
+    def test_instrumentacao_padrao_da_tecnologia_entra_na_carta(self):
+        padrao = Instrumento.objects.create(tipo="Contador de Partículas")
+        padrao.tecnologias.add(self.tecnologia)
+        tipos = [i["tipo"] for i in self.dossie()["cabecalho"]["instrumentos"]]
+        self.assertEqual(tipos, ["Contador de Partículas"])
 
     def test_historico_por_equipamento(self):
         r = self.api.get(f"/api/fluidos-historico/?equipamento={self.uh.id}")
@@ -452,3 +508,73 @@ class PermissoesFluidosTest(CenarioFluidos, TestCase):
         self.assertEqual(tecnico.post("/api/referencias-parametro/", corpo, format="json").status_code, 403)
         self.assertEqual(self.como(self.master).post("/api/referencias-parametro/", corpo, format="json")
                          .status_code, 201)
+
+
+# --------------------------- Grau de Risco (GR) ---------------------------------
+class GrauDeRiscoTest(SimpleTestCase):
+    """Regra do relatório-modelo (2016-11-0882): GR pelo número de ensaios com anomalia."""
+
+    def grau(self, **statuses):
+        g = gr.grau_de_risco(statuses)
+        return g["sigla"] if g else None
+
+    def test_pela_quantidade_de_ensaios_com_anomalia(self):
+        self.assertEqual(self.grau(FQ="ROTINA", EF="ROTINA", CP="ROTINA"), "GR-0")
+        self.assertEqual(self.grau(FQ="ALERTA", EF="ROTINA", CP="ROTINA"), "GR-4")
+        self.assertEqual(self.grau(FQ="CRITICA", EF="ALERTA", CP="ROTINA"), "GR-3")
+        self.assertEqual(self.grau(FQ="ALERTA", EF="ALERTA", CP="CRITICA"), "GR-2")
+
+    def test_ensaio_sem_referencia_nao_conta_nem_a_favor_nem_contra(self):
+        self.assertEqual(self.grau(FQ="SEM_CRITERIO", EF="ALERTA"), "GR-4")
+        self.assertIsNone(self.grau(FQ="SEM_CRITERIO", EF="SEM_RESULTADO", CP="NAO_COLETADO"))
+        self.assertIsNone(gr.grau_de_risco({}))
+
+    def test_prazos_do_modelo(self):
+        self.assertEqual([gr.grau_de_risco({"FQ": "ALERTA"} | extra)["prazo_dias"]
+                          for extra in ({}, {"EF": "ALERTA"}, {"EF": "ALERTA", "CP": "ALERTA"})], [90, 60, 30])
+        self.assertEqual(gr.grau_de_risco({"FQ": "ROTINA"})["prazo_texto"], "Nova inspeção em até 3 meses")
+
+    def test_gr1_e_decisao_do_inspetor_na_condicao(self):
+        g = gr.grau_de_risco({"FQ": "ROTINA"}, "GR-1")
+        self.assertEqual((g["sigla"], g["origem"], g["prazo_dias"]), ("GR-1", "ANALISTA", 3))
+        self.assertEqual(gr.grau_de_risco({"FQ": "ROTINA"}, "gr 1")["sigla"], "GR-1")
+        self.assertEqual(gr.grau_de_risco({"FQ": "ROTINA"}, "GR-2")["sigla"], "GR-0")  # só o GR-1 vem do campo
+
+    def test_osp_aberta_corrigida_reincidente_e_nao_reavaliada(self):
+        d1, d2 = date(2026, 3, 1), date(2026, 9, 1)
+
+        def amostra(eq, grau):
+            return {"equipamento_id": eq, "tipo": "Redutor", "anomalias": [], "data": d2,
+                    "grau": gr._grau(grau, "REFERENCIAS", 1, 1) if grau else None}
+
+        amostras = [amostra(1, "GR-2"), amostra(2, "GR-3"), amostra(3, "GR-0"), amostra(4, None), amostra(5, "GR-0")]
+        historico = {2: {d1: "GR-4"}, 3: {d1: "GR-2"}, 4: {d1: "GR-3"}, 5: {d1: "GR-0"}}
+        osp = {x["gr"]: x["valores"] for x in gr.montar_graficos(amostras, historico)["osp"]["linhas"]}
+        self.assertEqual(osp["GR-2"], [1, 1, 0, 0])  # eq1 aberta; eq3 corrigida (era GR-2)
+        self.assertEqual(osp["GR-3"], [0, 0, 1, 1])  # eq2 reincidente; eq4 não reavaliada
+        self.assertEqual(osp["GR-4"], [0, 0, 0, 0])
+
+
+class CatalogoDoModeloTest(TestCase):
+    """O que veio do relatório-modelo do laboratório (migração 0007)."""
+
+    def test_tbn_depois_do_tan_e_norma_dos_insoluveis(self):
+        fq = [p.codigo for p in ParametroEnsaio.objects.filter(ensaio__modulo=FLUIDO, ensaio__sigla="FQ").order_by("ordem")]
+        self.assertEqual(fq.index("TBN"), fq.index("TAN") + 1)
+        self.assertEqual(ParametroEnsaio.objects.get(ensaio__modulo=FLUIDO, codigo="INSOLUVEIS").norma, "ASTM D4055")
+        tbn = ParametroEnsaio.objects.get(ensaio__modulo=FLUIDO, codigo="TBN")
+        self.assertEqual((tbn.unidade, tbn.tipo_limite, tbn.limite), ("mgKOH/g", "INFORMATIVO", None))
+
+    def test_boro_e_contaminante_como_no_modelo(self):
+        ef = ParametroEnsaio.objects.filter(ensaio__modulo=FLUIDO, ensaio__sigla="EF").order_by("ordem")
+        self.assertEqual({p.codigo for p in ef if p.grupo == "Contaminantes"}, {"SI", "NA", "B", "K"})
+        grupos = [p.grupo for p in ef]
+        self.assertEqual(sum(1 for a, b in zip(grupos, grupos[1:]) if a != b), 2)  # 3 blocos contíguos
+
+    def test_normas_do_modelo_cadastradas(self):
+        for codigo in ("ASTM D6595", "ASTM E2412", "ASTM D2270", "ISO 11171", "ASTM D4951", "ASTM D974",
+                       "ASTM D4377", "ASTM D4055", "ASTM D445", "ISO 4406"):
+            self.assertTrue(Norma.objects.filter(codigo=codigo).exists(), codigo)
+
+    def test_coleta_guarda_o_volume_do_reservatorio(self):
+        self.assertTrue(ColetaFluido._meta.get_field("volume_reservatorio_l").null)

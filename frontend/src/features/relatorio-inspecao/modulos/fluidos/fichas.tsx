@@ -1,11 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
-import type { AmostraFluido, Cabecalho, CelulaFluido, DossieFluido, FichaFluido, LinhaFluido } from "../../tipos";
+import type { AmostraFluido, Cabecalho, CelulaFluido, DossieFluido, FichaFluido, GrauRisco, LinhaFluido } from "../../tipos";
 import { STATUS_KPI } from "../../shell/kpis";
 import {
-  AZUL_TITULO, BlocoValores, CabecalhoLaudo, Campo, CELULA, FolhaFicha, LINHA, LINHA_GRADE, Quadro, QuadroCliente,
+  AZUL_TITULO, BlocoValores, CabecalhoLaudo, CaixaTexto, Campo, CELULA as CELULA_BASE, FolhaFicha, LINHA, LINHA_GRADE, Quadro, QuadroCliente,
   TINTA, TiposEnsaio, TOM,
 } from "../transformador/folha";
-import { TextosFicha } from "../transformador/fichas-oleo";
 import { data, numero } from "../transformador/formato";
 import { CodigosIso, Tendencias } from "./graficos";
 
@@ -72,8 +71,9 @@ function RegistroColetaFluido({ d, a }: { d: DossieFluido; a: AmostraFluido }) {
         <Campo rotulo="Fluido" span={2}>{k?.fluido}</Campo>
         <Campo rotulo="Grau de Viscosidade">{k?.grau_viscosidade}</Campo>
         <Campo rotulo="Fabricante do Fluido" span={2}>{k?.fabricante_fluido}</Campo>
+        <Campo rotulo="Volume do Reservatório" unidade="L">{numero(k?.volume_reservatorio_l, 1)}</Campo>
         <Campo rotulo="Horas do Fluido" unidade="h">{numero(k?.horas_fluido, 0)}</Campo>
-        <Campo rotulo="Última Troca do Fluido">{data(k?.data_ultima_troca)}</Campo>
+        <Campo rotulo="Última Troca do Fluido" span={2}>{data(k?.data_ultima_troca)}</Campo>
       </Quadro>
       <h3 style={{ fontSize: "10pt", fontWeight: 700, color: AZUL_TITULO, margin: "4mm 0 1.5mm" }}>Coleta</h3>
       <Quadro colunas={4}>
@@ -121,6 +121,8 @@ function Estado({ l }: { l: LinhaFluido }) {
 
 function TabelaFluido({ f, linhas }: { f: FichaFluido; linhas: LinhaFluido[] }) {
   const n = f.campanhas.length;
+  // Compacta: o EF tem até 21 elementos e a ficha precisa caber numa A4 com diagnóstico e legenda.
+  const CELULA: CSSProperties = { ...CELULA_BASE, height: "3.8mm", padding: "0.1mm 0.8mm", lineHeight: 1.15 };
   const cab: CSSProperties = { ...CELULA, fontWeight: 400, fontSize: "6.5pt", color: TINTA.secundaria, lineHeight: 1.15 };
   const grupoLinha = (g: string) => (
     <tr key={`g-${g}`}>
@@ -137,7 +139,7 @@ function TabelaFluido({ f, linhas }: { f: FichaFluido; linhas: LinhaFluido[] }) 
     const fundo = l.status ? ESTADO[l.status].fundo : undefined;
     corpo.push(
       <tr key={l.codigo}>
-        <td style={{ ...CELULA, textAlign: "left", fontSize: "8pt" }}>
+        <td style={{ ...CELULA, textAlign: "left", fontSize: "7.5pt" }}>
           {l.nome}{l.simbolo ? ` (${l.simbolo})` : ""}
         </td>
         <td style={{ ...CELULA, fontSize: "7pt", color: TINTA.secundaria }}>{l.unidade}</td>
@@ -148,7 +150,7 @@ function TabelaFluido({ f, linhas }: { f: FichaFluido; linhas: LinhaFluido[] }) 
         {l.valores.map((c, i) => {
           const atual = f.campanhas[i]?.atual;
           return (
-            <td key={i} style={{ ...CELULA, fontSize: "8.5pt", fontWeight: atual ? 700 : 400, background: atual ? fundo : undefined }}>
+            <td key={i} style={{ ...CELULA, fontSize: "8pt", fontWeight: atual ? 700 : 400, background: atual ? fundo : undefined }}>
               {textoValor(l, c)}
             </td>
           );
@@ -203,6 +205,77 @@ function OrigemReferencias({ linhas }: { linhas: LinhaFluido[] }) {
   );
 }
 
+/* --------------------- Diagnóstico e legenda (como no modelo) --------------------- */
+const CHIP: Record<string, { rotulo: string; fundo: string; tinta: string; legenda: string }> = {
+  ROTINA: { rotulo: "OK", fundo: "#00a651", tinta: "#fff", legenda: "Não necessita intervenção" },
+  ALERTA: { rotulo: "ATENÇÃO", fundo: "#ffe600", tinta: "#000", legenda: "Intensificar monitoramento" },
+  CRITICA: { rotulo: "INTERVIR", fundo: "#e30613", tinta: "#fff", legenda: "Atenção imediata" },
+};
+const FUNDO_GRAU: Record<string, { fundo: string; tinta: string }> = {
+  "GR-0": { fundo: "#00a651", tinta: "#fff" }, "GR-1": { fundo: "#e30613", tinta: "#fff" },
+  "GR-2": { fundo: "#e30613", tinta: "#fff" }, "GR-3": { fundo: "#f28c28", tinta: "#000" },
+  "GR-4": { fundo: "#ffe600", tinta: "#000" },
+};
+const BARRA: CSSProperties = { background: "#0b1f5c", color: "#fff", fontWeight: 700, fontSize: "7.5pt", padding: "0.6mm 1.5mm" };
+
+function Chip({ rotulo, fundo, tinta }: { rotulo: string; fundo: string; tinta: string }) {
+  return (
+    <span style={{ display: "inline-block", minWidth: "22mm", textAlign: "center", fontWeight: 700, fontSize: "8pt",
+      background: fundo, color: tinta, padding: "0.4mm 2mm" }}>{rotulo}</span>
+  );
+}
+
+/** STATUS do ensaio (OK / ATENÇÃO / INTERVIR), GR da amostra, observações geradas pelas referências e a legenda. */
+function Diagnostico({ f, grau }: { f: FichaFluido; grau: GrauRisco | null }) {
+  const chip = CHIP[f.status];
+  const cor = grau ? FUNDO_GRAU[grau.sigla] : null;
+  return (
+    <div style={{ marginTop: "3mm", border: LINHA }}>
+      <div style={{ ...BARRA, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>DIAGNÓSTICO</span>
+        <span style={{ display: "inline-flex", gap: "3mm", fontWeight: 400, fontSize: "6pt" }}>
+          {Object.values(CHIP).map((c) => (
+            <span key={c.rotulo} style={{ display: "inline-flex", alignItems: "center", gap: "1mm" }}>
+              <span style={{ background: c.fundo, color: c.tinta, fontWeight: 700, padding: "0.1mm 1.8mm", fontSize: "6pt" }}>{c.rotulo}</span>
+              {c.legenda}
+            </span>
+          ))}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto auto 1fr", columnGap: "3mm", fontSize: "8pt", padding: "1mm 1.5mm", alignItems: "center" }}>
+        <span><b>STATUS</b>{" "}{chip ? <Chip {...chip} /> : <span style={{ color: TINTA.secundaria }}>{f.status_rotulo}</span>}</span>
+        <b>GRAU DE RISCO</b>
+        <span>
+          {grau && cor ? (
+            <>
+              <Chip rotulo={grau.rotulo} {...cor} />{" "}
+              <span style={{ fontSize: "7.5pt", color: TINTA.secundaria }}>
+                {grau.prazo_texto}
+                {grau.origem === "ANALISTA" ? " (anomalia observada em campo)" : ` · ${grau.ensaios_com_anomalia} de ${grau.ensaios_avaliados} ensaio(s) com anomalia`}
+              </span>
+            </>
+          ) : (
+            <span style={{ color: TINTA.secundaria }}>Sem ensaio avaliado pelas referências</span>
+          )}
+        </span>
+      </div>
+      {(f.laboratorio || f.instrumento) && (
+        <div style={{ fontSize: "7pt", color: TINTA.secundaria, padding: "0 1.5mm 1mm" }}>
+          {[f.laboratorio && `Laboratório: ${f.laboratorio}`, f.instrumento && `Instrumento: ${f.instrumento}`].filter(Boolean).join(" · ")}
+        </div>
+      )}
+      {f.observacoes_geradas.length > 0 && (
+        <>
+          <div style={{ ...BARRA, background: "#e8ecf6", color: "#0b1f5c" }}>OBSERVAÇÕES ANALÍTICAS (pelas referências cadastradas)</div>
+          <ul style={{ margin: 0, padding: "1mm 1.5mm 1mm 5mm", fontSize: "8pt", lineHeight: 1.3 }}>
+            {f.observacoes_geradas.map((o) => <li key={o}>{o}</li>)}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Grafico({ children }: { children: ReactNode }) {
   return (
     <div style={{ border: LINHA, marginTop: "3mm", padding: "0.3mm 1.2mm 1mm" }}>
@@ -221,9 +294,18 @@ function Notas({ f }: { f: FichaFluido }) {
   );
 }
 
-const informacoes = (f: FichaFluido) =>
-  [f.informacoes_adicionais, f.laboratorio && `Laboratório: ${f.laboratorio}`, f.instrumento && `Instrumento: ${f.instrumento}`]
-    .filter(Boolean).join("\n");
+/** Conclusão e Recomendação lado a lado; "Informações adicionais" só quando há texto (o laboratório vai no diagnóstico). */
+function TextosFluido({ f }: { f: FichaFluido }) {
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 2mm" }}>
+        <CaixaTexto rotulo={f.rotulos.conclusao}>{f.conclusao}</CaixaTexto>
+        <CaixaTexto rotulo="Recomendação">{f.recomendacao}</CaixaTexto>
+      </div>
+      {f.informacoes_adicionais && <CaixaTexto rotulo={f.rotulos.informacoes}>{f.informacoes_adicionais}</CaixaTexto>}
+    </>
+  );
+}
 
 function SemResultado({ f }: { f: FichaFluido }) {
   return (
@@ -234,7 +316,7 @@ function SemResultado({ f }: { f: FichaFluido }) {
 }
 
 /** FQ e EF. */
-function FichaParametrosFluido({ cab, f }: { cab: Cabecalho; f: FichaFluido }) {
+function FichaParametrosFluido({ cab, f, grau }: { cab: Cabecalho; f: FichaFluido; grau: GrauRisco | null }) {
   const linhas = f.linhas.filter((l) => l.valores.some(temValor));
   return (
     <FolhaFicha cab={cab} titulo={f.titulo}>
@@ -243,9 +325,10 @@ function FichaParametrosFluido({ cab, f }: { cab: Cabecalho; f: FichaFluido }) {
         {linhas.length ? <TabelaFluido f={f} linhas={linhas} /> : <SemResultado f={f} />}
         <OrigemReferencias linhas={linhas} />
       </BlocoValores>
-      <TextosFicha f={f} informacoes={informacoes(f)} />
+      <Diagnostico f={f} grau={grau} />
+      <TextosFluido f={f} />
       {linhas.length > 0 && (
-        <Grafico><Tendencias linhas={linhas} campanhas={f.campanhas} maximo={4} /></Grafico>
+        <Grafico><Tendencias linhas={linhas} campanhas={f.campanhas} maximo={4} altura={linhas.length > 14 ? 26 : 34} /></Grafico>
       )}
       <Notas f={f} />
     </FolhaFicha>
@@ -259,7 +342,7 @@ const SITUACAO_META = {
 } as const;
 
 /** CP: contagens, código ISO 4406 por coleta e a meta de limpeza. */
-function FichaContagem({ cab, f }: { cab: Cabecalho; f: FichaFluido }) {
+function FichaContagem({ cab, f, grau }: { cab: Cabecalho; f: FichaFluido; grau: GrauRisco | null }) {
   const essenciais = new Set(["P4", "P6", "P14"]);
   const linhas = f.linhas.filter((l) => essenciais.has(l.codigo) || l.valores.some(temValor));
   const codigos = f.codigos ?? [];
@@ -283,13 +366,13 @@ function FichaContagem({ cab, f }: { cab: Cabecalho; f: FichaFluido }) {
               </colgroup>
               <tbody>
                 <tr>
-                  <td style={{ ...CELULA, textAlign: "left", fontWeight: 700, fontSize: "8pt", borderTop: LINHA_GRADE }}>
+                  <td style={{ ...CELULA_BASE, textAlign: "left", fontWeight: 700, fontSize: "8pt", borderTop: LINHA_GRADE }}>
                     Código ISO 4406 (&gt; 4 / &gt; 6 / &gt; 14 µm(c))
                   </td>
                   {codigos.map((c, i) => (
-                    <td key={i} style={{ ...CELULA, fontWeight: c.atual ? 700 : 400, fontSize: "8.5pt" }}>{c.codigo ?? "—"}</td>
+                    <td key={i} style={{ ...CELULA_BASE, fontWeight: c.atual ? 700 : 400, fontSize: "8.5pt" }}>{c.codigo ?? "—"}</td>
                   ))}
-                  <td style={CELULA} />
+                  <td style={CELULA_BASE} />
                 </tr>
               </tbody>
             </table>
@@ -311,7 +394,8 @@ function FichaContagem({ cab, f }: { cab: Cabecalho; f: FichaFluido }) {
           </Campo>
         </Quadro>
       )}
-      <TextosFicha f={f} informacoes={informacoes(f)} />
+      <Diagnostico f={f} grau={grau} />
+      <TextosFluido f={f} />
       {f.situacao === "REALIZADO" && codigos.some((c) => c.codigo) && (
         <Grafico><CodigosIso codigos={codigos} meta={metaEscalas} /></Grafico>
       )}
@@ -326,8 +410,8 @@ export function FichasAmostra({ d, a }: { d: DossieFluido; a: AmostraFluido }) {
       <RegistroColetaFluido d={d} a={a} />
       {a.ensaios.map((f) =>
         f.tipo === "CP"
-          ? <FichaContagem key={f.sigla} cab={d.cabecalho} f={f} />
-          : <FichaParametrosFluido key={f.sigla} cab={d.cabecalho} f={f} />,
+          ? <FichaContagem key={f.sigla} cab={d.cabecalho} f={f} grau={a.grau_risco} />
+          : <FichaParametrosFluido key={f.sigla} cab={d.cabecalho} f={f} grau={a.grau_risco} />,
       )}
     </>
   );

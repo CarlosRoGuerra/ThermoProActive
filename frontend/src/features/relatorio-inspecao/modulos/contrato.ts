@@ -30,6 +30,8 @@ export type ModuloRelatorio<D extends DossieShell = DossieShell> = {
   carta: (d: D) => ConteudoCarta;
   /** Conteúdo dos KPIs — a contracapa e a folha são do shell. */
   Kpis: ComponentType<{ d: D }>;
+  /** Páginas extras da Seção B (gráficos gerenciais), depois da folha dos KPIs. Cada página é uma `PaginaInterna`. */
+  KpisComplementares?: ComponentType<{ d: D }>;
   /** Fichas técnicas, depois da Relação de Equipamentos, com as próprias contracapas. */
   Fichas: ComponentType<{ d: D }>;
   /** Conclusões consolidadas no fim do relatório, se o módulo tiver (nenhum tem hoje). */

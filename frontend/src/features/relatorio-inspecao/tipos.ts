@@ -232,6 +232,8 @@ export type LinhaFluido = {
 };
 export type CodigoIsoColeta = { data: string | null; atual: boolean; codigo: string | null; escalas: (number | null)[] };
 export type FichaFluido = {
+  /** Observações montadas só com as referências cadastradas (um item por parâmetro fora da referência). */
+  observacoes_geradas: string[];
   sigla: string; nome: string; rotulo: string; titulo: string; solicitado: boolean;
   situacao: SituacaoEnsaio; status: StatusFluido; status_rotulo: string;
   avaliados: number; alertas: number; criticas: number; fora: number; sem_referencia: number;
@@ -252,11 +254,19 @@ export type ColetaFluidoRelatorio = {
   aplicacao: "LUBRIFICANTE" | "HIDRAULICO"; aplicacao_display: string;
   fluido: string; fabricante_fluido: string; grau_viscosidade: string; ponto_coleta: string;
   temperatura_fluido_c: number | null; temperatura_ambiente_c: number | null; condicao_operacional: string;
-  horas_equipamento: number | null; horas_fluido: number | null; data_ultima_troca: string | null;
+  horas_equipamento: number | null; horas_fluido: number | null; volume_reservatorio_l: number | null;
+  data_ultima_troca: string | null;
   complemento_recente: boolean | null; volume_complemento_l: number | null; troca_filtro_recente: boolean | null;
   intervencao_recente: string; observacoes: string;
 };
+export type GrauSigla = "GR-0" | "GR-1" | "GR-2" | "GR-3" | "GR-4";
+/** Grau de risco da amostra: GR-1 vem da condição marcada em campo; os demais, do nº de ensaios com anomalia. */
+export type GrauRisco = {
+  sigla: GrauSigla; rotulo: string; prazo_dias: number | null; prazo_texto: string;
+  ensaios_com_anomalia: number; ensaios_avaliados: number; origem: "REFERENCIAS" | "ANALISTA";
+};
 export type AmostraFluido = {
+  equipamento_id: number; data: string | null; grau_risco: GrauRisco | null;
   item_id: number; tag: string; equipamento: string; area: string; setor: string; condicao: string;
   cadastro: {
     local: string; identificacao: string; numero_serie: string; numero_patrimonio: string; fabricante: string;
@@ -274,7 +284,15 @@ export type KpisFluido = {
   status_por_ensaio: { rotulo: string; status: StatusFluido; status_rotulo: string }[];
   proxima_data: string | null;
 };
+/** Indicadores da Seção B (relatório-modelo do laboratório). */
+export type GraficosFluido = {
+  condicoes: Dist[]; componentes: Dist[]; anomalias: Dist[];
+  graus_tempo: { meses: string[]; series: { gr: GrauSigla; rotulo: string; valores: number[] }[] };
+  equipamentos_anomalias: { meses: string[]; monitorados: number[]; anomalias: number[] };
+  osp: { colunas: string[]; linhas: { gr: GrauSigla; valores: number[] }[] };
+};
 export type DadosFluido = {
+  graficos: GraficosFluido;
   amostras: AmostraFluido[]; kpis: KpisFluido; contato_cliente: { telefone: string; email: string };
 };
 export type DossieFluido = DossieShell & DadosFluido;

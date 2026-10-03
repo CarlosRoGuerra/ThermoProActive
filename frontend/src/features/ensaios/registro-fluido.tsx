@@ -43,7 +43,8 @@ import {
    ========================================================================== */
 
 type NumericosColeta =
-  | "temperatura_fluido_c" | "temperatura_ambiente_c" | "horas_equipamento" | "horas_fluido" | "volume_complemento_l";
+  | "temperatura_fluido_c" | "temperatura_ambiente_c" | "horas_equipamento" | "horas_fluido" | "volume_complemento_l"
+  | "volume_reservatorio_l";
 type SimNao = "" | "sim" | "nao";
 
 const paraSimNao = (v: boolean | null | undefined): SimNao => (v == null ? "" : v ? "sim" : "nao");
@@ -101,6 +102,7 @@ export function RegistroColetaFluido({
     horas_equipamento: paraCampo(coleta?.horas_equipamento),
     horas_fluido: paraCampo(coleta?.horas_fluido),
     volume_complemento_l: paraCampo(coleta?.volume_complemento_l),
+    volume_reservatorio_l: paraCampo(coleta?.volume_reservatorio_l),
   });
   const [solicitados, setSolicitados] = useState<Set<number>>(
     () => new Set(coleta?.ensaios ?? Array.from(padraoDa(coleta?.aplicacao ?? "", ensaios))),
@@ -244,6 +246,7 @@ export function RegistroColetaFluido({
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-fg">Histórico do fluido</h3>
           <FormGrid colunas={3}>
+            {num("volume_reservatorio_l", "Volume do reservatório", "L")}
             {num("horas_equipamento", "Horas do equipamento", "h")}
             {num("horas_fluido", "Horas do fluido (desde a troca)", "h")}
             <Field label="Última troca do fluido">

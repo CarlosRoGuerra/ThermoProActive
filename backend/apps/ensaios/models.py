@@ -369,6 +369,9 @@ class ColetaFluido(BaseModel):
                                             null=True, blank=True, validators=[MinValueValidator(Decimal("0"))])
     horas_fluido = models.DecimalField("Horas do fluido (desde a última troca)", max_digits=10, decimal_places=1,
                                        null=True, blank=True, validators=[MinValueValidator(Decimal("0"))])
+    volume_reservatorio_l = models.DecimalField("Volume do reservatório (L)", max_digits=9, decimal_places=1,
+                                                null=True, blank=True,
+                                                validators=[MinValueValidator(Decimal("0"))])
     data_ultima_troca = models.DateField("Data da última troca do fluido", null=True, blank=True)
     complemento_recente = models.BooleanField("Complemento recente de fluido", null=True, blank=True)
     volume_complemento_l = models.DecimalField("Volume complementado (L)", max_digits=8, decimal_places=1,

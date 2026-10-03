@@ -138,6 +138,7 @@ export type ColetaFluidoApi = {
   condicao_operacional: CondicaoOperacional;
   horas_equipamento: string | null;
   horas_fluido: string | null;
+  volume_reservatorio_l: string | null;
   data_ultima_troca: string | null;
   complemento_recente: boolean | null;
   volume_complemento_l: string | null;

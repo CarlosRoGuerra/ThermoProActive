@@ -158,7 +158,7 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
             {i.modelo && <p style={{ margin: 0 }}>Modelo: {i.modelo}</p>}
             {i.numero_serie && <p style={{ margin: 0 }}>Serial #: {i.numero_serie}</p>}
             {i.data_ultima_calibracao && <p style={{ margin: 0 }}>Data da última calibração: {ddmmaaaa(i.data_ultima_calibracao)}</p>}
-            {i.periodicidade && <p style={{ margin: 0 }}>Validade: {i.periodicidade}</p>}
+            {i.periodicidade && i.data_ultima_calibracao && <p style={{ margin: 0 }}>Validade: {i.periodicidade}</p>}
             {i.entidade_calibracao && <p style={{ margin: 0 }}>Entidade Calibração: {i.entidade_calibracao}</p>}
             {i.software_analise && <><p style={{ margin: "2mm 0 0 0" }}>Softwares de Análises</p><p style={{ margin: 0 }}>{i.software_analise}</p></>}
           </div>

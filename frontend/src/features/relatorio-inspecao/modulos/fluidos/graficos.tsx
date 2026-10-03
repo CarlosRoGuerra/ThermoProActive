@@ -61,9 +61,9 @@ function faixa(valores: number[]) {
 const curta = (iso: string | null) => (iso ? ddmmaaaa(iso).replace(/\/(\d{2})(\d{2})$/, "/$2") : "—");
 
 /** Tendência de um parâmetro: valores das coletas + as linhas da referência cadastrada. */
-export function TendenciaParametro({ linha, campanhas }: { linha: LinhaFluido; campanhas: Campanha[] }) {
+export function TendenciaParametro({ linha, campanhas, altura = 34 }: { linha: LinhaFluido; campanhas: Campanha[]; altura?: number }) {
   const W = 58;
-  const H = 34;
+  const H = altura;
   const x0 = 10;
   const x1 = W - 11;
   const yTopo = 2;
@@ -151,7 +151,7 @@ export function parametrosParaGrafico(linhas: LinhaFluido[], maximo: number): Li
     .map(({ l }) => l);
 }
 
-export function Tendencias({ linhas, campanhas, maximo = 4 }: { linhas: LinhaFluido[]; campanhas: Campanha[]; maximo?: number }) {
+export function Tendencias({ linhas, campanhas, maximo = 4, altura = 34 }: { linhas: LinhaFluido[]; campanhas: Campanha[]; maximo?: number; altura?: number }) {
   const escolhidos = parametrosParaGrafico(linhas, maximo);
   if (!escolhidos.length) {
     return (
@@ -161,8 +161,8 @@ export function Tendencias({ linhas, campanhas, maximo = 4 }: { linhas: LinhaFlu
     );
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${escolhidos.length}, minmax(0, 1fr))`, gap: "4mm" }}>
-      {escolhidos.map((l) => <TendenciaParametro key={l.codigo} linha={l} campanhas={campanhas} />)}
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(3, escolhidos.length)}, minmax(0, 1fr))`, gap: "4mm" }}>
+      {escolhidos.map((l) => <TendenciaParametro key={l.codigo} linha={l} campanhas={campanhas} altura={altura} />)}
     </div>
   );
 }

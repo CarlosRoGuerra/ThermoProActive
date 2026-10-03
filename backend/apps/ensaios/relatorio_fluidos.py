@@ -22,6 +22,7 @@ from datetime import date
 from apps.cadastros.models import Equipamento, ModuloTecnico
 
 from . import calculos_fluidos as cf
+from . import grau_risco_fluidos as gr
 from .carta import CONSIDERACOES_FLUIDO, CONTEUDO_FLUIDO, GLOSSARIO_FLUIDO
 from .models import (
     AplicacaoFluido,
@@ -169,6 +170,41 @@ def _status_ficha(resultado, statuses):
     return cf.pior(statuses) or "SEM_CRITERIO"
 
 
+def _texto_valor(linha, celula):
+    if celula["estado"] and celula["estado"] != "MEDIDO":
+        return celula["texto"] or celula["estado"]
+    return _num(celula["valor"], linha["casas"]) if celula["valor"] is not None else celula["texto"]
+
+
+def observacoes_geradas(linhas, corpo) -> list:
+    """
+    Observações analíticas montadas SÓ com o que as referências cadastradas apontaram
+    (o analista continua escrevendo a conclusão). Um item por parâmetro fora da referência.
+    """
+    obs = []
+    for linha in linhas:
+        if linha["status"] not in (cf.ALERTA, cf.CRITICA) or not linha["valores"]:
+            continue
+        valor = _texto_valor(linha, linha["valores"][-1])
+        unidade = f" {linha['unidade']}" if linha["unidade"] else ""
+        rotulo = "em alerta" if linha["status"] == cf.ALERTA else "crítico"
+        texto = f"{linha['nome']}: {valor}{unidade}, {rotulo}"
+        if linha["referencia"]:
+            texto += f" (referência: {linha['referencia']['texto']})"
+        var, tend = linha["variacao_pct"], linha["tendencia"]
+        if var is not None:
+            texto += f"; {'+' if var > 0 else ''}{_num(var, 1)}% em relação ao valor de base"
+        elif tend and tend["pct_anterior"] is not None:
+            texto += f"; {'+' if tend['pct_anterior'] > 0 else ''}{_num(tend['pct_anterior'], 1)}% em relação à coleta anterior"
+        obs.append(texto + ".")
+    if corpo.get("tipo") == "CP" and corpo.get("situacao_meta") == "FORA":
+        atual = next((c for c in corpo["codigos"] if c["atual"]), None)
+        obs.append(f"Código de limpeza ISO 4406 {atual['codigo'] if atual else ''} acima da meta "
+                   f"{corpo['meta']['referencia_texto']} em {corpo['excesso_meta']} "
+                   f"{'grau' if corpo['excesso_meta'] == 1 else 'graus'}.")
+    return obs
+
+
 def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento, resolvedor, solicitado) -> dict:
     """Ficha de um ensaio (FQ, EF ou CP) de uma amostra, com o histórico das coletas."""
     escopo = _contexto_referencia(atual, equipamento)
@@ -231,6 +267,7 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
     status = _status_ficha(resultado, statuses)
     r = resultado
     return {
+        "observacoes_geradas": observacoes_geradas(linhas, corpo) if status in (cf.ALERTA, cf.CRITICA) else [],
         "sigla": ensaio.sigla, "nome": ensaio.nome, "rotulo": ensaio.sigla, "titulo": ensaio.titulo_ficha,
         "solicitado": solicitado,
         "situacao": r.situacao if r else SituacaoResultado.SEM_RESULTADO,
@@ -256,9 +293,35 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
     }
 
 
-CAMPOS_AVALIACAO = ("tipo", "status", "status_rotulo", "avaliados", "fora", "alertas", "criticas",
+CAMPOS_AVALIACAO = ("observacoes_geradas", "tipo", "status", "status_rotulo", "avaliados", "fora", "alertas", "criticas",
                     "sem_referencia", "campanhas", "linhas", "grupos", "codigos", "meta", "situacao_meta",
                     "excesso_meta")
+
+
+def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
+    """Pior estado de um ensaio numa coleta (referências da época). None sem referência para avaliar."""
+    escopo = _contexto_referencia(campanha, equipamento)
+    statuses = []
+    for p in (p for p in params if not p.calculado):
+        v = campanha.primeiro(p.codigo)
+        ref = resolvedor.para(p.id, **escopo) if v is not None else None
+        if ref is None:
+            continue
+        statuses.append(cf.classificar(
+            tipo=ref.tipo, valor=v.valor, texto=v.valor_texto, estado=v.estado or "MEDIDO",
+            valor_base=ref.valor_base, limite_alerta=ref.limite_alerta, limite_critico=ref.limite_critico,
+            referencia_texto=ref.referencia_texto,
+        )["status"])
+    if ensaio.sigla == SIGLA_CP:
+        p_iso = next((p for p in params if p.codigo == CODIGO_ISO4406), None)
+        meta = resolvedor.para(p_iso.id, **escopo) if p_iso else None
+        contagens = [campanha.primeiro(cod) for cod in cf.TAMANHOS_CODIGO]
+        _, escalas = cf.codigo_iso4406(*(c.valor if c else None for c in contagens))
+        if meta is not None and meta.tipo == TipoReferencia.CODIGO_ISO:
+            statuses.append(cf.classificar(
+                tipo=meta.tipo, escalas=escalas, referencia_texto=meta.referencia_texto,
+                limite_alerta=meta.limite_alerta, limite_critico=meta.limite_critico)["status"])
+    return cf.pior(statuses)
 
 
 def _historico(equipamento_id, ensaio_id, excluir_item_ids):
@@ -302,7 +365,14 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
     carta_conteudo = CONTEUDO_FLUIDO
     carta_glossario = GLOSSARIO_FLUIDO
     carta_consideracoes = CONSIDERACOES_FLUIDO
-    carta_quebras_glossario = ("6.3",)
+    carta_quebras_glossario = ("6.5", "6.9", "6.12")
+
+    def instrumentos_adicionais(self, ctx) -> list:
+        """Os do laudo e, no que faltar, a instrumentação padrão cadastrada para a tecnologia do relatório."""
+        lista = super().instrumentos_adicionais(ctx)
+        vistos = {i.id for i in lista}
+        padrao = ctx.rel.tecnologia.instrumentos.filter(ativo=True).order_by("id")
+        return lista + [i for i in padrao if i.id not in vistos]
 
     def montar(self, ctx) -> dict:
         ensaios = list(Ensaio.objects.ativos().filter(modulo=self.chave).prefetch_related("parametros"))
@@ -332,7 +402,7 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
                   .prefetch_related("valores__parametro")):
             historico[(r.item.equipamento_id, r.ensaio_id)].append(_Campanha(r))
 
-        amostras = []
+        amostras, graus_passados = [], {}
         for item in itens:
             eq = equipamentos[item.equipamento_id]
             coleta = coletas.get(item.id)
@@ -346,7 +416,13 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
                 campanhas = _campanhas(atual, historico[(eq.id, ensaio.id)])
                 fichas.append(montar_ficha_fluido(ensaio, params[ensaio.id], resultado, atual, campanhas, eq,
                                                   resolvedor, ensaio.id in solicitados))
+            statuses = {f["sigla"]: f["status"] for f in fichas if f["situacao"] == REALIZADO}
+            condicao = item.condicao.sigla if item.condicao_id else ""
+            data_atual = coleta.data_coleta if coleta else item.carregamento.data_coleta
+            graus_passados[eq.id] = self._graus_passados(eq, ensaios, params, historico, resolvedor, data_atual)
             amostras.append({
+                "equipamento_id": eq.id, "data": data_atual,
+                "grau_risco": gr.grau_de_risco(statuses, condicao),
                 "item_id": item.id, "tag": eq.tag, "equipamento": eq.nome,
                 "area": eq.setor.area.nome if eq.setor_id else "—", "setor": eq.setor.nome if eq.setor_id else "—",
                 "condicao": rotulo_condicao(item.condicao),
@@ -364,8 +440,37 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
         cliente = ctx.rel.cliente
         return {
             "amostras": amostras, "kpis": self._kpis(amostras), "resumo": self._resumo(amostras),
+            "graficos": gr.montar_graficos(
+                [{
+                    "equipamento_id": a["equipamento_id"], "data": a["data"], "grau": a["grau_risco"],
+                    "tipo": a["cadastro"]["tipo_equipamento"],
+                    "anomalias": self._parametros_fora(a),
+                } for a in amostras],
+                graus_passados,
+            ),
             "contato_cliente": {"telefone": cliente.telefone, "email": cliente.email},
         }
+
+    @staticmethod
+    def _parametros_fora(amostra) -> list:
+        """Rótulos dos parâmetros fora da referência na coleta atual (o CP entra pelo código ISO 4406)."""
+        fora = []
+        for f in amostra["ensaios"]:
+            fora += [linha["nome"] for linha in f["linhas"] if linha["status"] in (cf.ALERTA, cf.CRITICA)]
+            if f.get("situacao_meta") == "FORA":
+                fora.append("Código ISO 4406")
+        return fora
+
+    @staticmethod
+    def _graus_passados(eq, ensaios, params, historico, resolvedor, data_atual) -> dict:
+        """{data: "GR-x"} das coletas anteriores ao relatório, avaliadas pelas referências da época."""
+        por_data = defaultdict(dict)
+        for ensaio in ensaios:
+            for c in historico[(eq.id, ensaio.id)]:
+                if data_atual is None or c.data < data_atual:
+                    por_data[c.data][ensaio.sigla] = _status_campanha(ensaio, params[ensaio.id], c, eq, resolvedor)
+        graus = {d: gr.grau_de_risco(statuses) for d, statuses in por_data.items()}
+        return {d: g["sigla"] for d, g in graus.items() if g}
 
     @staticmethod
     def _coleta(c):
@@ -380,6 +485,7 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
             "temperatura_fluido_c": c.temperatura_fluido_c, "temperatura_ambiente_c": c.temperatura_ambiente_c,
             "condicao_operacional": c.get_condicao_operacional_display() if c.condicao_operacional else "",
             "horas_equipamento": c.horas_equipamento, "horas_fluido": c.horas_fluido,
+            "volume_reservatorio_l": c.volume_reservatorio_l,
             "data_ultima_troca": c.data_ultima_troca, "complemento_recente": c.complemento_recente,
             "volume_complemento_l": c.volume_complemento_l, "troca_filtro_recente": c.troca_filtro_recente,
             "intervencao_recente": c.intervencao_recente, "observacoes": c.observacoes,

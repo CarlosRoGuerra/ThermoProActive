@@ -565,7 +565,8 @@ def construir_carta_docx(rel, prestador) -> Document:
             if ins.data_ultima_calibracao:
                 _p(doc, f"Data da última calibração: {_dt(ins.data_ultima_calibracao)}",
                    align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
-            periodicidade = ins.get_periodicidade_calibracao_display() if ins.periodicidade_calibracao else ""
+            periodicidade = (ins.get_periodicidade_calibracao_display()
+                             if ins.periodicidade_calibracao and ins.data_ultima_calibracao else "")
             if periodicidade:
                 _p(doc, f"Validade: {periodicidade}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
             if ins.entidade_calibracao:

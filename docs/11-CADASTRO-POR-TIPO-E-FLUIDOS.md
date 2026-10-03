@@ -222,3 +222,51 @@ digitação manual quando falta o dado.
 associada ao módulo planejado e hoje mostra o aviso de "não implementado". Reaproveita
 o padrão do Balanceamento (serviço de campo, antes/depois, economia) e o perfil
 normativo (tolerâncias por rotação, com origem e vigência).
+
+## 11. Alinhamento ao relatório-modelo da Midori (03/10/2026)
+
+Comparação item a item com o modelo `2016-11-0882 - AO - Midori.pdf` e o que foi feito.
+
+| Item do modelo | Situação | Onde |
+| --- | --- | --- |
+| Normas dos métodos (D6595, E2412, D2270, ISO 11171; D4951, D974, D4377, D4055) | **Cadastradas**, junto com as da especificação (D445, D664, D6304, D5185, ISO 4406). O método usado em cada valor fica em `ValorParametro.metodo` e sai na ficha; o Master desliga em Normas as que o laboratório não usa | `ensaios/0007` |
+| Norma D4055 nos insolúveis em pentano | Feito | `ensaios/0007` |
+| TBN (número de base) | Novo parâmetro da FQ, logo depois do TAN, informativo | `ensaios/0007` |
+| Boro | Passou a **contaminante** (como no modelo: Si, Na, B, K); a ordem acompanha o grupo | `ensaios/0007` |
+| Volume (L) do reservatório | Novo campo da coleta, no formulário e na ficha | `ensaios/0006` |
+| Instrumentação (item 4 da carta) | Os 6 itens do modelo cadastrados em Instrumentação, **só pelo tipo**, ligados à tecnologia; marca, modelo, série e calibração são do laboratório e o Master preenche. "Validade" só sai quando há data de calibração | `ensaios/0007`, `shell/carta.tsx`, `carta_docx.py` |
+| Glossário (O.S.P., GR-1 a GR-4 com prazos, MP, NM, OK, PDM, PDP; FQ, EF e CP detalhados) e considerações | Texto do modelo, em 4 folhas A4 | `ensaios/carta.py` |
+| Grau de Risco | Calculado por amostra (seção 11.1) | `ensaios/grau_risco_fluidos.py` |
+| Gráficos da Seção B | 5 novos, em 2 folhas A4 (seção 11.2) | `fluidos/gerenciais.tsx` |
+| Diagnóstico da ficha (STATUS, GR, observações) e legenda OK / ATENÇÃO / INTERVIR | Em cada ficha de ensaio | `fluidos/fichas.tsx` |
+| Observações analíticas automáticas | Geradas **só com as referências cadastradas** (um item por parâmetro fora); a conclusão continua sendo do analista | `relatorio_fluidos.observacoes_geradas` |
+
+### 11.1 Regra do Grau de Risco (do glossário do modelo)
+
+| GR | Quando | Prazo |
+| --- | --- | --- |
+| GR-1 | anomalia vista a olho nu — decisão do inspetor, marcada como a **condição** do equipamento na folha de campo | 3 dias |
+| GR-2 | anomalias em mais de 2 ensaios | 30 dias |
+| GR-3 | anomalias em 2 ensaios | 60 dias |
+| GR-4 | anomalia em 1 ensaio | 90 dias (parada programada) |
+| OK / GR-0 | nenhum ensaio com anomalia | nova inspeção em até 3 meses |
+
+"Anomalia" = ensaio (FQ, EF ou CP) com algum parâmetro em Alerta ou Crítica pelas referências **cadastradas**. Ensaio sem referência não conta; se nenhum ensaio pôde ser avaliado, não há GR. O modelo diz "em até 02 ensaios" (GR-3) e "apenas 01" (GR-4): interpretado como exatamente 2 e exatamente 1. O GR **não substitui** Rotina/Alerta/Crítica — os dois aparecem.
+
+### 11.2 Gráficos gerenciais (Seção B)
+
+Status das Condições (GR), dos Componentes (tipo do equipamento) e das Anomalias (parâmetros fora da referência; no CP, o código ISO 4406); Graus de Risco por mês (o pior GR do equipamento no mês); Equipamentos monitorados × anomalias por mês; Controle das O.S.P.'s. Os meses vêm das coletas anteriores de cada equipamento, **avaliadas pelas referências da época**.
+
+Controle das O.S.P.'s — derivado, nada é digitado: compara cada equipamento com a coleta anterior. **Aberta** = anomalia nova; **Corrigida** = tinha anomalia e voltou ao normal; **Reincidente** = a anomalia continua; **Não reavaliada** = tinha anomalia e não foi avaliada neste ciclo. A coluna "Ret. Inf." do modelo (retorno de informação do cliente) **não existe**: exige um registro que o sistema ainda não tem.
+
+### 11.3 Exemplos no sistema local
+
+- Relatório 24 (http://localhost:3100/relatorios-inspecao/24): 7 equipamentos em 3 campanhas (jul, ago e out/2026) com todos os graus (OK, GR-1 a GR-4) e as amostras 201-COA-012 e 301-COA-001 com os números do PDF. Script: criado pelas APIs do app.
+- Relatórios 20 e 21: exemplos anteriores (compressor/unidade hidráulica e teste prático).
+
+### 11.4 Pendências desta etapa
+
+1. Calibração, marca, modelo e série dos 6 instrumentos padrão (Instrumentação).
+2. Registro de "retorno de informação" da O.S.P. (coluna Ret. Inf.), se o cliente quiser.
+3. Confirmar com o cliente a leitura do GR-3 (exatamente 2 ensaios) e se o GR deve aparecer na Relação de Equipamentos (Seção C), hoje com a condição marcada em campo.
+4. Ferro/silício e demais limites continuam dependendo das referências do cliente (os exemplos usam valores de demonstração).

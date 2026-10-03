@@ -30,7 +30,7 @@ export function RelatorioCorpo({ d }: { d: DossieShell }) {
   if (!temModulo(d)) return <SemModulo d={d} />;
   const cab = d.cabecalho;
   const modulo = moduloDoRelatorio(d);
-  const { Kpis, Fichas, Conclusoes } = modulo;
+  const { Kpis, KpisComplementares, Fichas, Conclusoes } = modulo;
 
   return (
     <div className="print-area space-y-4 text-slate-800">
@@ -45,6 +45,7 @@ export function RelatorioCorpo({ d }: { d: DossieShell }) {
       <PaginaInterna cab={cab}>
         <Kpis d={d} />
       </PaginaInterna>
+      {KpisComplementares && <KpisComplementares d={d} />}
 
       {/* ============== SEÇÃO C — EQUIPAMENTOS MONITORADOS ============== */}
       <Contracapa cab={cab} titulo={"Equipamentos\nContemplados"} />

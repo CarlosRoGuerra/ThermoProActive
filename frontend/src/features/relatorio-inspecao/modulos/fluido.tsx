@@ -3,6 +3,7 @@ import type { DossieFluido } from "../tipos";
 import { Contracapa } from "../shell/folhas";
 import type { ModuloRelatorio } from "./contrato";
 import { FichasAmostra } from "./fluidos/fichas";
+import { KpisGerenciaisFluidos } from "./fluidos/gerenciais";
 import { KpisFluidos } from "./fluidos/kpis";
 
 /* Fluidos lubrificantes e hidráulicos (FQ, EF e CP). Mesmo shell das outras
@@ -32,5 +33,6 @@ export const MODULO_FLUIDO_LUBRIFICANTE: ModuloRelatorio<DossieFluido> = {
   chave: "FLUIDO_LUBRIFICANTE",
   carta: () => ({ paragrafosDefinicao: [] }),
   Kpis: KpisFluidos,
+  KpisComplementares: KpisGerenciaisFluidos,
   Fichas,
 };

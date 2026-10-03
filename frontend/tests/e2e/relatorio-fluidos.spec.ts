@@ -67,10 +67,15 @@ const laudo = {
   data_proxima: "2027-03-30", conclusao: "", recomendacao: "Filtragem off-line.", informacoes_adicionais: "",
   instrumento: "", laboratorio: "Laboratório Teste",
   rotulos: { conclusao: "Conclusão", informacoes: "Informações Adicionais", proxima: "Data da Próxima Coleta" },
-  notas: [], campanhas, grupos: [""],
+  notas: [], campanhas, grupos: [""], observacoes_geradas: [],
 };
 
+const grau = {
+  sigla: "GR-3", rotulo: "GR-3", prazo_dias: 60, prazo_texto: "Intervenção em até 60 dias",
+  ensaios_com_anomalia: 2, ensaios_avaliados: 2, origem: "REFERENCIAS",
+};
 const amostra = {
+  equipamento_id: 1, data: "2026-09-30", grau_risco: grau,
   item_id: 1, tag: "UH-01", equipamento: "Unidade Hidráulica", area: "Utilidades", setor: "Hidráulica", condicao: "OK",
   cadastro: { local: "Hidráulica", identificacao: "UH-01 - Unidade Hidráulica", numero_serie: "", numero_patrimonio: "",
     fabricante: "", modelo: "", ano_fabricacao: null, tipo_equipamento: "Unidade hidráulica" },
@@ -78,7 +83,7 @@ const amostra = {
     data: "2026-09-30", identificacao_amostra: "A-1", amostrador: "Analista", aplicacao: "HIDRAULICO",
     aplicacao_display: "Hidráulico", fluido: "HLP 46", fabricante_fluido: "", grau_viscosidade: "ISO VG 46",
     ponto_coleta: "Linha de retorno, antes do filtro", temperatura_fluido_c: 45, temperatura_ambiente_c: 30,
-    condicao_operacional: "Em operação", horas_equipamento: null, horas_fluido: 2400, data_ultima_troca: null,
+    condicao_operacional: "Em operação", horas_equipamento: null, horas_fluido: 2400, volume_reservatorio_l: 250, data_ultima_troca: null,
     complemento_recente: null, volume_complemento_l: null, troca_filtro_recente: false, intervencao_recente: "",
     observacoes: "",
   },
@@ -90,6 +95,7 @@ const amostra = {
   ensaios: [
     { ...laudo, sigla: "FQ", nome: "Físico-Química", rotulo: "FQ", titulo: "RESULTADOS DO ENSAIO FQ - FÍSICO-QUÍMICA",
       status: "ALERTA", status_rotulo: "Alerta", tipo: "PARAMETROS",
+      observacoes_geradas: ["Viscosidade cinemática a 40 °C: 39,2 cSt, em alerta (referência: Base 46,00 cSt)."],
       linhas: [linha("VISC40", "Viscosidade cinemática a 40 °C", "cSt", [45.6, 39.2], {
         status: "ALERTA", sem_referencia: false, variacao_pct: -14.8,
         referencia: { id: 1, tipo: "VARIACAO", tipo_display: "Variação", valor_base: 46, limite_alerta: 10,
@@ -134,8 +140,25 @@ const kpis = {
   proxima_data: "2027-03-30",
 };
 
+const graficos = {
+  condicoes: [{ rotulo: "GR-3", total: 1, percentual: 100 }],
+  componentes: [{ rotulo: "Unidade hidráulica", total: 1, percentual: 100 }],
+  anomalias: [{ rotulo: "Viscosidade cinemática a 40 °C", total: 1, percentual: 50 }, { rotulo: "Código ISO 4406", total: 1, percentual: 50 }],
+  graus_tempo: {
+    meses: ["mar/26", "set/26"],
+    series: [
+      { gr: "GR-1", rotulo: "GR-1", valores: [0, 0] }, { gr: "GR-2", rotulo: "GR-2", valores: [0, 0] },
+      { gr: "GR-3", rotulo: "GR-3", valores: [0, 1] }, { gr: "GR-4", rotulo: "GR-4", valores: [1, 0] },
+      { gr: "GR-0", rotulo: "OK", valores: [0, 0] },
+    ],
+  },
+  equipamentos_anomalias: { meses: ["mar/26", "set/26"], monitorados: [1, 1], anomalias: [1, 1] },
+  osp: { colunas: ["Aberta", "Corrigida", "Reincidente", "Não reavaliada"],
+    linhas: [{ gr: "GR-3", valores: [0, 0, 1, 0] }, { gr: "GR-4", valores: [0, 0, 0, 0] }] },
+};
+
 const dossie = {
-  modulo: "FLUIDO_LUBRIFICANTE", cabecalho, carta,
+  modulo: "FLUIDO_LUBRIFICANTE", cabecalho, carta, graficos,
   secao_c: { total: 1, equip_monitorados: 1, grupos: [{ area: "Utilidades", setor: "Hidráulica", linhas: [{ tag: "UH-01", equipamento: "Unidade Hidráulica", condicao: "OK" }] }] },
   amostras: [amostra], kpis, contato_cliente: { telefone: "", email: "" },
 };
@@ -167,6 +190,16 @@ test.describe("relatório de fluidos lubrificantes e hidráulicos @relatorio", (
     await expect(area.getByText("Amostras analisadas")).toBeVisible();
     await expect(area.getByText("Fora da meta")).toBeVisible();
     await expect(area.getByText("19/17/14").first()).toBeVisible();
+
+    // Seção B (gráficos gerenciais) e o diagnóstico de cada ficha, como no relatório-modelo.
+    for (const titulo of ["Status das Condições (Grau de Risco)", "Status dos Componentes", "Status dos Graus de Risco",
+      "Equipamentos Inspecionados × Anomalias Diagnosticadas", "Controle das O.S.P.'s"]) {
+      await expect(area.getByText(titulo, { exact: false }).first()).toBeVisible();
+    }
+    await expect(area.getByText("Intervenção em até 60 dias").first()).toBeVisible();
+    await expect(area.getByText("Volume do Reservatório")).toBeVisible();
+    await expect(area.getByText("Viscosidade cinemática a 40 °C: 39,2 cSt, em alerta")).toBeVisible();
+    await expect(area.getByText("Intensificar monitoramento").first()).toBeVisible();
 
     const texto = await area.innerText();
     for (const vibracao of ["10816", "20816", "Faixas de Velocidade", "Amplitudes", "mm/s"]) {
