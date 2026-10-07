@@ -52,9 +52,9 @@ export type TextosCarta = {
 
 /** Critério aplicado a uma classe na tabela de severidade (limites em mm/s RMS, como string decimal). */
 export type LinhaSeveridade = {
-  classe: string; norma: string; edicao: string; descricao_grupo: string;
+  classe: string; rotulo: string; norma: string; edicao: string; descricao_grupo: string;
   limites: { ab: string; bc: string; cd: string };
-  origem: "NORMA" | "ACORDO_CLIENTE" | "LEGADO"; origem_display: string; fonte: string;
+  origem: "NORMA" | "RESPONSAVEL_TECNICO" | "ACORDO_CLIENTE" | "LEGADO"; origem_display: string; fonte: string;
   referencia_norma: { limites: { ab: string; bc: string; cd: string } } | null;
 };
 
@@ -211,6 +211,8 @@ export type StatusFluido = EstadoFluido | "SEM_CRITERIO" | Exclude<SituacaoEnsai
 export type ReferenciaFluido = {
   id: number; tipo: "MAXIMO" | "MINIMO" | "VARIACAO" | "CODIGO_ISO" | "QUALITATIVO"; tipo_display: string;
   valor_base: number | null; limite_alerta: number | null; limite_critico: number | null; referencia_texto: string;
+  /** Variação com base no grau ISO VG do fluido da amostra (`valor_base` já resolvido). */
+  base_grau_iso?: boolean;
   /** Pronto para imprimir: "Alerta > 50,0 · Crítico > 100,0 ppm". */
   texto: string;
   origem: string; origem_display: string; fonte: string;
@@ -291,7 +293,12 @@ export type GraficosFluido = {
   equipamentos_anomalias: { meses: string[]; monitorados: number[]; anomalias: number[] };
   osp: { colunas: string[]; linhas: { gr: GrauSigla; valores: number[] }[] };
 };
+/** Uma rota (coleta do mês) do relatório do trimestre: o mês sem desvio não gera envio. */
+export type EnvioMensal = { carregamento: number; data_coleta: string; amostras: number; desvios: number };
 export type DadosFluido = {
+  /** Recorte pedido na URL (envio do mês): só a rota e, opcionalmente, só as amostras com desvio. */
+  recorte: { carregamento?: number; somente_desvios?: boolean };
+  envios_mensais: EnvioMensal[];
   graficos: GraficosFluido;
   amostras: AmostraFluido[]; kpis: KpisFluido; contato_cliente: { telefone: string; email: string };
 };

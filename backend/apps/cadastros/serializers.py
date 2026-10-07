@@ -3,6 +3,7 @@ from rest_framework import serializers
 from . import criterios
 from .models import (
     Area,
+    CLASSES_VIGENTES,
     CategoriaTecnica,
     ClassificacaoInspecao,
     Cliente,
@@ -221,6 +222,22 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             tipo = getattr(self.instance, "tipo_equipamento", None)
         if tipo is not None and not tipo.analise_vibracao:
             attrs["classe_iso"] = ""
+            return attrs
+        atual = getattr(self.instance, "classe_iso", "")
+        classe = attrs.get("classe_iso", atual)
+        if "classe_iso" in attrs and classe and classe not in CLASSES_VIGENTES and classe != atual:
+            raise serializers.ValidationError({
+                "classe_iso": "Classe histórica (ISO 10816-1). Use Classe I (até 15 kW), Grupo 2 (15 a 300 kW) "
+                              "ou Grupo 1 (acima de 300 kW).",
+            })
+        # Toda máquina avaliada por vibração tem grupo. No motor elétrico ele vem da
+        # potência do datasheet (salvo depois do equipamento); nos demais, é informado.
+        motor = tipo is not None and tipo.categoria_tecnica == CategoriaTecnica.MOTOR_ELETRICO
+        if tipo is not None and not classe and not motor:
+            raise serializers.ValidationError({
+                "classe_iso": "Informe o grupo da máquina: Classe I (até 15 kW), Grupo 2 (15 a 300 kW) "
+                              "ou Grupo 1 (acima de 300 kW).",
+            })
         return attrs
 
 

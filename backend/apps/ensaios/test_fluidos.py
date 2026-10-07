@@ -174,7 +174,11 @@ class CatalogoFluidosTest(CenarioFluidos, TestCase):
         for p in ParametroEnsaio.objects.filter(ensaio__modulo=FLUIDO):
             self.assertIn(p.tipo_limite, ("INFORMATIVO", "QUALITATIVO"), p.codigo)
             self.assertIsNone(p.limite, p.codigo)
-        self.assertFalse(ReferenciaParametro.objects.exists())
+        # As únicas referências da carga são as gerais do responsável técnico (07/10/2026), com fonte.
+        refs = ReferenciaParametro.objects.select_related("parametro")
+        self.assertEqual({(r.parametro.codigo, r.origem) for r in refs},
+                         {("VISC40", "RESPONSAVEL_TECNICO"), ("AGUA", "RESPONSAVEL_TECNICO")})
+        self.assertTrue(all(r.fonte and r.cliente_id is None and r.limite_alerta is None for r in refs))
 
     def test_fq_do_oleo_isolante_continua_separado(self):
         self.assertTrue(Ensaio.objects.filter(modulo=ModuloTecnico.OLEO_ISOLANTE, sigla="FQ").exists())
@@ -419,7 +423,8 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         # Redutor: só o EF foi avaliado e o ferro passou da referência → 1 ensaio com anomalia.
         self.assertEqual(red["grau_risco"]["sigla"], "GR-4")
         self.assertEqual(red["grau_risco"]["prazo_dias"], 90)
-        self.assertEqual((red["grau_risco"]["ensaios_com_anomalia"], red["grau_risco"]["ensaios_avaliados"]), (1, 1))
+        # FQ avaliado pela viscosidade (base ISO VG 220, 212,4 cSt = −3,5%) e EF com o ferro acima.
+        self.assertEqual((red["grau_risco"]["ensaios_com_anomalia"], red["grau_risco"]["ensaios_avaliados"]), (1, 2))
         self.assertEqual(uh["grau_risco"]["sigla"], "GR-4")  # CP acima da meta
 
     def test_observacoes_geradas_so_com_referencia_cadastrada(self):
@@ -449,11 +454,56 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         self.assertEqual(g["osp"]["colunas"], ["Aberta", "Corrigida", "Reincidente", "Não reavaliada"])
         self.assertEqual(osp["GR-4"], [1, 0, 1, 0])
 
-    def test_instrumentacao_padrao_da_tecnologia_entra_na_carta(self):
-        padrao = Instrumento.objects.create(tipo="Contador de Partículas")
-        padrao.tecnologias.add(self.tecnologia)
+    def test_carta_lista_o_laboratorio_escolhido_no_laudo(self):
+        # O laboratório é parceiro e está cadastrado em Instrumentação; a carta mostra o do laudo.
+        lab = Instrumento.objects.create(tipo="LF01 - Laboratório de Fluídos", marca="Serviço Terceirizado")
+        outro = Instrumento.objects.create(tipo="LF02 - Laboratório de Fluídos")
+        lab.tecnologias.add(self.tecnologia)
+        outro.tecnologias.add(self.tecnologia)
+        self.assertEqual(self.dossie()["cabecalho"]["instrumentos"], [])
+        ResultadoEnsaio.objects.filter(item=self.item_red).update(instrumento=lab)
         tipos = [i["tipo"] for i in self.dossie()["cabecalho"]["instrumentos"]]
-        self.assertEqual(tipos, ["Contador de Partículas"])
+        self.assertEqual(tipos, ["LF01 - Laboratório de Fluídos"])
+
+    def test_viscosidade_pelo_grau_iso_vg_da_amostra(self):
+        red = self.dossie()["amostras"][0]
+        visc = next(x for x in red["ensaios"][0]["linhas"] if x["codigo"] == "VISC40")
+        self.assertEqual(visc["referencia"]["valor_base"], D("220"))  # ISO VG 220 do fluido cadastrado
+        self.assertTrue(visc["referencia"]["base_grau_iso"])
+        self.assertEqual(visc["referencia"]["texto"], "Base grau ISO VG (220,00 cSt) · Crítico ±20%")
+        self.assertEqual((visc["status"], visc["variacao_pct"]), ("ROTINA", D("-3.5")))
+
+    def test_envio_do_mes_so_com_os_desvios(self):
+        d = self.dossie()
+        self.assertEqual(d["envios_mensais"], [{"carregamento": self.item_red.carregamento_id,
+                                               "data_coleta": date(2026, 9, 1), "amostras": 2, "desvios": 2}])
+        # A Seção C mostra o grau de risco de cada amostra, como no relatório-modelo.
+        linhas = [l for g in d["secao_c"]["grupos"] for l in g["linhas"]]
+        self.assertEqual({l["tag"]: l["condicao"] for l in linhas}, {"120-ENX-001": "GR-4", "120-ENX-002": "GR-4"})
+        url = f"/api/relatorios-inspecao/{self.rel.pk}/dossie/?carregamento={self.item_red.carregamento_id}&somente_desvios=1"
+        so = self.api.get(url).data
+        self.assertEqual(so["recorte"], {"carregamento": self.item_red.carregamento_id, "somente_desvios": True})
+        self.assertEqual(len(so["amostras"]), 2)
+        # Outra rota (de outro relatório) não entra: o recorte nunca sai do relatório.
+        _, (fora,) = self.rota(date(2026, 9, 2), [self.uh])
+        vazio = self.api.get(f"/api/relatorios-inspecao/{self.rel.pk}/dossie/?carregamento={fora.carregamento_id}").data
+        self.assertEqual(vazio["amostras"], [])
+
+    def test_mesmo_equipamento_em_meses_do_trimestre(self):
+        # Rota de outubro no MESMO relatório: a coleta de setembro vira histórico, e não o contrário.
+        rota = Carregamento.objects.create(cliente=self.cliente, tecnologia=self.tecnologia, analista=self.tecnico,
+                                           relatorio=self.rel, data_coleta=date(2026, 10, 1))
+        item_out = ItemInspecao.objects.create(carregamento=rota, equipamento=self.uh, ordem=1)
+        ColetaFluido.objects.create(item=item_out, aplicacao="HIDRAULICO", fluido_informado="HLP 46",
+                                    data_coleta=date(2026, 10, 1)).ensaios.set([self.ensaio["CP"]])
+        self.resultado(item_out, "CP", {"P4": 1000, "P6": 300, "P14": 30})
+        amostras = [a for a in self.dossie()["amostras"] if a["tag"] == "120-ENX-002"]
+        set_, out = sorted(amostras, key=lambda a: a["data"])
+        cp_set = next(f for f in set_["ensaios"] if f["sigla"] == "CP")
+        cp_out = next(f for f in out["ensaios"] if f["sigla"] == "CP")
+        self.assertEqual([c["data"] for c in cp_set["campanhas"]], [date(2026, 3, 1), date(2026, 9, 1)])
+        self.assertEqual([c["data"] for c in cp_out["campanhas"]], [date(2026, 3, 1), date(2026, 9, 1), date(2026, 10, 1)])
+        self.assertEqual([c["data_coleta"] for c in self.dossie()["envios_mensais"]], [date(2026, 9, 1), date(2026, 10, 1)])
 
     def test_historico_por_equipamento(self):
         r = self.api.get(f"/api/fluidos-historico/?equipamento={self.uh.id}")
@@ -553,6 +603,15 @@ class GrauDeRiscoTest(SimpleTestCase):
         self.assertEqual(osp["GR-2"], [1, 1, 0, 0])  # eq1 aberta; eq3 corrigida (era GR-2)
         self.assertEqual(osp["GR-3"], [0, 0, 1, 1])  # eq2 reincidente; eq4 não reavaliada
         self.assertEqual(osp["GR-4"], [0, 0, 0, 0])
+
+
+class GrauIsoVgTest(SimpleTestCase):
+    def test_le_o_grau_iso_vg(self):
+        for texto, esperado in (("ISO VG 68", D("68")), ("VG 46", D("46")), ("ISO 220", D("220")), ("32", D("32")),
+                                ("iso vg 1,5", D("1.5"))):
+            self.assertEqual(cf.grau_iso_vg(texto), esperado, texto)
+        for texto in ("SAE 40", "", None, "ISO VG"):
+            self.assertIsNone(cf.grau_iso_vg(texto), texto)
 
 
 class CatalogoDoModeloTest(TestCase):

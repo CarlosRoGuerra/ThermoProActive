@@ -26,7 +26,7 @@ class AtividadeCorretivaTest(TestCase):
         cls.instrumento = Instrumento.objects.create(tipo="Coletor", numero_serie="IN-1")
         cls.instrumento.tecnologias.add(cls.tecnologia)
         setor = Setor.objects.create(area=Area.objects.create(cliente=cls.cliente, nome="Área"), nome="Setor")
-        cls.equipamentos = [Equipamento.objects.create(setor=setor, tag=f"EX-{i}", nome=f"Exaustor {i}") for i in range(5)]
+        cls.equipamentos = [Equipamento.objects.create(setor=setor, tag=f"EX-{i}", nome=f"Exaustor {i}", classe_iso="II") for i in range(5)]
         cls.rota = Rota.objects.create(cliente=cls.cliente, nome="Bal Exaustores", tecnologia=cls.tecnologia)
         cls.rota.equipamentos.add(*cls.equipamentos)
         cls.condicao = Condicao.objects.create(nome="Normal", sigla="N")

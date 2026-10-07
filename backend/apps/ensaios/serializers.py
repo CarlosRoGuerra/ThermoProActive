@@ -126,8 +126,12 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
         else:
             if alerta is None and critico is None:
                 raise serializers.ValidationError("Informe o limite de alerta, o crítico ou os dois.")
-            if tipo == TipoReferencia.VARIACAO and not base:
+            if tipo == TipoReferencia.VARIACAO and not base and not valor("base_grau_iso"):
                 raise serializers.ValidationError({"valor_base": "A variação precisa do valor de base (óleo novo/nominal)."})
+            if valor("base_grau_iso") and (tipo != TipoReferencia.VARIACAO or getattr(parametro, "codigo", "") != "VISC40"):
+                raise serializers.ValidationError({
+                    "base_grau_iso": "A base pelo grau ISO VG vale só para a variação da viscosidade a 40 °C.",
+                })
             if alerta is not None and critico is not None:
                 fora_de_ordem = critico < alerta if tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO) else critico > alerta
                 if fora_de_ordem:

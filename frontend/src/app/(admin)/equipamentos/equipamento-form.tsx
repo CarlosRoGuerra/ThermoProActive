@@ -51,12 +51,18 @@ import {
    técnica e onde configurar.
    ========================================================================== */
 
+/* Grupos em uso desde 07/10/2026 (ISO 20816-3 — definição do responsável técnico).
+   As classes II–IV da ISO 10816-1 só aparecem em equipamento antigo, para revisão. */
 const CLASSES_ISO = [
-  { valor: "I", texto: "Classe I — pequenas máquinas (< 15 kW)" },
-  { valor: "II", texto: "Classe II — máquinas médias (15 a 75 kW)" },
-  { valor: "III", texto: "Classe III — grandes, base rígida (> 75 kW)" },
-  { valor: "IV", texto: "Classe IV — grandes, base flexível (> 75 kW)" },
+  { valor: "I", texto: "Classe I — até 15 kW" },
+  { valor: "G2", texto: "Grupo 2 — 15 a 300 kW (ISO 20816-3)" },
+  { valor: "G1", texto: "Grupo 1 — acima de 300 kW (ISO 20816-3)" },
 ];
+const CLASSES_HISTORICAS: Record<string, string> = {
+  II: "Classe II (ISO 10816-1) — revisar: escolha o grupo atual",
+  III: "Classe III (ISO 10816-1) — revisar: escolha o grupo atual",
+  IV: "Classe IV (ISO 10816-1) — revisar: escolha o grupo atual",
+};
 
 const ROTULO_CATEGORIA: Record<Exclude<CategoriaTecnica, "">, string> = {
   MOTOR_ELETRICO: "Motor elétrico",
@@ -78,7 +84,7 @@ type Form = {
 
 const FORM_VAZIO: Form = {
   tag: "", nome: "", tipo_equipamento: "", fabricante: "", modelo: "", numero_serie: "",
-  numero_patrimonio: "", ano_fabricacao: "", classe_iso: "II", criticidade: "",
+  numero_patrimonio: "", ano_fabricacao: "", classe_iso: "", criticidade: "",
 };
 
 /** Valores de placa que ficaram em colunas genéricas do equipamento (cadastro anterior). */
@@ -193,7 +199,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   async function recarregarEquipamento() {
     if (!editando) return;
     const e = await api<Equipamento>(`/equipamentos/${equipamentoId}/`);
-    setForm((f) => ({ ...f, classe_iso: e.classe_iso || "II" }));
+    setForm((f) => ({ ...f, classe_iso: e.classe_iso || "" }));
     aplicarDatasheets(e);
   }
 
@@ -211,7 +217,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
           numero_serie: e.numero_serie ?? "",
           numero_patrimonio: e.numero_patrimonio ?? "",
           ano_fabricacao: e.ano_fabricacao ? String(e.ano_fabricacao) : "",
-          classe_iso: e.classe_iso || "II",
+          classe_iso: e.classe_iso || "",
           criticidade: e.criticidade ?? "",
         });
         aplicarDatasheets(e);
@@ -531,8 +537,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
               label={categoria === "MOTOR_ELETRICO" ? "Classe (calculada pelos dados do motor)" : "Classe da máquina"}
               hint={
                 categoria === "MOTOR_ELETRICO"
-                  ? "Potência e tipo de base do motor decidem a classe (acima de 75 kW, entre III e IV)."
-                  : undefined
+                  ? "A potência do motor decide: até 15 kW Classe I; até 300 kW Grupo 2; acima, Grupo 1."
+                  : "Obrigatório: toda máquina avaliada por vibração tem grupo."
               }
             >
               <Select
@@ -540,11 +546,15 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
                 disabled={categoria === "MOTOR_ELETRICO"}
                 onChange={(e) => set("classe_iso", e.target.value)}
               >
+                <option value="">Selecione…</option>
                 {CLASSES_ISO.map((c) => (
                   <option key={c.valor} value={c.valor}>
                     {c.texto}
                   </option>
                 ))}
+                {CLASSES_HISTORICAS[form.classe_iso] && (
+                  <option value={form.classe_iso}>{CLASSES_HISTORICAS[form.classe_iso]}</option>
+                )}
               </Select>
             </Field>
             {criterioSalvo ? (

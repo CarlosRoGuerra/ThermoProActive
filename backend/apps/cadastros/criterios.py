@@ -6,7 +6,8 @@ O equipamento só informa o grupo (`Equipamento.classe_iso`); os limites vêm de
 escolha, entre os registros ativos do grupo e em vigor na data:
 
   1. do próprio cliente antes dos que valem para todos;
-  2. acordo com o cliente antes da norma, e a norma antes do legado;
+  2. acordo com o cliente, depois o critério do responsável técnico, depois a
+     norma e por último o legado;
   3. a vigência mais recente.
 
 Sem nenhum registro (banco sem a carga inicial, testes de função pura), vale
@@ -18,7 +19,21 @@ from django.db.models import Q
 
 from .models import ClasseISO, CriterioSeveridadeVibracao, OrigemCriterio
 
-PRIORIDADE_ORIGEM = {OrigemCriterio.ACORDO_CLIENTE: 0, OrigemCriterio.NORMA: 1, OrigemCriterio.LEGADO: 2}
+PRIORIDADE_ORIGEM = {
+    OrigemCriterio.ACORDO_CLIENTE: 0, OrigemCriterio.RESPONSAVEL_TECNICO: 1, OrigemCriterio.NORMA: 2,
+    OrigemCriterio.LEGADO: 3,
+}
+
+# Ordem das colunas da tabela da carta: os grupos em uso primeiro, depois os históricos.
+ORDEM_TABELA = (ClasseISO.I, ClasseISO.G2, ClasseISO.G1, ClasseISO.II, ClasseISO.III, ClasseISO.IV)
+ROTULO_GRUPO = {
+    ClasseISO.I: "Classe I", ClasseISO.II: "Classe II", ClasseISO.III: "Classe III", ClasseISO.IV: "Classe IV",
+    ClasseISO.G2: "Grupo 2", ClasseISO.G1: "Grupo 1",
+}
+
+
+def rotulo_grupo(classe) -> str:
+    return ROTULO_GRUPO.get(classe, f"Classe {classe}")
 
 
 def _vigentes(classe, data, cliente_id):
@@ -69,9 +84,11 @@ def descricao_curta(c) -> str:
     if c is None:
         return ""
     norma = f"{c.norma_codigo}:{c.norma_edicao}" if c.norma_edicao else c.norma_codigo
-    texto = f"{norma}, classe {c.classe}"
+    texto = f"{norma}, {rotulo_grupo(c.classe).lower()}"
     if c.origem == OrigemCriterio.ACORDO_CLIENTE:
         texto += " — limites por acordo com o cliente"
+    elif c.origem == OrigemCriterio.RESPONSAVEL_TECNICO:
+        texto += " — critério do responsável técnico"
     elif c.origem == OrigemCriterio.LEGADO:
         texto += " — limites legados, origem não documentada"
     return texto
@@ -86,6 +103,7 @@ def resumo_criterio(c):
         "norma": c.norma_codigo,
         "edicao": c.norma_edicao,
         "classe": c.classe,
+        "rotulo": rotulo_grupo(c.classe),
         "descricao_grupo": c.descricao_grupo,
         "limites": {"ab": c.limite_ab, "bc": c.limite_bc, "cd": c.limite_cd},
         "origem": c.origem,
@@ -97,12 +115,12 @@ def resumo_criterio(c):
 
 def tabela_severidade(data=None, cliente_id=None):
     """
-    Critérios aplicados às quatro classes, para a tabela da carta. Quando o
+    Critérios aplicados a cada grupo, para a tabela da carta. Quando o
     aplicado não é o da norma, `norma` traz o valor publicado — a carta imprime
     a diferença em nota, em vez de apresentar o acordo como se fosse a ISO.
     """
     linhas = []
-    for classe in ClasseISO.values:
+    for classe in ORDEM_TABELA:
         aplicado = criterio_vigente(classe, data, cliente_id)
         if aplicado is None:
             continue
@@ -117,7 +135,8 @@ def _tabela_de_reserva():
 
     return [
         {
-            "id": None, "norma": "ISO 10816-1", "edicao": "", "classe": classe, "descricao_grupo": "",
+            "id": None, "norma": "ISO 10816-1", "edicao": "", "classe": classe, "rotulo": rotulo_grupo(classe),
+            "descricao_grupo": "",
             "limites": {"ab": f["A"], "bc": f["B"], "cd": f["C"]},
             "origem": OrigemCriterio.LEGADO, "origem_display": OrigemCriterio.LEGADO.label,
             "fonte": "Tabela de reserva do sistema — critérios não cadastrados.", "cliente": None,
@@ -140,10 +159,14 @@ def notas_tabela_severidade(linhas) -> list[str]:
     notas = []
     nomes = {"ab": "Bom/Satisfatório", "bc": "Satisfatório/Alerta", "cd": "Alerta/Perigo"}
     for c in linhas:
+        rotulo = rotulo_grupo(c["classe"])
         if c["origem"] == OrigemCriterio.NORMA:
             continue
         if c["origem"] == OrigemCriterio.LEGADO:
-            notas.append(f"Classe {c['classe']}: limites legados do sistema, sem fonte documentada.")
+            notas.append(f"{rotulo}: limites legados do sistema, sem fonte documentada.")
+            continue
+        if c["origem"] == OrigemCriterio.RESPONSAVEL_TECNICO:
+            notas.append(f"{rotulo}: critério do responsável técnico — {c['fonte'] or 'fonte não informada'}.")
             continue
         ref = c.get("referencia_norma")
         norma = f"{ref['norma']}:{ref['edicao']}" if ref and ref["edicao"] else (ref or c)["norma"]
@@ -153,5 +176,5 @@ def notas_tabela_severidade(linhas) -> list[str]:
             for k in ("ab", "bc", "cd")
             if ref is None or c["limites"][k] != ref["limites"][k]
         ]
-        notas.append(f"Classe {c['classe']}: " + "; ".join(diferencas) + " — por acordo com o cliente.")
+        notas.append(f"{rotulo}: " + "; ".join(diferencas) + " — por acordo com o cliente.")
     return notas

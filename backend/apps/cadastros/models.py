@@ -161,12 +161,25 @@ class Setor(BaseModel):
 
 
 class ClasseISO(models.TextChoices):
-    """Classe da máquina p/ severidade de vibração (ISO 10816/20816)."""
+    """
+    Grupo da máquina p/ severidade de vibração.
 
-    I = "I", "Classe I (≤15 kW)"
-    II = "II", "Classe II (15–75 kW)"
-    III = "III", "Classe III (base rígida)"
-    IV = "IV", "Classe IV (base flexível)"
+    Desde 07/10/2026 (definição do responsável técnico): ISO 20816-3:2022 —
+    Grupo 2 (15 a 300 kW) e Grupo 1 (acima de 300 kW); até 15 kW, Classe I.
+    As classes II, III e IV (ISO 10816-1:1995) ficam para o histórico: medições
+    e relatórios antigos continuam com o grupo e o critério da época.
+    """
+
+    I = "I", "Classe I (até 15 kW)"
+    G2 = "G2", "Grupo 2 (15 a 300 kW) — ISO 20816-3"
+    G1 = "G1", "Grupo 1 (acima de 300 kW) — ISO 20816-3"
+    II = "II", "Classe II (15–75 kW) — ISO 10816-1, histórico"
+    III = "III", "Classe III (base rígida) — ISO 10816-1, histórico"
+    IV = "IV", "Classe IV (base flexível) — ISO 10816-1, histórico"
+
+
+#: Grupos em uso nos cadastros novos; os demais só aparecem em dado antigo.
+CLASSES_VIGENTES = (ClasseISO.I, ClasseISO.G2, ClasseISO.G1)
 
 
 class TipoBase(models.TextChoices):
@@ -245,7 +258,7 @@ class Equipamento(BaseModel):
     # normativo), não aqui.
     classe_iso = models.CharField(
         "Classe ISO (vibração)", max_length=3, choices=ClasseISO.choices, blank=True,
-        default=ClasseISO.II,
+        default="",
         help_text="Grupo da máquina no critério de severidade de vibração. Vazio quando o tipo "
                   "do equipamento não é avaliado por vibração.",
     )
@@ -691,6 +704,7 @@ class OrigemCriterio(models.TextChoices):
     """De onde vem um limite técnico — o relatório nunca apresenta um acordo como norma."""
 
     NORMA = "NORMA", "Norma (valor publicado)"
+    RESPONSAVEL_TECNICO = "RESPONSAVEL_TECNICO", "Critério do responsável técnico"
     ACORDO_CLIENTE = "ACORDO_CLIENTE", "Acordo com o cliente / contrato"
     LEGADO = "LEGADO", "Legado (origem não documentada)"
 
@@ -729,7 +743,7 @@ class CriterioSeveridadeVibracao(BaseModel):
                                     validators=[MinValueValidator(Decimal("0"))])
     limite_cd = models.DecimalField("Limite C/D (mm/s RMS)", max_digits=6, decimal_places=2,
                                     validators=[MinValueValidator(Decimal("0"))])
-    origem = models.CharField("Origem", max_length=15, choices=OrigemCriterio.choices,
+    origem = models.CharField("Origem", max_length=20, choices=OrigemCriterio.choices,
                               default=OrigemCriterio.NORMA)
     fonte = models.CharField("Fonte", max_length=250, blank=True,
                              help_text="Tabela/anexo da norma, ata, contrato ou e-mail que sustenta o valor.")

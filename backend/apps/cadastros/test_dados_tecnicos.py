@@ -26,29 +26,19 @@ from . import rules
 
 
 class ClassificarClasseIsoTest(TestCase):
-    """Regra pura — ISO 10816-3 pela potência e rigidez da base."""
+    """Regra pura — grupo pela potência (ISO 20816-3; definição do responsável técnico em 07/10/2026)."""
 
     def test_ate_15kw_e_classe_i(self):
         self.assertEqual(rules.classificar_classe_iso(Decimal("10"), None), ClasseISO.I)
         self.assertEqual(rules.classificar_classe_iso(Decimal("15"), None), ClasseISO.I)
 
-    def test_de_15_a_75kw_e_classe_ii(self):
-        self.assertEqual(rules.classificar_classe_iso(Decimal("50"), None), ClasseISO.II)
-        self.assertEqual(rules.classificar_classe_iso(Decimal("75"), None), ClasseISO.II)
+    def test_de_15_a_300kw_e_grupo_2(self):
+        self.assertEqual(rules.classificar_classe_iso(Decimal("15.1"), None), ClasseISO.G2)
+        self.assertEqual(rules.classificar_classe_iso(Decimal("300"), TipoBase.RIGIDA), ClasseISO.G2)
 
-    def test_acima_de_75kw_rigida_e_classe_iii(self):
-        self.assertEqual(
-            rules.classificar_classe_iso(Decimal("100"), TipoBase.RIGIDA), ClasseISO.III
-        )
-
-    def test_acima_de_75kw_flexivel_e_classe_iv(self):
-        self.assertEqual(
-            rules.classificar_classe_iso(Decimal("100"), TipoBase.FLEXIVEL), ClasseISO.IV
-        )
-
-    def test_acima_de_75kw_sem_base_nao_decide(self):
-        # Não força um chute entre III e IV sem saber o tipo de base.
-        self.assertIsNone(rules.classificar_classe_iso(Decimal("100"), None))
+    def test_acima_de_300kw_e_grupo_1_em_qualquer_base(self):
+        self.assertEqual(rules.classificar_classe_iso(Decimal("301"), None), ClasseISO.G1)
+        self.assertEqual(rules.classificar_classe_iso(Decimal("500"), TipoBase.FLEXIVEL), ClasseISO.G1)
 
     def test_sem_potencia_nao_decide(self):
         self.assertIsNone(rules.classificar_classe_iso(None, TipoBase.RIGIDA))
@@ -95,12 +85,12 @@ class DadosTecnicosTest(TestCase):
         eq = self.criar_equipamento(self.tipo_motor)
         dados = DadosTecnicosMotor.objects.create(equipamento=eq, potencia_kw="50", tipo_base="RIGIDA")
         eq.refresh_from_db()
-        self.assertEqual(eq.classe_iso, ClasseISO.II)  # 50 kW, base ainda não pesa
+        self.assertEqual(eq.classe_iso, ClasseISO.G2)  # 50 kW
 
-        resposta = self.api.patch(f"/api/dados-tecnicos-motor/{dados.pk}/", {"potencia_kw": "100"}, format="json")
+        resposta = self.api.patch(f"/api/dados-tecnicos-motor/{dados.pk}/", {"potencia_kw": "350"}, format="json")
         self.assertEqual(resposta.status_code, 200, resposta.data)
         eq.refresh_from_db()
-        self.assertEqual(eq.classe_iso, ClasseISO.III)  # agora >75kW + rígida já registrada
+        self.assertEqual(eq.classe_iso, ClasseISO.G1)  # acima de 300 kW
 
     def test_cria_dados_de_transformador_via_api(self):
         eq = self.criar_equipamento(self.tipo_transformador, tag="TRF-1")
@@ -130,18 +120,18 @@ class DadosTecnicosTest(TestCase):
 
     def test_motor_com_potencia_e_base_atualiza_classe_iso_do_equipamento(self):
         eq = self.criar_equipamento(self.tipo_motor)
-        self.assertEqual(eq.classe_iso, ClasseISO.II)  # default do model
+        self.assertEqual(eq.classe_iso, "")  # sem default: o grupo vem da potência
         DadosTecnicosMotor.objects.create(equipamento=eq, potencia_kw="120", tipo_base=TipoBase.FLEXIVEL)
         eq.refresh_from_db()
-        self.assertEqual(eq.classe_iso, ClasseISO.IV)
+        self.assertEqual(eq.classe_iso, ClasseISO.G2)
 
-    def test_motor_acima_de_75kw_sem_base_nao_altera_classe_iso_existente(self):
+    def test_motor_sem_potencia_nao_altera_classe_iso_existente(self):
         eq = self.criar_equipamento(self.tipo_motor)
-        eq.classe_iso = ClasseISO.II
+        eq.classe_iso = ClasseISO.G1
         eq.save()
-        DadosTecnicosMotor.objects.create(equipamento=eq, potencia_kw="120")  # sem tipo_base
+        DadosTecnicosMotor.objects.create(equipamento=eq, rotacao_rpm=1780)  # sem potência
         eq.refresh_from_db()
-        self.assertEqual(eq.classe_iso, ClasseISO.II)  # não decidiu, não mexeu
+        self.assertEqual(eq.classe_iso, ClasseISO.G1)  # não decidiu, não mexeu
 
     def test_potencia_rotacao_tensao_fp_sincronizam_do_motor_para_o_equipamento(self):
         eq = self.criar_equipamento(self.tipo_motor)

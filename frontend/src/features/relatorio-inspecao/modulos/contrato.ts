@@ -34,6 +34,8 @@ export type ModuloRelatorio<D extends DossieShell = DossieShell> = {
   KpisComplementares?: ComponentType<{ d: D }>;
   /** Fichas técnicas, depois da Relação de Equipamentos, com as próprias contracapas. */
   Fichas: ComponentType<{ d: D }>;
+  /** Painel da tela do relatório (fora da impressão) com ações do módulo — ex.: o envio mensal dos fluidos. */
+  Painel?: ComponentType<{ d: D; relatorioId: number }>;
   /** Conclusões consolidadas no fim do relatório, se o módulo tiver (nenhum tem hoje). */
   Conclusoes?: ComponentType<{ d: D }>;
 };

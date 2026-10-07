@@ -27,6 +27,11 @@ FAIXAS_ISO_VRMS = {
     "II":  {"A": Decimal("1.12"), "B": Decimal("4.49"), "C": Decimal("7.10")},
     "III": {"A": Decimal("1.80"), "B": Decimal("4.50"), "C": Decimal("11.20")},
     "IV":  {"A": Decimal("2.80"), "B": Decimal("7.10"), "C": Decimal("18.00")},
+    # ISO 20816-3:2022, zonas da fundação flexível aplicadas ao grupo inteiro —
+    # critério do responsável técnico (07/10/2026): crítico acima de 7,1 (Grupo 2)
+    # e de 11,0 mm/s (Grupo 1).
+    "G2":  {"A": Decimal("2.30"), "B": Decimal("4.50"), "C": Decimal("7.10")},
+    "G1":  {"A": Decimal("3.50"), "B": Decimal("7.10"), "C": Decimal("11.00")},
 }
 
 # Zona ISO → criticidade base

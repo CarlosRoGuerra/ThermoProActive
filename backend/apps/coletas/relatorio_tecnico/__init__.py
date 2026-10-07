@@ -24,10 +24,11 @@ def montar_dossie(rel, request) -> dict:
     tecnico = modulo.montar(ctx)
     carta = modulo.textos_carta(tecnico, ctx)
     tecnico.pop("resumo", None)  # já está na carta (parágrafo do item 7)
+    condicoes = tecnico.pop("condicoes_secao_c", None)  # condição calculada pelo módulo (ex.: GR dos fluidos)
     return {
         "modulo": modulo.chave,
         "cabecalho": montar_cabecalho(rel, request, modulo.instrumentos_adicionais(ctx)),
-        "secao_c": montar_secao_c(ctx),
+        "secao_c": montar_secao_c(ctx, condicoes),
         "carta": carta,
         **tecnico,
     }

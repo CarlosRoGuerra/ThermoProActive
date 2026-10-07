@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
-import { mensagemErroDossie } from "./modulos";
+import { mensagemErroDossie, moduloDoRelatorio, temModulo } from "./modulos";
 import { RelatorioCorpo } from "./shell/documento";
 import type { DossieShell } from "./tipos";
 
@@ -58,6 +58,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   if (!d) return <Card><p className="text-sm text-danger-fg">{erro ?? "Relatório não encontrado."}</p></Card>;
 
   const cab = d.cabecalho;
+  const Painel = temModulo(d) ? moduloDoRelatorio(d).Painel : undefined;
 
   function imprimir() {
     const nome = [cab.numero, cab.empresa, cab.nome_fantasia].filter(Boolean).join("_").replace(/[\\/:*?"<>|]/g, "-");
@@ -115,6 +116,12 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           </Link>
         </div>
       </div>
+
+      {Painel && (
+        <Card className="no-print">
+          <Painel d={d} relatorioId={relatorioId} />
+        </Card>
+      )}
 
       {/* Painel de finalização */}
       <Card className="no-print">

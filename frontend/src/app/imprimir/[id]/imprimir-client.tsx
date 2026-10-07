@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { mensagemErroDossie } from "@/features/relatorio-inspecao/modulos";
-import { RelatorioCorpo } from "@/features/relatorio-inspecao/shell/documento";
+import { FichasDoRelatorio, RelatorioCorpo } from "@/features/relatorio-inspecao/shell/documento";
 import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
 /* Regras que o paged.js PRECISA processar (transforma @page/running/quebras em
@@ -33,7 +33,7 @@ const CHROME_CSS = `
   }
 `;
 
-export default function ImprimirClient({ relatorioId }: { relatorioId: number }) {
+export default function ImprimirClient({ relatorioId, recorte = "" }: { relatorioId: number; recorte?: string }) {
   const [d, setD] = useState<DossieShell | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState("Carregando relatório…");
@@ -42,16 +42,16 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
   const alvoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/`)
+    api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/${recorte}`)
       .then(setD)
       .catch((e) => setErro(mensagemErroDossie(e, "Não foi possível carregar o relatório.")));
-  }, [relatorioId]);
+  }, [relatorioId, recorte]);
 
   // Nome do PDF = número + razão social + nome fantasia.
   useEffect(() => {
     if (!d) return;
     const cab = d.cabecalho;
-    document.title = [cab.numero, cab.empresa, cab.nome_fantasia]
+    document.title = [cab.numero, recorte ? "desvios" : "", cab.empresa, cab.nome_fantasia]
       .filter(Boolean)
       .join("_")
       .replace(/[\\/:*?"<>|]/g, "-");
@@ -126,7 +126,7 @@ export default function ImprimirClient({ relatorioId }: { relatorioId: number })
       {/* Fonte consumida pelo paged.js (o timbrado agora é EM FLUXO no corpo).
           Fica oculta enquanto pagina; se o paged.js falhar, é revelada (fallback). */}
       <div ref={fonteRef} className={mostrarFonte ? "" : "paged-source"}>
-        {d && <RelatorioCorpo d={d} />}
+        {d && (recorte ? <FichasDoRelatorio d={d} /> : <RelatorioCorpo d={d} />)}
       </div>
 
       {/* paged.js injeta as páginas aqui. */}

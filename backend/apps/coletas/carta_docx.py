@@ -42,6 +42,25 @@ _SEV = [("Bom", "22C55E", RGBColor(0xFF, 0xFF, 0xFF)),
         ("Perigo", "EF4444", RGBColor(0xFF, 0xFF, 0xFF))]
 
 
+ORDEM_CLASSES = ["I", "G2", "G1", "II", "III", "IV"]
+CABECALHO_CLASSES = {
+    "I": ("Classe I", "até 15 kW"), "G2": ("Grupo 2", "15 a 300 kW"), "G1": ("Grupo 1", "> 300 kW"),
+    "II": ("Classe II", "15 a 75 kW"), "III": ("Classe III", "Rígida · > 75 kW"), "IV": ("Classe IV", "Flexível · > 75 kW"),
+}
+
+
+def grade_severidade(linhas):
+    """
+    Linhas da tabela: a escala fixa da ISO e, nos grupos da ISO 20816-3, os limites
+    que não estão nela (2,30 · 3,50 · 11,00) — senão uma zona some da coluna. Tabela
+    só de classes antigas fica igual à de sempre.
+    """
+    extras = {
+        float(c["limites"][k]) for c in linhas if c["classe"] in ("G1", "G2") for k in ("ab", "bc", "cd")
+    } - {mm for mm, _ in ISO_VEL}
+    return sorted(ISO_VEL + [(mm, round(mm * 2 ** 0.5 / 25.4, 2)) for mm in extras])
+
+
 def _sev(v, z):
     if v <= z[0]:
         return _SEV[0]
@@ -367,10 +386,9 @@ def _tabela_iso(doc, rel):
 
     linhas = tabela_severidade(rel.data_termino, rel.cliente_id)
     zonas = {c["classe"]: tuple(float(c["limites"][k]) for k in ("ab", "bc", "cd")) for c in linhas}
-    classes = [c for c in ["I", "II", "III", "IV"] if c in zonas]
-    norma = next((c["norma"] for c in linhas), "ISO 10816-1")
-    cab = {"I": ("Classe I", "< 15 kW"), "II": ("Classe II", "15 a 75 kW"),
-           "III": ("Classe III", "Rígida · > 75 kW"), "IV": ("Classe IV", "Flexível · > 75 kW")}
+    classes = [c for c in ORDEM_CLASSES if c in zonas]
+    norma = " / ".join(dict.fromkeys(c["norma"].replace(" ", "-") for c in linhas)) or "ISO-10816-1"
+    cab = CABECALHO_CLASSES
     # A tabela começa em página nova: garante que ela caiba INTEIRA numa folha
     # (o Word ignora keepNext em linhas de tabela; a quebra-antes é o método seguro).
     quebra = doc.add_paragraph()
@@ -391,7 +409,8 @@ def _tabela_iso(doc, rel):
     # Título (linha mesclada) + subcabeçalho.
     top = tab.rows[0].cells
     top[0].merge(top[-1])
-    _cell(top[0], f"Norma {norma.replace(' ', '-')} — Severidade · Faixas de Velocidade e Classes de Máquina",
+    termo = "Grupos" if {"G1", "G2"} & set(classes) else "Classes"
+    _cell(top[0], f"Norma {norma} — Severidade · Faixas de Velocidade e {termo} de Máquina",
           bold=True, size=10, color=VERMELHO)
     hdr = tab.rows[1].cells
     _cell(hdr[0], "V [mm/s] RMS", fill="F1F5F9")
@@ -399,7 +418,7 @@ def _tabela_iso(doc, rel):
     for i, cl in enumerate(classes):
         _cell(hdr[2 + i], f"{cab[cl][0]}\n{cab[cl][1]}", fill="F1F5F9")
 
-    for mm, pol in ISO_VEL:
+    for mm, pol in grade_severidade(linhas):
         row = tab.add_row().cells
         _cell(row[0], f"{mm:.2f}", bold=True)
         _cell(row[1], f"{pol:.2f}", bold=True)

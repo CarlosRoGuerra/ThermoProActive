@@ -95,5 +95,9 @@ test.describe("cadastro técnico por tipo de equipamento @cadastro", () => {
     await expect(page.getByText("Severidade de vibração")).toBeVisible();
     await expect(page.getByLabel("Classe da máquina")).toBeEnabled();
     await expect(page.getByLabel("Rotação (RPM)")).toHaveCount(0);
+    // Grupos da ISO 20816-3 (desde 07/10/2026); as classes II–IV da ISO 10816-1 não são oferecidas.
+    const opcoes = await page.getByLabel("Classe da máquina").locator("option").allInnerTexts();
+    expect(opcoes).toEqual(["Selecione…", "Classe I — até 15 kW", "Grupo 2 — 15 a 300 kW (ISO 20816-3)",
+      "Grupo 1 — acima de 300 kW (ISO 20816-3)"]);
   });
 });

@@ -261,7 +261,7 @@ function Diagnostico({ f, grau }: { f: FichaFluido; grau: GrauRisco | null }) {
       </div>
       {(f.laboratorio || f.instrumento) && (
         <div style={{ fontSize: "7pt", color: TINTA.secundaria, padding: "0 1.5mm 1mm" }}>
-          {[f.laboratorio && `Laboratório: ${f.laboratorio}`, f.instrumento && `Instrumento: ${f.instrumento}`].filter(Boolean).join(" · ")}
+          Laboratório: {[f.instrumento, f.laboratorio].filter(Boolean).join(" — ")}
         </div>
       )}
       {f.observacoes_geradas.length > 0 && (

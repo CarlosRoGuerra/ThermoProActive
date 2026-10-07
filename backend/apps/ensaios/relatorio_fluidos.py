@@ -39,7 +39,6 @@ from .relatorio import (
     ModuloEnsaiosLaboratoriais,
     _Campanha,
     _distribuicao,
-    _instrumento,
     _lista,
     rotulo_condicao,
 )
@@ -99,7 +98,7 @@ def _num(v, casas):
     return texto.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
 
 
-def texto_referencia(r, casas=2, unidade="") -> str:
+def texto_referencia(r, casas=2, unidade="", base=None) -> str:
     """Referência como a ficha imprime ("Alerta > 50,0 · Crítico > 100,0 ppm")."""
     if r is None:
         return ""
@@ -118,7 +117,11 @@ def texto_referencia(r, casas=2, unidade="") -> str:
             partes.append(f"Crítico < {_num(r.limite_critico, casas)}")
         return " · ".join(partes) + (u if partes else "")
     if r.tipo == TipoReferencia.VARIACAO:
-        partes.append(f"Base {_num(r.valor_base, casas)}{u}")
+        if r.base_grau_iso:
+            partes.append(f"Base grau ISO VG ({_num(base, casas)}{u})" if base is not None
+                          else "Base grau ISO VG (não informado)")
+        else:
+            partes.append(f"Base {_num(r.valor_base, casas)}{u}")
         if r.limite_alerta is not None:
             partes.append(f"Alerta ±{_num(r.limite_alerta, 0)}%")
         if r.limite_critico is not None:
@@ -132,14 +135,23 @@ def texto_referencia(r, casas=2, unidade="") -> str:
     return r.referencia_texto
 
 
-def resumo_referencia(r, casas=2, unidade=""):
+def base_da_referencia(r, base_iso):
+    """Valor de base que vale para a referência: o grau ISO VG da amostra ou o valor fixo."""
     if r is None:
         return None
+    return base_iso if r.base_grau_iso else r.valor_base
+
+
+def resumo_referencia(r, casas=2, unidade="", base_iso=None):
+    if r is None:
+        return None
+    base = base_da_referencia(r, base_iso)
     escopo = next((rotulo for campo, rotulo in ESCOPO_ROTULO if getattr(r, campo)), "Geral")
     return {
         "id": r.id, "tipo": r.tipo, "tipo_display": r.get_tipo_display(),
-        "valor_base": r.valor_base, "limite_alerta": r.limite_alerta, "limite_critico": r.limite_critico,
-        "referencia_texto": r.referencia_texto, "texto": texto_referencia(r, casas, unidade),
+        "valor_base": base, "base_grau_iso": r.base_grau_iso,
+        "limite_alerta": r.limite_alerta, "limite_critico": r.limite_critico,
+        "referencia_texto": r.referencia_texto, "texto": texto_referencia(r, casas, unidade, base),
         "origem": r.origem, "origem_display": r.get_origem_display(), "fonte": r.fonte,
         "vigencia_inicio": r.vigencia_inicio, "vigencia_fim": r.vigencia_fim, "escopo": escopo,
     }
@@ -150,6 +162,15 @@ def _celula(v):
     if v is None:
         return {"valor": None, "texto": "", "estado": "", "metodo": ""}
     return {"valor": v.valor, "texto": v.valor_texto, "estado": v.estado, "metodo": v.metodo}
+
+
+def _base_iso(campanha):
+    """Viscosidade nominal (cSt) do grau ISO VG do fluido da coleta da campanha."""
+    coleta = campanha.coleta_fluido if campanha else None
+    if coleta is None:
+        return None
+    grau = coleta.grau_viscosidade or (coleta.produto.grau_viscosidade if coleta.produto_id else "")
+    return cf.grau_iso_vg(grau)
 
 
 def _contexto_referencia(campanha, equipamento):
@@ -168,6 +189,11 @@ def _status_ficha(resultado, statuses):
     if resultado.situacao != REALIZADO:
         return resultado.situacao
     return cf.pior(statuses) or "SEM_CRITERIO"
+
+
+def _laboratorio(ins) -> str:
+    """O laboratório parceiro é cadastrado em Instrumentação: "LF01 - Laboratório de Fluídos · Serviço…"."""
+    return " · ".join(x for x in (ins.tipo, ins.marca, ins.modelo) if x) if ins else ""
 
 
 def _texto_valor(linha, celula):
@@ -208,6 +234,7 @@ def observacoes_geradas(linhas, corpo) -> list:
 def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento, resolvedor, solicitado) -> dict:
     """Ficha de um ensaio (FQ, EF ou CP) de uma amostra, com o histórico das coletas."""
     escopo = _contexto_referencia(atual, equipamento)
+    base_iso = _base_iso(atual)
     digitados = [p for p in params if not p.calculado]
     # CP: as contagens são avaliadas juntas, pelo código ISO 4406 contra a meta —
     # contagem sem referência própria não é "parâmetro sem referência".
@@ -222,7 +249,8 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
         if ref is not None and cel is not None and resultado is not None and resultado.situacao == REALIZADO:
             avaliacao = cf.classificar(
                 tipo=ref.tipo, valor=cel["valor"], texto=cel["texto"], estado=cel["estado"] or "MEDIDO",
-                valor_base=ref.valor_base, limite_alerta=ref.limite_alerta, limite_critico=ref.limite_critico,
+                valor_base=base_da_referencia(ref, base_iso), limite_alerta=ref.limite_alerta,
+                limite_critico=ref.limite_critico,
                 referencia_texto=ref.referencia_texto,
             )
         tem_valor = cel is not None and (cel["valor"] is not None or cel["texto"])
@@ -231,7 +259,7 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
             "codigo": p.codigo, "nome": p.nome, "simbolo": p.simbolo, "grupo": p.grupo, "unidade": p.unidade,
             "norma": p.norma, "metodo": (cel or {}).get("metodo", ""), "casas": p.casas_decimais,
             "no_grafico": p.no_grafico, "qualitativo": p.tipo_limite == "QUALITATIVO",
-            "valores": valores, "referencia": resumo_referencia(ref, p.casas_decimais, p.unidade),
+            "valores": valores, "referencia": resumo_referencia(ref, p.casas_decimais, p.unidade, base_iso),
             "status": avaliacao["status"], "variacao_pct": avaliacao["variacao_pct"],
             "sem_referencia": bool(tem_valor and ref is None and p.codigo not in avaliado_pelo_codigo),
             "tendencia": cf.tendencia([v["valor"] for v in valores]),
@@ -283,7 +311,7 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
         "data_analise": r.data_analise if r else None, "data_proxima": r.data_proxima if r else None,
         "conclusao": r.conclusao if r else "", "recomendacao": r.recomendacao if r else "",
         "informacoes_adicionais": r.informacoes_adicionais if r else "",
-        "instrumento": _instrumento(r.instrumento) if r else "", "laboratorio": r.laboratorio if r else "",
+        "instrumento": _laboratorio(r.instrumento) if r else "", "laboratorio": r.laboratorio if r else "",
         "rotulos": {"conclusao": ensaio.rotulo_conclusao, "informacoes": ensaio.rotulo_informacoes,
                     "proxima": ensaio.rotulo_proxima},
         "notas": [linha.strip() for linha in ensaio.nota_tecnica.splitlines() if linha.strip()],
@@ -301,6 +329,7 @@ CAMPOS_AVALIACAO = ("observacoes_geradas", "tipo", "status", "status_rotulo", "a
 def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
     """Pior estado de um ensaio numa coleta (referências da época). None sem referência para avaliar."""
     escopo = _contexto_referencia(campanha, equipamento)
+    base_iso = _base_iso(campanha)
     statuses = []
     for p in (p for p in params if not p.calculado):
         v = campanha.primeiro(p.codigo)
@@ -309,7 +338,8 @@ def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
             continue
         statuses.append(cf.classificar(
             tipo=ref.tipo, valor=v.valor, texto=v.valor_texto, estado=v.estado or "MEDIDO",
-            valor_base=ref.valor_base, limite_alerta=ref.limite_alerta, limite_critico=ref.limite_critico,
+            valor_base=base_da_referencia(ref, base_iso), limite_alerta=ref.limite_alerta,
+            limite_critico=ref.limite_critico,
             referencia_texto=ref.referencia_texto,
         )["status"])
     if ensaio.sigla == SIGLA_CP:
@@ -339,8 +369,14 @@ def _campanhas_historico(campanhas, limite):
     return sorted(campanhas, key=lambda c: (c.data, c.resultado.id))[-limite:]
 
 
-def _campanhas(atual, anteriores):
-    antes = sorted((c for c in anteriores if atual is None or c.data < atual.data), key=lambda c: c.data)
+def _campanhas(atual, anteriores, ate=None):
+    """
+    As coletas anteriores à amostra (até 5) e a atual. `ate` = data da amostra quando
+    ela ainda não tem resultado — num relatório trimestral, as coletas dos meses
+    seguintes do mesmo equipamento não entram como "anteriores".
+    """
+    corte = atual.data if atual is not None else ate
+    antes = sorted((c for c in anteriores if corte is None or c.data < corte), key=lambda c: c.data)
     return antes[-(HISTORICO_MAXIMO - 1):] + ([atual] if atual else [])
 
 
@@ -367,13 +403,6 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
     carta_consideracoes = CONSIDERACOES_FLUIDO
     carta_quebras_glossario = ("6.5", "6.9", "6.12")
 
-    def instrumentos_adicionais(self, ctx) -> list:
-        """Os do laudo e, no que faltar, a instrumentação padrão cadastrada para a tecnologia do relatório."""
-        lista = super().instrumentos_adicionais(ctx)
-        vistos = {i.id for i in lista}
-        padrao = ctx.rel.tecnologia.instrumentos.filter(ativo=True).order_by("id")
-        return lista + [i for i in padrao if i.id not in vistos]
-
     def montar(self, ctx) -> dict:
         ensaios = list(Ensaio.objects.ativos().filter(modulo=self.chave).prefetch_related("parametros"))
         params = {e.id: [p for p in e.parametros.all() if p.ativo] for e in ensaios}
@@ -396,7 +425,6 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
         historico = defaultdict(list)
         for r in (ResultadoEnsaio.objects.ativos()
                   .filter(item__equipamento_id__in=list(equipamentos), ensaio__modulo=self.chave, situacao=REALIZADO)
-                  .exclude(item__in=itens)
                   .select_related("item__carregamento", "item__coleta_oleo", "item__registro_eletrico",
                                   "item__coleta_fluido")
                   .prefetch_related("valores__parametro")):
@@ -406,6 +434,7 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
         for item in itens:
             eq = equipamentos[item.equipamento_id]
             coleta = coletas.get(item.id)
+            data_atual = coleta.data_coleta if coleta else item.carregamento.data_coleta
             solicitados = {e.id for e in coleta.ensaios.all()} if coleta else set()
             fichas = []
             for ensaio in ensaios:
@@ -413,15 +442,15 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
                 if ensaio.id not in solicitados and resultado is None:
                     continue
                 atual = _Campanha(resultado) if resultado else None
-                campanhas = _campanhas(atual, historico[(eq.id, ensaio.id)])
+                campanhas = _campanhas(atual, historico[(eq.id, ensaio.id)], data_atual)
                 fichas.append(montar_ficha_fluido(ensaio, params[ensaio.id], resultado, atual, campanhas, eq,
                                                   resolvedor, ensaio.id in solicitados))
             statuses = {f["sigla"]: f["status"] for f in fichas if f["situacao"] == REALIZADO}
             condicao = item.condicao.sigla if item.condicao_id else ""
-            data_atual = coleta.data_coleta if coleta else item.carregamento.data_coleta
             graus_passados[eq.id] = self._graus_passados(eq, ensaios, params, historico, resolvedor, data_atual)
             amostras.append({
                 "equipamento_id": eq.id, "data": data_atual,
+                "carregamento_id": item.carregamento_id, "data_coleta_rota": item.carregamento.data_coleta,
                 "grau_risco": gr.grau_de_risco(statuses, condicao),
                 "item_id": item.id, "tag": eq.tag, "equipamento": eq.nome,
                 "area": eq.setor.area.nome if eq.setor_id else "—", "setor": eq.setor.nome if eq.setor_id else "—",
@@ -438,7 +467,15 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
                 "ensaios": fichas,
             })
         cliente = ctx.rel.cliente
+        envios = self._envios_mensais(amostras)
+        recorte = getattr(ctx, "recorte", None) or {}
+        if recorte.get("somente_desvios"):
+            amostras = [a for a in amostras if com_desvio(a)]
         return {
+            "recorte": recorte, "envios_mensais": envios,
+            # A Seção C mostra o grau de risco de cada amostra, como no relatório-modelo.
+            "condicoes_secao_c": {a["item_id"]: (a["grau_risco"]["rotulo"] if a["grau_risco"] else a["condicao"])
+                                  for a in amostras},
             "amostras": amostras, "kpis": self._kpis(amostras), "resumo": self._resumo(amostras),
             "graficos": gr.montar_graficos(
                 [{
@@ -450,6 +487,21 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
             ),
             "contato_cliente": {"telefone": cliente.telefone, "email": cliente.email},
         }
+
+    @staticmethod
+    def _envios_mensais(amostras) -> list:
+        """
+        Uma linha por rota (coleta do mês) do relatório: quantas amostras e quantas com
+        desvio. O mês sem desvio não gera envio; o relatório do trimestre traz tudo.
+        """
+        por_rota = {}
+        for a in amostras:
+            linha = por_rota.setdefault(a["carregamento_id"], {
+                "carregamento": a["carregamento_id"], "data_coleta": a["data_coleta_rota"], "amostras": 0, "desvios": 0,
+            })
+            linha["amostras"] += 1
+            linha["desvios"] += com_desvio(a)
+        return sorted(por_rota.values(), key=lambda x: (x["data_coleta"], x["carregamento"]))
 
     @staticmethod
     def _parametros_fora(amostra) -> list:
@@ -550,6 +602,12 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
         if pendentes:
             partes.append(f"{'Ensaio sem resultado' if len(pendentes) == 1 else 'Ensaios sem resultado'}: {_lista(pendentes)}.")
         return " ".join(partes)
+
+
+def com_desvio(amostra) -> bool:
+    """Amostra que entra no envio do mês: grau de risco GR-1 a GR-4 (OK não é desvio)."""
+    g = amostra["grau_risco"]
+    return bool(g) and g["sigla"] != "GR-0"
 
 
 def ensaios_padrao(aplicacao):

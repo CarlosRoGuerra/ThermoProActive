@@ -60,6 +60,17 @@ export function RelatorioCorpo({ d }: { d: DossieShell }) {
   );
 }
 
+/** Só as fichas técnicas (envio do mês com os desvios, rota /imprimir/[id]?carregamento=…). */
+export function FichasDoRelatorio({ d }: { d: DossieShell }) {
+  if (!temModulo(d)) return <SemModulo d={d} />;
+  const { Fichas } = moduloDoRelatorio(d);
+  return (
+    <div className="print-area space-y-4 text-slate-800">
+      <Fichas d={d} />
+    </div>
+  );
+}
+
 /** Carta ao Cliente avulsa (rota /carta/[id]) — a mesma do relatório. */
 export function CartaDoRelatorio({ d }: { d: DossieShell }) {
   if (!temModulo(d)) return <SemModulo d={d} />;

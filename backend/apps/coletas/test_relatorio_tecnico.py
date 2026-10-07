@@ -141,6 +141,21 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertNotIn("ISO-20816-3", xml)
         self.assertIn("por acordo com o cliente", xml)
 
+    def test_relatorio_depois_de_07_10_2026_usa_os_grupos_da_iso_20816(self):
+        rel = self.relatorio(ModuloTecnico.VIBRACAO)
+        Relatorio.objects.filter(pk=rel.pk).update(data_termino=date(2026, 10, 31))
+        carta = self.dossie(rel)["carta"]
+        self.assertEqual([(c["classe"], c["rotulo"], c["norma"]) for c in carta["tabela_severidade"]],
+                         [("I", "Classe I", "ISO 10816-1"), ("G2", "Grupo 2", "ISO 20816-3"),
+                          ("G1", "Grupo 1", "ISO 20816-3")])
+        self.assertTrue(all("responsável técnico" in n for n in carta["notas_severidade"]))
+        xml = self.carta_xml(rel)
+        self.assertIn("Norma ISO-10816-1 / ISO-20816-3", xml)
+        self.assertIn("Grupos de Máquina", xml)
+        self.assertIn("Grupo 2", xml)
+        self.assertIn("11.00", xml)  # linha extra da escala: o limite crítico do Grupo 1
+        self.assertNotIn("Classe II", xml)
+
     def test_criterio_do_cliente_prevalece_e_nao_vaza_para_outro_cliente(self):
         from apps.cadastros.models import CriterioSeveridadeVibracao
 
@@ -154,7 +169,8 @@ class RelatorioTecnicoModularTest(TestCase):
                          Decimal("3.50"))
         outro = Cliente.objects.create(nome="Indústria B", cnpj="22.222.222/0001-22")
         from apps.cadastros.criterios import criterio_vigente
-        self.assertEqual(criterio_vigente("II", cliente_id=outro.id).limite_bc, Decimal("4.49"))
+        # Até 06/10/2026 a Classe II valia com o acordo de 4,49; depois, os grupos da ISO 20816-3.
+        self.assertEqual(criterio_vigente("II", date(2026, 9, 30), cliente_id=outro.id).limite_bc, Decimal("4.49"))
 
     def test_shell_tem_o_proprio_total_de_equipamentos(self):
         d = self.dossie(self.relatorio(ModuloTecnico.VIBRACAO))

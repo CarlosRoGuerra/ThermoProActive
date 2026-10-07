@@ -90,10 +90,12 @@ const APLICACOES_FLUIDO = [
   { valor: "HIDRAULICO", texto: "Hidráulico" },
 ];
 const CLASSES_VIBRACAO = [
-  { valor: "I", texto: "Classe I (≤ 15 kW)" },
-  { valor: "II", texto: "Classe II (15–75 kW)" },
-  { valor: "III", texto: "Classe III (base rígida)" },
-  { valor: "IV", texto: "Classe IV (base flexível)" },
+  { valor: "I", texto: "Classe I (até 15 kW)" },
+  { valor: "G2", texto: "Grupo 2 (15 a 300 kW) — ISO 20816-3" },
+  { valor: "G1", texto: "Grupo 1 (acima de 300 kW) — ISO 20816-3" },
+  { valor: "II", texto: "Classe II (15–75 kW) — ISO 10816-1, histórico" },
+  { valor: "III", texto: "Classe III (base rígida) — ISO 10816-1, histórico" },
+  { valor: "IV", texto: "Classe IV (base flexível) — ISO 10816-1, histórico" },
 ];
 
 // Estrutura do cliente ativo (Cliente → Área → Setor). NÃO é dado de sistema:
@@ -265,6 +267,7 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
       { key: "limite_cd", label: "Limite C/D (mm/s RMS)", type: "number", required: true },
       { key: "origem", label: "Origem do valor", type: "escolha", required: true, escolhas: [
         { valor: "NORMA", texto: "Norma (valor publicado)" },
+        { valor: "RESPONSAVEL_TECNICO", texto: "Critério do responsável técnico" },
         { valor: "ACORDO_CLIENTE", texto: "Acordo com o cliente / contrato" },
         { valor: "LEGADO", texto: "Legado (origem não documentada)" },
       ] },
@@ -370,6 +373,7 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
       { key: "limite_alerta", label: "Limite de alerta (na variação, em %)", type: "number" },
       { key: "limite_critico", label: "Limite crítico (na variação, em %; na meta ISO, graus acima)", type: "number" },
       { key: "valor_base", label: "Valor de base (óleo novo / nominal)", type: "number" },
+      { key: "base_grau_iso", label: "Base = grau ISO VG do fluido da amostra (ex.: ISO VG 68 → 68 cSt)", type: "boolean" },
       { key: "referencia_texto", label: "Meta ISO (X/Y/Z) ou resultado esperado", maxLength: 40 },
       { key: "equipamento", label: "Só para o equipamento", type: "ref", optionsEndpoint: "equipamentos" },
       { key: "produto", label: "Só para o fluido", type: "ref", optionsEndpoint: "produtos-fluido" },
@@ -382,6 +386,7 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
         { valor: "LABORATORIO", texto: "Laboratório" },
         { valor: "CLIENTE", texto: "Acordo com o cliente / contrato" },
         { valor: "OLEO_NOVO", texto: "Óleo novo (baseline medido)" },
+        { valor: "RESPONSAVEL_TECNICO", texto: "Critério do responsável técnico" },
       ] },
       { key: "fonte", label: "Fonte (manual, laudo, contrato…)", maxLength: 250 },
       { key: "vigencia_inicio", label: "Vigência — início", type: "date" },

@@ -266,7 +266,33 @@ Controle das O.S.P.'s — derivado, nada é digitado: compara cada equipamento c
 
 ### 11.4 Pendências desta etapa
 
-1. Calibração, marca, modelo e série dos 6 instrumentos padrão (Instrumentação).
-2. Registro de "retorno de informação" da O.S.P. (coluna Ret. Inf.), se o cliente quiser.
-3. Confirmar com o cliente a leitura do GR-3 (exatamente 2 ensaios) e se o GR deve aparecer na Relação de Equipamentos (Seção C), hoje com a condição marcada em campo.
-4. Ferro/silício e demais limites continuam dependendo das referências do cliente (os exemplos usam valores de demonstração).
+Resolvidas na seção 12 (respostas de 07/10/2026): instrumentação, Ret. Inf. (abortado) e
+GR na Seção C. Os limites de ferro, silício, TAN etc. continuam dependendo de referência.
+
+## 12. Respostas do responsável técnico (07/10/2026)
+
+| # | Resposta | O que foi feito |
+| --- | --- | --- |
+| 1 | Análise trimestral: coletas mensais (ex.: 60 amostras/trimestre = 20/mês); no mês só se enviam as fichas com desvio; no fim do trimestre, o relatório com todas as amostras e a data final do trimestre. Prazos do GR: os da carta | O trimestre é **um relatório** (1ª coleta gera o número com a data final do trimestre; as dos meses seguintes usam "Utilizar outro número"). Na tela do relatório, o painel **Envio mensal — fichas com desvio** lista cada coleta (amostras e desvios) e gera o PDF só das fichas com GR-1 a GR-4 (`/imprimir/<id>?carregamento=<rota>&somente_desvios=1`, dossiê com o mesmo filtro). Mês sem desvio: "Sem envio neste mês". Mesmo equipamento em meses diferentes do trimestre: o mês anterior vira histórico do seguinte, nunca o contrário |
+| 2 | Não entendeu a pergunta | Feito como no modelo: a Seção C dos fluidos mostra o **GR calculado** de cada amostra (OK, GR-1…GR-4) no lugar da condição marcada em campo (sem GR, fica a de campo). Confirmar com exemplo (mensagem de retorno) |
+| 3 | Manter as duas listas de normas | Mantidas |
+| 4 | Viscosidade ±20% do grau ISO VG da amostra; água máx. 2%; TAN (texto incompleto) | Referências **gerais** (todos os clientes), origem "Critério do responsável técnico": viscosidade a 40 °C = variação com **base no grau ISO VG do fluido da coleta** (novo campo `ReferenciaParametro.base_grau_iso`; "ISO VG 68" → 68 cSt), crítico ±20%; água máx. 20.000 ppm (2%) crítico. Sem alerta (não informado). TAN: aguardando o resto do texto |
+| 5 | Ret. Inf. — aborta | Não implementado |
+| 6 | Laboratórios parceiros já cadastrados | Os laboratórios ("LFxx - Laboratório de Fluídos" em Instrumentação) ficam disponíveis nas tecnologias de fluidos e de óleo isolante; o analista escolhe no laudo e a carta (item 4) e a ficha mostram o escolhido. Os 6 instrumentos genéricos criados em 03/10 foram removidos (sem uso). "Validade" da calibração só sai com data |
+| 7 | ISO 10816 substituída pela ISO 20816; até 15 kW crítico > 4,5; 15–300 kW Grupo 2 crítico > 7,1; > 300 kW Grupo 1 crítico > 11,0; nenhuma máquina sem classe | Novos grupos `G2` e `G1` (`ClasseISO`), regra pela potência (≤ 15 kW Classe I; ≤ 300 kW Grupo 2; > 300 kW Grupo 1, qualquer base). Critérios a partir de **07/10/2026**: Grupo 2 = 2,30 / 4,50 / 7,10 e Grupo 1 = 3,50 / 7,10 / 11,00 mm/s — o crítico é o informado; A/B e B/C são da mesma coluna da ISO 20816-3 (fundação flexível), origem "Critério do responsável técnico", com nota na carta. Classes II–IV encerradas em 06/10/2026 (relatórios antigos não mudam; medições gravadas guardam a zona da época). Equipamentos reclassificados pela potência (sem potência: II → Grupo 2; III/IV ficam para revisão). Cadastro exige o grupo em toda máquina avaliada por vibração (o motor recebe pela potência) |
+| 8 | Outros modelos depois | — |
+| 9 | Tensão: nominal 13,8 kV, TAP em 11,4 kV; C₂H₂ = 0 confirmado; PCB pela NBR 13882 | Os dados do TRF-001 já estavam assim (datasheet 13,8 kV; TAP 11,4 kV no registro). PCB: limite de 50 mg/kg já era o do catálogo; "< LD" atende; nota da ficha com as faixas (> 50 contaminada; 2–50 sob controle; < 2 não detectado) |
+
+Migrações: `cadastros/0032` (escolhas), `0033` (critérios e reclassificação), `ensaios/0008`
+(`base_grau_iso`, origem nova), `0009` (referências gerais, laboratórios, nota do PCB). Todas
+reversíveis (testadas em ida → volta → ida).
+
+Exemplo local: **relatório 25** — trimestre jul–set/2026 com 3 coletas mensais na mesma
+numeração (julho e setembro com desvio, agosto sem), laboratório LF01 nos laudos.
+
+### 12.1 Em aberto
+
+1. TAN: o texto da resposta chegou cortado.
+2. Vibração em base rígida: a ISO 20816-3 é mais rigorosa (Grupo 2 crítico > 4,5; Grupo 1 > 7,1). Confirmar que a coluna da fundação flexível vale para todas as máquinas.
+3. Equipamentos com Classe III/IV sem potência cadastrada: escolher o grupo no cadastro.
+4. Confirmar a Seção C com o GR (pergunta 2 refeita com exemplo).

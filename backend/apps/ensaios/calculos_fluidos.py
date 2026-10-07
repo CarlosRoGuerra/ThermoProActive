@@ -8,6 +8,7 @@ Cálculos da análise de fluidos lubrificantes e hidráulicos — funções pura
 Nenhum limite técnico mora aqui: os números de alerta e crítico vêm de
 `ReferenciaParametro` (com origem e vigência). Valor ausente devolve None.
 """
+import re
 from decimal import Decimal, InvalidOperation
 
 # ISO 4406 (tabela de números de escala): o código R é o menor cujo limite
@@ -39,6 +40,19 @@ def _d(v):
         return Decimal(str(v))
     except (InvalidOperation, ValueError):
         return None
+
+
+_GRAU_ISO_VG = re.compile(r"^\s*(?:ISO\s*)?(?:VG\s*)?(\d+(?:[.,]\d+)?)\s*$", re.IGNORECASE)
+
+
+def grau_iso_vg(texto):
+    """
+    Viscosidade nominal a 40 °C (cSt) pelo grau ISO VG do fluido: "ISO VG 68",
+    "VG 68", "ISO 68" ou "68" → 68. Outro formato (ex.: SAE 40) → None: o sistema
+    não converte grau de outra escala.
+    """
+    m = _GRAU_ISO_VG.match(texto or "")
+    return Decimal(m.group(1).replace(",", ".")) if m else None
 
 
 def escala_iso4406(particulas_por_ml):

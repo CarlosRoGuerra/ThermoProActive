@@ -5,7 +5,7 @@ Capa, Carta ao Cliente, Relação de Equipamentos Monitorados, paginação e PDF
 só o que é montado aqui (`cabecalho` e `secao_c`). KPIs e fichas técnicas são do
 módulo da tecnologia (ver `modulos.py`) — o shell nunca olha para eles.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from apps.cadastros.models import Condicao, Empresa, Norma
 
@@ -25,19 +25,36 @@ class ContextoRelatorio:
     # Itens da rota na ordem do documento: Área → Setor → TAG → linha.
     itens: list
     equipamentos_ids: set
+    # Recorte pedido na URL do dossiê (envio do mês): {"carregamento": id, "somente_desvios": bool}.
+    recorte: dict = field(default_factory=dict)
+
+
+def _recorte(request) -> dict:
+    params = getattr(request, "query_params", None) or {}
+    recorte = {}
+    carregamento = params.get("carregamento")
+    if carregamento and str(carregamento).isdigit():
+        recorte["carregamento"] = int(carregamento)
+    if params.get("somente_desvios") in ("1", "true", "sim"):
+        recorte["somente_desvios"] = True
+    return recorte
 
 
 def carregar_contexto(rel, request) -> ContextoRelatorio:
+    recorte = _recorte(request)
+    qs = ItemInspecao.objects.filter(carregamento__relatorio=rel)
+    if "carregamento" in recorte:
+        qs = qs.filter(carregamento_id=recorte["carregamento"])
     itens = list(
-        ItemInspecao.objects.filter(carregamento__relatorio=rel)
-        .select_related("equipamento__setor__area", "condicao")
+        qs
+        .select_related("equipamento__setor__area", "condicao", "carregamento")
         .prefetch_related("achados__condicao", "achados__tipo_componente")
         .order_by("equipamento__setor__area__nome", "equipamento__setor__nome",
                   "equipamento__tag", "ordem")
     )
     return ContextoRelatorio(
         rel=rel, request=request, itens=itens,
-        equipamentos_ids={item.equipamento_id for item in itens},
+        equipamentos_ids={item.equipamento_id for item in itens}, recorte=recorte,
     )
 
 
@@ -159,14 +176,18 @@ def montar_cabecalho(rel, request, instrumentos_extras=()) -> dict:
     }
 
 
-def montar_secao_c(ctx: ContextoRelatorio) -> dict:
+def montar_secao_c(ctx: ContextoRelatorio, condicoes=None) -> dict:
     """
     Relação de Equipamentos Monitorados, por Área → Setor.
 
     A lista é de EQUIPAMENTOS: 1 linha por item da rota com a condição do
     equipamento. Os componentes aparecem nas fichas técnicas, não aqui — assim o
     "Total de equipamentos" bate com o nº de linhas (gabarito).
+
+    `condicoes` (item → rótulo): quando o módulo calcula a condição (ex.: o grau de
+    risco dos fluidos), ela substitui a marcada em campo. Só os itens presentes.
     """
+    condicoes = condicoes or {}
     grupos: dict = {}
     total = 0
     for item in ctx.itens:
@@ -174,8 +195,10 @@ def montar_secao_c(ctx: ContextoRelatorio) -> dict:
         setor = eq.setor
         area = setor.area if setor else None
         chave = (area.nome if area else "—", setor.nome if setor else "—")
+        if condicoes and item.id not in condicoes:
+            continue  # o módulo recortou (ex.: só as amostras com desvio)
         grupos.setdefault(chave, []).append(
-            {"tag": eq.tag, "equipamento": eq.nome, "condicao": rotulo_condicao(item.condicao)}
+            {"tag": eq.tag, "equipamento": eq.nome, "condicao": condicoes.get(item.id) or rotulo_condicao(item.condicao)}
         )
         total += 1
     return {

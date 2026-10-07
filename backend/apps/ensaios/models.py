@@ -427,6 +427,7 @@ class OrigemReferencia(models.TextChoices):
     LABORATORIO = "LABORATORIO", "Laboratório"
     CLIENTE = "CLIENTE", "Acordo com o cliente / contrato"
     OLEO_NOVO = "OLEO_NOVO", "Óleo novo (baseline medido)"
+    RESPONSAVEL_TECNICO = "RESPONSAVEL_TECNICO", "Critério do responsável técnico"
 
 
 class ReferenciaParametro(BaseModel):
@@ -451,6 +452,11 @@ class ReferenciaParametro(BaseModel):
     tipo = models.CharField("Tipo", max_length=12, choices=TipoReferencia.choices)
     valor_base = models.DecimalField("Valor de base", max_digits=14, decimal_places=4, null=True, blank=True,
                                      help_text="Óleo novo/nominal, para referência do tipo Variação.")
+    base_grau_iso = models.BooleanField(
+        "Base = grau ISO VG do fluido da amostra", default=False,
+        help_text="Na Variação da viscosidade a 40 °C: a base é o grau ISO VG do fluido da coleta "
+                  "(ISO VG 68 → 68 cSt), em vez de um valor fixo.",
+    )
     limite_alerta = models.DecimalField("Limite de alerta", max_digits=14, decimal_places=4, null=True, blank=True,
                                         help_text="Na Variação, em %; na meta ISO, graus de código acima da meta.")
     limite_critico = models.DecimalField("Limite crítico", max_digits=14, decimal_places=4, null=True, blank=True,

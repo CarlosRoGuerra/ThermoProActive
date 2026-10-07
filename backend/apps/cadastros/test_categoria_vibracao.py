@@ -52,9 +52,10 @@ class CadastroPorTipoTest(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.master)
 
-    def criar(self, tipo, tag):
+    def criar(self, tipo, tag, **extra):
         r = self.api.post("/api/equipamentos/", {"setor": self.setor.id, "tag": tag, "nome": tag,
-                                                  "tipo_equipamento": tipo.id if tipo else None}, format="json")
+                                                  "tipo_equipamento": tipo.id if tipo else None, **extra},
+                          format="json")
         self.assertEqual(r.status_code, 201, r.data)
         return r.data
 
@@ -88,9 +89,9 @@ class CadastroPorTipoTest(TestCase):
                                                           "tipo_base": "RIGIDA"}, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         eq = self.api.get(f"/api/equipamentos/{eq['id']}/").data
-        self.assertEqual(eq["classe_iso"], "III")
-        self.assertEqual(eq["criterio_vibracao"]["norma"], "ISO 10816-1")
-        self.assertEqual(eq["criterio_vibracao"]["origem"], "NORMA")
+        self.assertEqual(eq["classe_iso"], "G2")  # 100 kW: Grupo 2 da ISO 20816-3
+        self.assertEqual(eq["criterio_vibracao"]["norma"], "ISO 20816-3")
+        self.assertEqual(eq["criterio_vibracao"]["origem"], "RESPONSAVEL_TECNICO")
 
     def test_tipo_sem_categoria_nao_ganha_datasheet_nem_pelo_nome(self):
         tipo = TipoEquipamento.objects.create(nome="Transformador seco")  # nome sugestivo, sem categoria
@@ -106,11 +107,30 @@ class CadastroPorTipoTest(TestCase):
         painel = self.criar(self.tipo_painel, "QGBT-1")
         self.assertFalse(painel["analise_vibracao"])
         self.assertEqual(painel["classe_iso"], "")
-        bomba = self.criar(self.tipo_bomba, "BBA-01")
+        bomba = self.criar(self.tipo_bomba, "BBA-01", classe_iso="G2")
         self.assertTrue(bomba["analise_vibracao"])
-        self.assertEqual(bomba["classe_iso"], "II")
-        self.assertEqual(bomba["criterio_vibracao"]["limites"]["bc"], D("4.49"))
-        self.assertEqual(bomba["criterio_vibracao"]["origem"], "ACORDO_CLIENTE")
+        self.assertEqual(bomba["classe_iso"], "G2")
+        self.assertEqual(bomba["criterio_vibracao"]["limites"]["cd"], D("7.10"))
+        self.assertEqual(bomba["criterio_vibracao"]["origem"], "RESPONSAVEL_TECNICO")
+
+    def test_maquina_avaliada_por_vibracao_sempre_tem_grupo(self):
+        # "Não existe equipamento sem classe definida" (responsável técnico, 07/10/2026).
+        r = self.api.post("/api/equipamentos/", {"setor": self.setor.id, "tag": "BBA-02", "nome": "Bomba",
+                                                  "tipo_equipamento": self.tipo_bomba.id}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("classe_iso", r.data)
+        # Classe histórica da ISO 10816-1 não entra em cadastro novo…
+        r = self.api.post("/api/equipamentos/", {"setor": self.setor.id, "tag": "BBA-03", "nome": "Bomba",
+                                                  "tipo_equipamento": self.tipo_bomba.id, "classe_iso": "III"},
+                          format="json")
+        self.assertEqual(r.status_code, 400)
+        # …mas o equipamento antigo continua editável sem trocar a classe.
+        antigo = Equipamento.objects.create(setor=self.setor, tag="BBA-04", nome="Antiga",
+                                            tipo_equipamento=self.tipo_bomba, classe_iso="III")
+        r = self.api.patch(f"/api/equipamentos/{antigo.id}/", {"nome": "Antiga 2", "classe_iso": "III"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        # O motor tem o grupo pela potência do datasheet, salvo depois do equipamento.
+        self.criar(self.tipo_motor, "MOT-09")
 
     # --- Catálogo -------------------------------------------------------------
     def test_catalogo_impede_transformador_com_vibracao(self):
@@ -147,9 +167,42 @@ class CadastroPorTipoTest(TestCase):
         acordo = CriterioSeveridadeVibracao.objects.get(classe="II", origem="ACORDO_CLIENTE")
         self.assertEqual(acordo.limite_bc, D("4.49"))
         self.assertIn("16/09/2026", acordo.fonte)
-        # O vigente é o acordo, e os números aplicados são os de sempre.
-        for classe, faixas in rules_vibracao.FAIXAS_ISO_VRMS.items():
-            self.assertEqual(criterios.faixas_vigentes(classe), faixas, classe)
+        # Até 06/10/2026: as classes da ISO 10816-1 (com o acordo da Classe II).
+        antes, depois = date(2026, 9, 30), date(2026, 10, 7)
+        for classe in ("I", "II", "III", "IV"):
+            self.assertEqual(criterios.faixas_vigentes(classe, antes), rules_vibracao.FAIXAS_ISO_VRMS[classe], classe)
+        # A partir de 07/10/2026: Classe I + Grupos 2 e 1 da ISO 20816-3; II–IV encerradas.
+        for classe in ("I", "G2", "G1"):
+            self.assertEqual(criterios.faixas_vigentes(classe, depois), rules_vibracao.FAIXAS_ISO_VRMS[classe], classe)
+        for classe in ("II", "III", "IV"):
+            self.assertIsNone(criterios.criterio_vigente(classe, depois), classe)
+        g2, g1 = (criterios.criterio_vigente(c, depois) for c in ("G2", "G1"))
+        self.assertEqual((g2.limite_cd, g1.limite_cd), (D("7.10"), D("11.00")))  # os críticos informados
+        self.assertEqual((g2.norma_codigo, g2.norma_edicao, g2.origem), ("ISO 20816-3", "2022", "RESPONSAVEL_TECNICO"))
+        self.assertIn("07/10/2026", g2.fonte)
+
+    def test_tabela_da_carta_por_data(self):
+        antes = criterios.tabela_severidade(date(2026, 9, 30))
+        self.assertEqual([c["classe"] for c in antes], ["I", "II", "III", "IV"])
+        depois = criterios.tabela_severidade(date(2026, 10, 7))
+        self.assertEqual([(c["classe"], c["rotulo"]) for c in depois],
+                         [("I", "Classe I"), ("G2", "Grupo 2"), ("G1", "Grupo 1")])
+        notas = criterios.notas_tabela_severidade(depois)
+        self.assertEqual(len(notas), 2)  # os grupos: critério do responsável técnico, com a fonte
+        self.assertTrue(notas[0].startswith("Grupo 2: critério do responsável técnico — ISO 20816-3:2022"))
+
+    def test_migracao_reclassifica_pela_potencia(self):
+        migracao = importlib.import_module("apps.cadastros.migrations.0033_criterios_iso_20816")
+        casos = {"P10": ("II", D("10")), "P90": ("III", D("90")), "P400": ("III", D("400")),
+                 "SEMP2": ("II", None), "SEMP3": ("IV", None)}
+        eqs = {tag: Equipamento.objects.create(setor=self.setor, tag=tag, nome=tag, tipo_equipamento=self.tipo_bomba,
+                                               classe_iso=classe, potencia_kw=p)
+               for tag, (classe, p) in casos.items()}
+        migracao.carregar(registro, None)
+        esperado = {"P10": "I", "P90": "G2", "P400": "G1", "SEMP2": "G2", "SEMP3": "IV"}
+        for tag, eq in eqs.items():
+            eq.refresh_from_db()
+            self.assertEqual(eq.classe_iso, esperado[tag], tag)
 
     def test_classificacao_usa_o_criterio_do_cliente_e_a_vigencia(self):
         self.assertEqual(rules_vibracao.classificar_vibracao("II", D("3.5"),
