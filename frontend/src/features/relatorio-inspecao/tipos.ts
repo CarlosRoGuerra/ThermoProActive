@@ -53,7 +53,11 @@ export type TextosCarta = {
 /** Critério aplicado a uma classe na tabela de severidade (limites em mm/s RMS, como string decimal). */
 export type LinhaSeveridade = {
   classe: string; rotulo: string; norma: string; edicao: string; descricao_grupo: string;
+  /** "RIGIDO" | "FLEXIVEL" nos grupos da ISO 20816-3; "" = qualquer suporte. */
+  suporte?: string;
   limites: { ab: string; bc: string; cd: string };
+  /** Limites de deslocamento (µm RMS), quando a norma do grupo publica. */
+  deslocamento?: { ab: string; bc: string; cd: string } | null;
   origem: "NORMA" | "RESPONSAVEL_TECNICO" | "ACORDO_CLIENTE" | "LEGADO"; origem_display: string; fonte: string;
   referencia_norma: { limites: { ab: string; bc: string; cd: string } } | null;
 };
@@ -84,6 +88,7 @@ export type OspD = {
   osp: string; area: string; setor: string; tag: string; equipamento: string; componente: string;
   anomalia: string; recomendacao: string; observacao: string; grau_risco: string; grau_risco_descricao: string;
   amplitude_velocidade: string | null; amplitude_aceleracao: string | null;
+  amplitude_deslocamento?: string | null;
   temperatura_medida: string | null; temperatura_referencia: string | null; delta_t: string | null; carga_percentual: string | null;
   /** Correção pela corrente (C.T.M.) — nulas até a fórmula ser definida com o cliente. */
   temperatura_medida_corrigida: string | null; delta_t_corrigido: string | null;
@@ -211,8 +216,8 @@ export type StatusFluido = EstadoFluido | "SEM_CRITERIO" | Exclude<SituacaoEnsai
 export type ReferenciaFluido = {
   id: number; tipo: "MAXIMO" | "MINIMO" | "VARIACAO" | "CODIGO_ISO" | "QUALITATIVO"; tipo_display: string;
   valor_base: number | null; limite_alerta: number | null; limite_critico: number | null; referencia_texto: string;
-  /** Variação com base no grau ISO VG do fluido da amostra (`valor_base` já resolvido). */
-  base_grau_iso?: boolean;
+  /** Variação com base no valor do óleo novo do fluido da coleta (`valor_base` já resolvido). */
+  base_oleo_novo?: boolean;
   /** Pronto para imprimir: "Alerta > 50,0 · Crítico > 100,0 ppm". */
   texto: string;
   origem: string; origem_display: string; fonte: string;
@@ -229,6 +234,10 @@ export type LinhaFluido = {
   /** Uma célula por coleta, na ordem de `campanhas`. */
   valores: CelulaFluido[];
   referencia: ReferenciaFluido | null; status: EstadoFluido | null; variacao_pct: number | null;
+  /** Valor do óleo novo (ficha técnica do fluido da coleta): viscosidade a 40 °C, densidade a 15 °C ou IV. */
+  oleo_novo?: number | null;
+  /** Pronto para imprimir: "Óleo novo: 0,8870 · a 20 °C · ASTM D1298". */
+  oleo_novo_texto?: string;
   /** Tem valor na coleta atual e nenhuma referência cadastrada. */
   sem_referencia: boolean; tendencia: TendenciaFluido;
 };

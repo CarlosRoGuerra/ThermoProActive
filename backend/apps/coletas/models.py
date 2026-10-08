@@ -209,13 +209,20 @@ class MedicaoVibracao(TimeStampedModel):
     def save(self, *args, **kwargs):
         from apps.cadastros.criterios import faixas_vigentes
 
+        from apps.cadastros.criterios import aviso_de_base, suporte_do_equipamento
+
         eq = self.equipamento
+        suporte = suporte_do_equipamento(eq)
         resultado = rules.classificar_vibracao(
             classe_iso=eq.classe_iso,
             velocidade_rms=self.velocidade_rms,
             fator_crista=self.fator_crista,
             historico_vrms=self._historico_vrms(),
-            faixas=faixas_vigentes(eq.classe_iso, cliente_id=eq.setor.area.cliente_id if eq.setor_id else None),
+            faixas=faixas_vigentes(eq.classe_iso, cliente_id=eq.setor.area.cliente_id if eq.setor_id else None,
+                                   suporte=suporte),
+            # O deslocamento desta medição é pico-a-pico; os limites da norma são RMS —
+            # não se comparam sem saber a forma de onda, então só a velocidade classifica.
+            avisos=aviso_de_base(eq.classe_iso, suporte),
         )
         self.zona_iso = resultado.zona_iso
         self.criticidade = resultado.criticidade
@@ -534,6 +541,10 @@ class Achado(BaseModel):
     )
     velocidade_global = models.DecimalField(
         "Global de velocidade (mm/s)", max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    # Deslocamento RMS (µm) — a ISO 20816-3 avalia velocidade e deslocamento nos Grupos 1 e 2.
+    deslocamento_global = models.DecimalField(
+        "Global de deslocamento (µm RMS)", max_digits=8, decimal_places=1, null=True, blank=True
     )
 
     # --- Termografia: temperaturas ---

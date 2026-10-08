@@ -185,7 +185,7 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             "tag", "nome", "tipo_equipamento", "tipo_equipamento_nome",
             "categoria_tecnica", "tipo",
             "fabricante", "modelo", "numero_serie", "numero_patrimonio", "ano_fabricacao", "potencia_kw",
-            "rotacao_nominal_rpm", "classe_iso", "classe_iso_display",
+            "rotacao_nominal_rpm", "classe_iso", "classe_iso_display", "tipo_base",
             "analise_vibracao", "criterio_vibracao", "identificacao",
             "criticidade", "criticidade_display",
             "tensao_nominal", "fator_potencia_nominal",
@@ -202,11 +202,13 @@ class EquipamentoSerializer(serializers.ModelSerializer):
         if not (tipo and tipo.analise_vibracao and obj.classe_iso):
             return None
         cliente_id = obj.setor.area.cliente_id if obj.setor_id else None
-        # Uma consulta por (classe, cliente) na listagem inteira, não por equipamento.
+        suporte = criterios.suporte_do_equipamento(obj)
+        # Uma consulta por (classe, cliente, suporte) na listagem inteira, não por equipamento.
         cache = self.context.setdefault("_criterios_vibracao", {})
-        chave = (obj.classe_iso, cliente_id)
+        chave = (obj.classe_iso, cliente_id, suporte)
         if chave not in cache:
-            cache[chave] = criterios.resumo_criterio(criterios.criterio_vigente(obj.classe_iso, cliente_id=cliente_id))
+            cache[chave] = criterios.resumo_criterio(
+                criterios.criterio_vigente(obj.classe_iso, cliente_id=cliente_id, suporte=suporte))
         return cache[chave]
 
     def validate(self, attrs):
@@ -237,6 +239,13 @@ class EquipamentoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "classe_iso": "Informe o grupo da máquina: Classe I (até 15 kW), Grupo 2 (15 a 300 kW) "
                               "ou Grupo 1 (acima de 300 kW).",
+            })
+        # Nos Grupos 1 e 2 a base (rígida/flexível) muda os limites da ISO 20816-3. No motor
+        # ela vem do datasheet; nos demais, é informada aqui.
+        base = attrs.get("tipo_base", getattr(self.instance, "tipo_base", ""))
+        if classe in ("G1", "G2") and not base and not motor:
+            raise serializers.ValidationError({
+                "tipo_base": "Informe o tipo de base (rígida ou flexível): nos Grupos 1 e 2 ele decide os limites.",
             })
         return attrs
 
@@ -306,6 +315,7 @@ class TipoEquipamentoSerializer(serializers.ModelSerializer):
 class CriterioSeveridadeVibracaoSerializer(serializers.ModelSerializer):
     origem_display = serializers.CharField(source="get_origem_display", read_only=True)
     classe_display = serializers.CharField(source="get_classe_display", read_only=True)
+    suporte_display = serializers.CharField(source="get_suporte_display", read_only=True)
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True, default=None)
 
     class Meta:
@@ -319,6 +329,12 @@ class CriterioSeveridadeVibracaoSerializer(serializers.ModelSerializer):
         ab, bc, cd = valor("limite_ab"), valor("limite_bc"), valor("limite_cd")
         if None not in (ab, bc, cd) and not (ab <= bc <= cd):
             raise serializers.ValidationError("Os limites precisam ser crescentes: A/B ≤ B/C ≤ C/D.")
+        desloc = [valor("desloc_ab"), valor("desloc_bc"), valor("desloc_cd")]
+        if any(d is not None for d in desloc):
+            if None in desloc:
+                raise serializers.ValidationError({"desloc_cd": "Informe os três limites de deslocamento (ou nenhum)."})
+            if not (desloc[0] <= desloc[1] <= desloc[2]):
+                raise serializers.ValidationError({"desloc_cd": "Os limites de deslocamento precisam ser crescentes."})
         inicio, fim = valor("vigencia_inicio"), valor("vigencia_fim")
         if inicio and fim and fim < inicio:
             raise serializers.ValidationError({"vigencia_fim": "O fim da vigência não pode ser anterior ao início."})

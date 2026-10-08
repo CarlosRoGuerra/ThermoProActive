@@ -77,7 +77,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "grau_risco", "grau_risco_display", "grau_risco_descricao", "prazo_dias",
             "acompanhamento", "acompanhamento_display",
             "anomalia", "recomendacao", "observacao", "componente",
-            "amplitude_velocidade", "amplitude_aceleracao",
+            "amplitude_velocidade", "amplitude_aceleracao", "amplitude_deslocamento",
             # Etapas alimentadas pelo cliente
             "planejado_em", "planejado_por", "planejado_por_nome",
             "executado_em", "executado_por", "executado_por_nome",

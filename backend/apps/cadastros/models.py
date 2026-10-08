@@ -262,6 +262,12 @@ class Equipamento(BaseModel):
         help_text="Grupo da máquina no critério de severidade de vibração. Vazio quando o tipo "
                   "do equipamento não é avaliado por vibração.",
     )
+    # Base (fundação) da máquina: nos Grupos 1 e 2 da ISO 20816-3 os limites da base
+    # rígida são mais rigorosos que os da flexível. No motor elétrico vem do datasheet.
+    tipo_base = models.CharField(
+        "Tipo de base (fundação)", max_length=10, blank=True, choices=TipoBase.choices,
+        help_text="Rígida ou flexível — nos Grupos 1 e 2 decide a coluna de limites da ISO 20816-3.",
+    )
     criticidade = models.CharField(
         "Criticidade (importância)", max_length=1, choices=CriticidadeEquip.choices,
         blank=True, help_text="Classificação A/B/C da importância no processo produtivo.",
@@ -370,7 +376,7 @@ class DadosTecnicosMotor(BaseModel):
     rolamento_la = models.CharField("Rolamento LA (lado do acoplamento)", max_length=40, blank=True)
     tipo_base = models.CharField(
         "Tipo de base", max_length=10, blank=True, choices=TipoBase.choices,
-        help_text="Rígida ou flexível — decide a Classe ISO III×IV acima de 75 kW.",
+        help_text="Rígida ou flexível — decide a coluna de limites da ISO 20816-3 (Grupos 1 e 2).",
     )
     # Preparação para IA/OCR (fase futura, não implementada agora): a foto fica salva
     # aqui, pronta para alimentar um extrator futuro — a IA nunca grava direto nos
@@ -405,6 +411,8 @@ class DadosTecnicosMotor(BaseModel):
         classe = rules.classificar_classe_iso(self.potencia_kw, self.tipo_base or None)
         if classe is not None and self.equipamento.classe_iso != classe:
             sincronizar["classe_iso"] = classe
+        if self.tipo_base and self.equipamento.tipo_base != self.tipo_base:
+            sincronizar["tipo_base"] = self.tipo_base
 
         if sincronizar:
             Equipamento.objects.filter(pk=self.equipamento_id).update(**sincronizar)
@@ -743,6 +751,13 @@ class CriterioSeveridadeVibracao(BaseModel):
                                     validators=[MinValueValidator(Decimal("0"))])
     limite_cd = models.DecimalField("Limite C/D (mm/s RMS)", max_digits=6, decimal_places=2,
                                     validators=[MinValueValidator(Decimal("0"))])
+    # Deslocamento (µm RMS), quando a norma do grupo publica — ISO 20816-3, Grupos 1 e 2.
+    desloc_ab = models.DecimalField("Deslocamento A/B (µm RMS)", max_digits=7, decimal_places=1, null=True,
+                                    blank=True, validators=[MinValueValidator(Decimal("0"))])
+    desloc_bc = models.DecimalField("Deslocamento B/C (µm RMS)", max_digits=7, decimal_places=1, null=True,
+                                    blank=True, validators=[MinValueValidator(Decimal("0"))])
+    desloc_cd = models.DecimalField("Deslocamento C/D (µm RMS)", max_digits=7, decimal_places=1, null=True,
+                                    blank=True, validators=[MinValueValidator(Decimal("0"))])
     origem = models.CharField("Origem", max_length=20, choices=OrigemCriterio.choices,
                               default=OrigemCriterio.NORMA)
     fonte = models.CharField("Fonte", max_length=250, blank=True,

@@ -103,6 +103,7 @@ export interface Equipamento {
   fator_potencia_nominal: string | null;
   /** Grupo no critério de severidade de vibração; "" quando o tipo não é avaliado por vibração. */
   classe_iso: string;
+  tipo_base?: string;
   classe_iso_display: string;
   /** Vínculo explícito do catálogo (TipoEquipamento.analise_vibracao). */
   analise_vibracao: boolean;
@@ -278,6 +279,7 @@ export interface Achado {
   // Vibração
   aceleracao_global: string | null;
   velocidade_global: string | null;
+  deslocamento_global?: string | null;
   // Termografia — temperaturas
   temperatura_medida: string | null;
   temperatura_referencia: string | null;

@@ -73,6 +73,7 @@ const DADOS_SISTEMA = [
   { href: "/cadastros?item=produtos-fluido", label: "Fluidos lubrificantes / hidráulicos" },
   { href: "/cadastros?item=solicitacoes-padrao-ensaio", label: "Ensaios padrão por aplicação (fluidos)" },
   { href: "/cadastros?item=referencias-parametro", label: "Referências dos parâmetros (fluidos)" },
+  { href: "/cadastros?item=metas-limpeza-iso", label: "Metas de limpeza ISO 4406 recomendadas" },
   { href: "/cadastros?item=itens-checklist-visual", label: "Itens da inspeção visual (óleo)" },
   { href: "/cadastros?item=tipos-inspecao", label: "Tipos de inspeção" },
   { href: "/cadastros?item=falhas-recorrentes", label: "Falhas recorrentes" },

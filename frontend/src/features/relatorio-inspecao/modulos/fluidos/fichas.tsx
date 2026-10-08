@@ -145,7 +145,7 @@ function TabelaFluido({ f, linhas }: { f: FichaFluido; linhas: LinhaFluido[] }) 
         <td style={{ ...CELULA, fontSize: "7pt", color: TINTA.secundaria }}>{l.unidade}</td>
         <td style={{ ...CELULA, fontSize: "6.5pt", color: TINTA.secundaria }}>{l.metodo || l.norma}</td>
         <td style={{ ...CELULA, fontSize: "6.5pt", color: TINTA.secundaria, lineHeight: 1.15 }}>
-          {l.referencia ? l.referencia.texto : "—"}
+          {l.referencia ? l.referencia.texto : l.oleo_novo_texto || "—"}
         </td>
         {l.valores.map((c, i) => {
           const atual = f.campanhas[i]?.atual;

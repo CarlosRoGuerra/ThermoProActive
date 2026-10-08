@@ -7,6 +7,7 @@ from .views import (
     EnsaioViewSet,
     FluidoHistoricoView,
     FluidoInspecaoViewSet,
+    MetaLimpezaRecomendadaViewSet,
     ItemChecklistVisualViewSet,
     ParametroEnsaioViewSet,
     PontoColetaViewSet,
@@ -34,6 +35,7 @@ router.register("transformadores-inspecao", TransformadorInspecaoViewSet, basena
 # Fluidos lubrificantes e hidráulicos: catálogos, referências, coleta e a fila do lançamento
 router.register("parametros-ensaio", ParametroEnsaioViewSet, basename="parametroensaio")
 router.register("produtos-fluido", ProdutoFluidoViewSet, basename="produtofluido")
+router.register("metas-limpeza-iso", MetaLimpezaRecomendadaViewSet, basename="metalimpezarecomendada")
 router.register("solicitacoes-padrao-ensaio", SolicitacaoPadraoEnsaioViewSet, basename="solicitacaopadraoensaio")
 router.register("referencias-parametro", ReferenciaParametroViewSet, basename="referenciaparametro")
 router.register("coletas-fluido", ColetaFluidoViewSet, basename="coletafluido")

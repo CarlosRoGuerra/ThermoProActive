@@ -6,6 +6,7 @@ from .models import (
     Ensaio,
     InspecaoVisualColeta,
     ItemChecklistVisual,
+    MetaLimpezaRecomendada,
     ParametroEnsaio,
     PontoColeta,
     ProdutoFluido,
@@ -41,6 +42,12 @@ class CatalogoEnsaioAdmin(admin.ModelAdmin):
 class PontoColetaAdmin(admin.ModelAdmin):
     list_display = ["nome", "modulo", "ativo"]
     list_filter = ["modulo"]
+
+
+@admin.register(MetaLimpezaRecomendada)
+class MetaLimpezaRecomendadaAdmin(admin.ModelAdmin):
+    list_display = ["nome", "codigo", "fonte", "ativo"]
+    search_fields = ["nome", "codigo"]
 
 
 @admin.register(ProdutoFluido)

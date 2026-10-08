@@ -290,9 +290,63 @@ reversíveis (testadas em ida → volta → ida).
 Exemplo local: **relatório 25** — trimestre jul–set/2026 com 3 coletas mensais na mesma
 numeração (julho e setembro com desvio, agosto sem), laboratório LF01 nos laudos.
 
-### 12.1 Em aberto
+### 12.1 Segunda rodada (08/10/2026)
 
-1. TAN: o texto da resposta chegou cortado.
-2. Vibração em base rígida: a ISO 20816-3 é mais rigorosa (Grupo 2 crítico > 4,5; Grupo 1 > 7,1). Confirmar que a coluna da fundação flexível vale para todas as máquinas.
-3. Equipamentos com Classe III/IV sem potência cadastrada: escolher o grupo no cadastro.
-4. Confirmar a Seção C com o GR (pergunta 2 refeita com exemplo).
+- **TAN**: "até 2,0 mgKOH/g (acima disso pode indicar problema)" → referência geral de **alerta**
+  (ATENÇÃO) em 2,0 mgKOH/g, sem crítico (`ensaios/0010`).
+- **Vibração por base**: o critério da base flexível **não** vale para a rígida. O responsável
+  técnico enviou as tabelas A.1 e A.2 da ISO 20816-3 com velocidade e **deslocamento**:
+
+  | Grupo / base | Velocidade A/B · B/C · C/D (mm/s RMS) | Deslocamento A/B · B/C · C/D (µm RMS) |
+  | --- | --- | --- |
+  | Grupo 1 rígida | 2,3 · 4,5 · 7,1 | 29 · 57 · 90 |
+  | Grupo 1 flexível | 3,5 · 7,1 · 11,0 | 45 · 90 · 140 |
+  | Grupo 2 rígida | 1,4 · 2,8 · 4,5 | 22 · 45 · 71 |
+  | Grupo 2 flexível | 2,3 · 4,5 · 7,1 | 37 · 71 · 113 |
+
+  Critérios com origem **Norma**, vigência a partir de 08/10/2026 (os de 07/10 ficam só nesse
+  dia). Novo `Equipamento.tipo_base` (rígida/flexível; no motor vem do datasheet), obrigatório
+  nos Grupos 1 e 2. **Sem a base informada, a análise usa a base rígida (a mais rigorosa) e avisa
+  no diagnóstico.** Critério ganhou `desloc_ab/bc/cd`; análise de campo ganhou "Global de
+  deslocamento (µm RMS)" (`Achado.deslocamento_global` → OSP `amplitude_deslocamento`); a zona é a
+  pior entre velocidade e deslocamento. A carta traz uma coluna por grupo e base e a tabela de
+  limites de deslocamento. A medição do fluxo antigo (`MedicaoVibracao.deslocamento_pp`) é
+  pico-a-pico e não é comparada com os limites RMS. Migrações `cadastros/0034–0035`,
+  `coletas/0011`, `osp/0009`.
+
+### 12.2 Base da viscosidade e cadastro do fluido (08/10/2026)
+
+O responsável técnico apontou que a base dos ±20% não pode depender do **texto** do grau
+(ISO VG, SAE, AGMA… — "não existe só ISO VG e SAE") e que toda ficha técnica traz a
+**viscosidade cinemática a 40 °C** (ASTM D445, cSt = mm²/s). Mudou:
+
+- A base da variação é o **valor do óleo novo** do cadastro do fluido
+  (`ReferenciaParametro.base_oleo_novo`, antes `base_grau_iso` — renomeado, sem perda de dado).
+  Vale para a viscosidade a 40 °C, a densidade a 15 °C e o índice de viscosidade. Fluido sem o
+  valor cadastrado (ou informado só por nome na coleta) fica sem classificação nesse parâmetro.
+- O grau virou só informativo, em qualquer classificação.
+- Cadastro do fluido (ficha técnica do fabricante): **densidade do óleo novo com a temperatura e o
+  método** (cada fabricante usa um: 15 °C/ASTM D4052, 20 °C/ASTM D1298…), **TBN** (ASTM D2896,
+  óleos de motor); sai do formulário a viscosidade a 100 °C (fica no banco só para os dados
+  antigos); o índice de viscosidade traz o método (ASTM D2270) e o aviso de que é adimensional.
+- Catálogo FQ: densidade com ASTM D4052; IV com ASTM D2270; TBN com ASTM D2896; **viscosidade a
+  100 °C desativada** na análise (não aparece no laudo nem na ficha; valores antigos ficam no banco).
+- A ficha mostra o valor do óleo novo na coluna Referência quando o parâmetro não tem referência
+  (ex.: "Óleo novo: 0,8870 · a 20 °C · ASTM D1298").
+- **Metas de limpeza ISO 4406 recomendadas** (09/10/2026): catálogo de consulta com a tabela por
+  máquina/componente enviada pelo responsável técnico (13 itens: Redutores 19/16/13, Servo-válvulas
+  14/12/10, Bomba de Engrenagens 19/17/14…). A referência ganhou o escopo **tipo de equipamento**
+  (prioridade: equipamento > tipo de equipamento > fluido > cliente > aplicação): cadastra-se a meta
+  uma vez por tipo, e o equipamento com meta própria prevalece. A observação automática do CP diz
+  quantas vezes há mais partículas que a meta (cada grau ≈ dobro: 3 graus ≈ 8×).
+- Ponto de fulgor (D92) e ponto de fluidez (D97): não entram (sem uso no resultado da amostra).
+
+Migrações `ensaios/0011` e `0012` (schema) e `0013` (catálogo e metas).
+
+### 12.3 Em aberto
+
+1. Preencher o **tipo de base** das máquinas dos Grupos 1 e 2 (no banco local, as 11 do Grupo 2
+   estão sem; até lá, valem os limites da base rígida).
+2. Confirmar que o deslocamento medido pelo coletor é **RMS** (as tabelas da norma são RMS).
+3. Confirmar a Seção C com o GR (pergunta 2 refeita com exemplo).
+4. Nível de "atenção" antes do crítico para viscosidade e água.

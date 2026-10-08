@@ -172,7 +172,7 @@ export function AchadoCampos({
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
             Vibração — valores globais
           </h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Global de aceleração (g)">
               <Input
                 type="number"
@@ -187,6 +187,14 @@ export function AchadoCampos({
                 inputMode="decimal"
                 value={form.velocidade_global}
                 onChange={(e) => set("velocidade_global", e.target.value)}
+              />
+            </Field>
+            <Field label="Global de deslocamento (µm RMS)" hint="Grupos 1 e 2 da ISO 20816-3">
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={form.deslocamento_global}
+                onChange={(e) => set("deslocamento_global", e.target.value)}
               />
             </Field>
           </div>

@@ -27,6 +27,7 @@ export type AchadoForm = {
   observacoes: string;
   aceleracao_global: string;
   velocidade_global: string;
+  deslocamento_global: string;
   temperatura_medida: string;
   temperatura_referencia: string;
   carga_percentual: string;
@@ -42,7 +43,7 @@ export type AchadoForm = {
 };
 
 const CAMPOS_NUMERICOS: (keyof AchadoForm)[] = [
-  "aceleracao_global", "velocidade_global", "temperatura_medida", "temperatura_referencia",
+  "aceleracao_global", "velocidade_global", "deslocamento_global", "temperatura_medida", "temperatura_referencia",
   "carga_percentual", "corrente_nominal", "corrente_a", "corrente_b", "corrente_c",
   "tensao_nominal", "tensao_a", "tensao_b", "tensao_c",
 ];
@@ -53,7 +54,7 @@ export function formVazio(): AchadoForm {
   return {
     tipo_componente: "", componente_texto: "", detalhe: "", tipo_anomalia: "",
     anomalia_texto: "", recomendacao: "", recomendacao_texto: "", observacoes: "",
-    aceleracao_global: "", velocidade_global: "", temperatura_medida: "",
+    aceleracao_global: "", velocidade_global: "", deslocamento_global: "", temperatura_medida: "",
     temperatura_referencia: "", carga_percentual: "", corrente_nominal: "",
     corrente_a: "", corrente_b: "", corrente_c: "", tensao_nominal: "",
     tensao_a: "", tensao_b: "", tensao_c: "", condicao: "",
@@ -74,6 +75,7 @@ export function formDeAchado(a: Achado): AchadoForm {
     observacoes: a.observacoes ?? "",
     aceleracao_global: s(a.aceleracao_global),
     velocidade_global: s(a.velocidade_global),
+    deslocamento_global: s(a.deslocamento_global),
     temperatura_medida: s(a.temperatura_medida),
     temperatura_referencia: s(a.temperatura_referencia),
     carga_percentual: s(a.carga_percentual),

@@ -89,9 +89,10 @@ class CadastroPorTipoTest(TestCase):
                                                           "tipo_base": "RIGIDA"}, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         eq = self.api.get(f"/api/equipamentos/{eq['id']}/").data
-        self.assertEqual(eq["classe_iso"], "G2")  # 100 kW: Grupo 2 da ISO 20816-3
+        self.assertEqual((eq["classe_iso"], eq["tipo_base"]), ("G2", "RIGIDA"))  # base vem do datasheet do motor
         self.assertEqual(eq["criterio_vibracao"]["norma"], "ISO 20816-3")
-        self.assertEqual(eq["criterio_vibracao"]["origem"], "RESPONSAVEL_TECNICO")
+        self.assertEqual((eq["criterio_vibracao"]["suporte"], eq["criterio_vibracao"]["limites"]["cd"]), ("RIGIDO", D("4.50")))
+        self.assertEqual(eq["criterio_vibracao"]["origem"], "NORMA")
 
     def test_tipo_sem_categoria_nao_ganha_datasheet_nem_pelo_nome(self):
         tipo = TipoEquipamento.objects.create(nome="Transformador seco")  # nome sugestivo, sem categoria
@@ -107,11 +108,22 @@ class CadastroPorTipoTest(TestCase):
         painel = self.criar(self.tipo_painel, "QGBT-1")
         self.assertFalse(painel["analise_vibracao"])
         self.assertEqual(painel["classe_iso"], "")
-        bomba = self.criar(self.tipo_bomba, "BBA-01", classe_iso="G2")
+        bomba = self.criar(self.tipo_bomba, "BBA-01", classe_iso="G2", tipo_base="FLEXIVEL")
         self.assertTrue(bomba["analise_vibracao"])
         self.assertEqual(bomba["classe_iso"], "G2")
         self.assertEqual(bomba["criterio_vibracao"]["limites"]["cd"], D("7.10"))
-        self.assertEqual(bomba["criterio_vibracao"]["origem"], "RESPONSAVEL_TECNICO")
+        self.assertEqual(bomba["criterio_vibracao"]["deslocamento"]["cd"], D("113.0"))
+        self.assertEqual(bomba["criterio_vibracao"]["origem"], "NORMA")
+
+    def test_grupos_1_e_2_exigem_o_tipo_de_base(self):
+        r = self.api.post("/api/equipamentos/", {"setor": self.setor.id, "tag": "BBA-05", "nome": "Bomba",
+                                                  "tipo_equipamento": self.tipo_bomba.id, "classe_iso": "G1"},
+                          format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("tipo_base", r.data)
+        rigida = self.criar(self.tipo_bomba, "BBA-06", classe_iso="G1", tipo_base="RIGIDA")
+        self.assertEqual(rigida["criterio_vibracao"]["limites"]["cd"], D("7.10"))  # flexível seria 11,0
+        self.assertEqual(rigida["criterio_vibracao"]["deslocamento"]["cd"], D("90.0"))
 
     def test_maquina_avaliada_por_vibracao_sempre_tem_grupo(self):
         # "Não existe equipamento sem classe definida" (responsável técnico, 07/10/2026).
@@ -171,25 +183,56 @@ class CadastroPorTipoTest(TestCase):
         antes, depois = date(2026, 9, 30), date(2026, 10, 7)
         for classe in ("I", "II", "III", "IV"):
             self.assertEqual(criterios.faixas_vigentes(classe, antes), rules_vibracao.FAIXAS_ISO_VRMS[classe], classe)
-        # A partir de 07/10/2026: Classe I + Grupos 2 e 1 da ISO 20816-3; II–IV encerradas.
-        for classe in ("I", "G2", "G1"):
-            self.assertEqual(criterios.faixas_vigentes(classe, depois), rules_vibracao.FAIXAS_ISO_VRMS[classe], classe)
+        # Em 07/10/2026: Classe I + Grupos 2 e 1 (coluna flexível para qualquer base); II–IV encerradas.
+        self.assertEqual(criterios.faixas_vigentes("I", depois), rules_vibracao.FAIXAS_ISO_VRMS["I"])
         for classe in ("II", "III", "IV"):
             self.assertIsNone(criterios.criterio_vigente(classe, depois), classe)
         g2, g1 = (criterios.criterio_vigente(c, depois) for c in ("G2", "G1"))
-        self.assertEqual((g2.limite_cd, g1.limite_cd), (D("7.10"), D("11.00")))  # os críticos informados
+        self.assertEqual((g2.limite_cd, g1.limite_cd), (D("7.10"), D("11.00")))
         self.assertEqual((g2.norma_codigo, g2.norma_edicao, g2.origem), ("ISO 20816-3", "2022", "RESPONSAVEL_TECNICO"))
         self.assertIn("07/10/2026", g2.fonte)
+        # A partir de 08/10/2026: as tabelas A.1/A.2 da norma, por base, com o deslocamento.
+        dia = date(2026, 10, 8)
+        esperado = {
+            ("G1", "RIGIDO"): ((D("2.30"), D("4.50"), D("7.10")), (D("29"), D("57"), D("90"))),
+            ("G1", "FLEXIVEL"): ((D("3.50"), D("7.10"), D("11.00")), (D("45"), D("90"), D("140"))),
+            ("G2", "RIGIDO"): ((D("1.40"), D("2.80"), D("4.50")), (D("22"), D("45"), D("71"))),
+            ("G2", "FLEXIVEL"): ((D("2.30"), D("4.50"), D("7.10")), (D("37"), D("71"), D("113"))),
+        }
+        for (classe, suporte), (vel, desl) in esperado.items():
+            c = criterios.criterio_vigente(classe, dia, suporte=suporte)
+            self.assertEqual(((c.limite_ab, c.limite_bc, c.limite_cd), (c.desloc_ab, c.desloc_bc, c.desloc_cd)),
+                             (vel, desl), (classe, suporte))
+            self.assertEqual(c.origem, "NORMA")
+        # Sem o tipo de base: a coluna rígida (a mais rigorosa), com aviso no diagnóstico.
+        self.assertEqual(criterios.criterio_vigente("G2", dia).suporte, "RIGIDO")
+        self.assertEqual(criterios.faixas_vigentes("G1", dia)["C"], rules_vibracao.FAIXAS_ISO_VRMS["G1"]["C"])
+        self.assertTrue(criterios.aviso_de_base("G2", None))
+        self.assertFalse(criterios.aviso_de_base("G2", "FLEXIVEL"))
+        self.assertFalse(criterios.aviso_de_base("I", None))
+
+    def test_zona_e_a_pior_entre_velocidade_e_deslocamento(self):
+        faixas = criterios.faixas_vigentes("G2", date(2026, 10, 8), suporte="FLEXIVEL")
+        r = rules_vibracao.classificar_vibracao("G2", D("3.0"), faixas=faixas)
+        self.assertEqual(r.zona_iso, "B")
+        r = rules_vibracao.classificar_vibracao("G2", D("3.0"), faixas=faixas, deslocamento=D("120"))
+        self.assertEqual((r.zona_iso, r.criticidade), ("D", "CRITICO"))  # 120 µm > 113 µm
+        self.assertIn("Deslocamento 120 µm na zona D", r.diagnostico)
 
     def test_tabela_da_carta_por_data(self):
         antes = criterios.tabela_severidade(date(2026, 9, 30))
         self.assertEqual([c["classe"] for c in antes], ["I", "II", "III", "IV"])
-        depois = criterios.tabela_severidade(date(2026, 10, 7))
-        self.assertEqual([(c["classe"], c["rotulo"]) for c in depois],
+        dia_7 = criterios.tabela_severidade(date(2026, 10, 7))
+        self.assertEqual([(c["classe"], c["rotulo"]) for c in dia_7],
                          [("I", "Classe I"), ("G2", "Grupo 2"), ("G1", "Grupo 1")])
-        notas = criterios.notas_tabela_severidade(depois)
+        notas = criterios.notas_tabela_severidade(dia_7)
         self.assertEqual(len(notas), 2)  # os grupos: critério do responsável técnico, com a fonte
         self.assertTrue(notas[0].startswith("Grupo 2: critério do responsável técnico — ISO 20816-3:2022"))
+        depois = criterios.tabela_severidade(date(2026, 10, 8))
+        self.assertEqual([c["rotulo"] for c in depois],
+                         ["Classe I", "Grupo 2 · base rígida", "Grupo 2 · base flexível",
+                          "Grupo 1 · base rígida", "Grupo 1 · base flexível"])
+        self.assertEqual(criterios.notas_tabela_severidade(depois), [])  # valores publicados pela norma
 
     def test_migracao_reclassifica_pela_potencia(self):
         migracao = importlib.import_module("apps.cadastros.migrations.0033_criterios_iso_20816")

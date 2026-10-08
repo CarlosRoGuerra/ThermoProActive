@@ -145,15 +145,18 @@ class RelatorioTecnicoModularTest(TestCase):
         rel = self.relatorio(ModuloTecnico.VIBRACAO)
         Relatorio.objects.filter(pk=rel.pk).update(data_termino=date(2026, 10, 31))
         carta = self.dossie(rel)["carta"]
-        self.assertEqual([(c["classe"], c["rotulo"], c["norma"]) for c in carta["tabela_severidade"]],
-                         [("I", "Classe I", "ISO 10816-1"), ("G2", "Grupo 2", "ISO 20816-3"),
-                          ("G1", "Grupo 1", "ISO 20816-3")])
-        self.assertTrue(all("responsável técnico" in n for n in carta["notas_severidade"]))
+        self.assertEqual([(c["classe"], c["suporte"], c["norma"]) for c in carta["tabela_severidade"]],
+                         [("I", "", "ISO 10816-1"), ("G2", "RIGIDO", "ISO 20816-3"), ("G2", "FLEXIVEL", "ISO 20816-3"),
+                          ("G1", "RIGIDO", "ISO 20816-3"), ("G1", "FLEXIVEL", "ISO 20816-3")])
+        self.assertEqual(carta["notas_severidade"], [])  # tabelas da norma: nada a explicar
         xml = self.carta_xml(rel)
         self.assertIn("Norma ISO-10816-1 / ISO-20816-3", xml)
         self.assertIn("Grupos de Máquina", xml)
-        self.assertIn("Grupo 2", xml)
-        self.assertIn("11.00", xml)  # linha extra da escala: o limite crítico do Grupo 1
+        self.assertIn("Base rígida", xml)
+        self.assertIn("1.40", xml)   # linhas extras da escala: os limites dos grupos
+        self.assertIn("11.00", xml)
+        self.assertIn("Deslocamento [µm] RMS", xml)
+        self.assertIn("&gt; 140", xml)  # Grupo 1, base flexível, zona D
         self.assertNotIn("Classe II", xml)
 
     def test_criterio_do_cliente_prevalece_e_nao_vaza_para_outro_cliente(self):

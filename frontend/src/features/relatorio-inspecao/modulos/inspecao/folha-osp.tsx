@@ -49,7 +49,7 @@ const numeroOsp = (v: string) => {
 function temConteudoOsp(o: OspD) {
   const campos = [
     o.componente, o.anomalia, o.recomendacao, o.observacao,
-    o.amplitude_velocidade, o.amplitude_aceleracao,
+    o.amplitude_velocidade, o.amplitude_aceleracao, o.amplitude_deslocamento,
     o.temperatura_medida, o.temperatura_referencia, o.delta_t, o.carga_percentual,
   ];
   // A foto é EVIDÊNCIA de uma OSP, não motivo para criar uma OSP — por isso

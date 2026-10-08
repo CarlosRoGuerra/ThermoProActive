@@ -177,8 +177,11 @@ class CatalogoFluidosTest(CenarioFluidos, TestCase):
         # As únicas referências da carga são as gerais do responsável técnico (07/10/2026), com fonte.
         refs = ReferenciaParametro.objects.select_related("parametro")
         self.assertEqual({(r.parametro.codigo, r.origem) for r in refs},
-                         {("VISC40", "RESPONSAVEL_TECNICO"), ("AGUA", "RESPONSAVEL_TECNICO")})
-        self.assertTrue(all(r.fonte and r.cliente_id is None and r.limite_alerta is None for r in refs))
+                         {("VISC40", "RESPONSAVEL_TECNICO"), ("AGUA", "RESPONSAVEL_TECNICO"),
+                          ("TAN", "RESPONSAVEL_TECNICO")})
+        self.assertTrue(all(r.fonte and r.cliente_id is None for r in refs))
+        tan = next(r for r in refs if r.parametro.codigo == "TAN")
+        self.assertEqual((tan.tipo, tan.limite_alerta, tan.limite_critico), ("MAXIMO", D("2.0"), None))
 
     def test_fq_do_oleo_isolante_continua_separado(self):
         self.assertTrue(Ensaio.objects.filter(modulo=ModuloTecnico.OLEO_ISOLANTE, sigla="FQ").exists())
@@ -435,8 +438,8 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         self.assertIn("Ferro: 58,0 ppm, em alerta (referência: Alerta > 50,0 · Crítico > 150,0 ppm)",
                       ef["observacoes_geradas"][0])
         cp = uh["ensaios"][2]
-        self.assertIn("Código de limpeza ISO 4406 19/17/14 acima da meta 17/15/12 em 2 graus",
-                      cp["observacoes_geradas"][-1])
+        self.assertIn("Código de limpeza ISO 4406 19/17/14 acima da meta 17/15/12 em 2 graus "
+                      "(cerca de 4× mais partículas que a meta)", cp["observacoes_geradas"][-1])
 
     def test_graficos_gerenciais(self):
         g = self.dossie()["graficos"]
@@ -465,13 +468,28 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         tipos = [i["tipo"] for i in self.dossie()["cabecalho"]["instrumentos"]]
         self.assertEqual(tipos, ["LF01 - Laboratório de Fluídos"])
 
-    def test_viscosidade_pelo_grau_iso_vg_da_amostra(self):
+    def test_viscosidade_pela_ficha_tecnica_do_oleo_novo(self):
+        # A base é a viscosidade a 40 °C do óleo novo cadastrada no fluido (ASTM D445), não o texto do grau.
+        ProdutoFluido.objects.filter(pk=self.produto.pk).update(
+            grau_viscosidade="SAE 40", densidade_g_cm3=D("0.887"), densidade_temperatura_c=D("20"),
+            densidade_metodo="ASTM D1298")
         red = self.dossie()["amostras"][0]
         visc = next(x for x in red["ensaios"][0]["linhas"] if x["codigo"] == "VISC40")
-        self.assertEqual(visc["referencia"]["valor_base"], D("220"))  # ISO VG 220 do fluido cadastrado
-        self.assertTrue(visc["referencia"]["base_grau_iso"])
-        self.assertEqual(visc["referencia"]["texto"], "Base grau ISO VG (220,00 cSt) · Crítico ±20%")
+        self.assertEqual(visc["referencia"]["valor_base"], D("220"))
+        self.assertTrue(visc["referencia"]["base_oleo_novo"])
+        self.assertEqual(visc["referencia"]["texto"], "Base óleo novo (220,00 cSt) · Crítico ±20%")
+        dens = next(x for x in red["ensaios"][0]["linhas"] if x["codigo"] == "DENSIDADE")
+        self.assertEqual((dens["norma"], dens["oleo_novo"]), ("ASTM D4052", D("0.887")))
+        # A densidade do óleo novo vai com a temperatura e o método da ficha técnica do fabricante.
+        self.assertEqual(dens["oleo_novo_texto"], "Óleo novo: 0,8870 · a 20 °C · ASTM D1298")
         self.assertEqual((visc["status"], visc["variacao_pct"]), ("ROTINA", D("-3.5")))
+        # Sem a viscosidade do óleo novo no cadastro, não há base: a viscosidade fica sem classificação.
+        ProdutoFluido.objects.filter(pk=self.produto.pk).update(viscosidade_40c_cst=None)
+        visc = next(x for x in self.dossie()["amostras"][0]["ensaios"][0]["linhas"] if x["codigo"] == "VISC40")
+        self.assertEqual((visc["status"], visc["referencia"]["texto"]),
+                         (None, "Base óleo novo (não cadastrada no fluido) · Crítico ±20%"))
+        tan = next(x for x in red["ensaios"][0]["linhas"] if x["codigo"] == "TAN")
+        self.assertEqual((tan["referencia"]["texto"], tan["status"]), ("Alerta > 2,00 mgKOH/g", "ROTINA"))
 
     def test_envio_do_mes_so_com_os_desvios(self):
         d = self.dossie()
@@ -504,6 +522,22 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         self.assertEqual([c["data"] for c in cp_set["campanhas"]], [date(2026, 3, 1), date(2026, 9, 1)])
         self.assertEqual([c["data"] for c in cp_out["campanhas"]], [date(2026, 3, 1), date(2026, 9, 1), date(2026, 10, 1)])
         self.assertEqual([c["data_coleta"] for c in self.dossie()["envios_mensais"]], [date(2026, 9, 1), date(2026, 10, 1)])
+
+    def test_meta_de_limpeza_por_tipo_de_equipamento(self):
+        # Meta recomendada para o tipo (ex.: a tabela de metas por máquina); a do equipamento prevalece.
+        tipo = self.uh.tipo_equipamento
+        ReferenciaParametro.objects.filter(parametro=self.param[("CP", "ISO4406")]).delete()
+        ReferenciaParametro.objects.create(parametro=self.param[("CP", "ISO4406")], tipo_equipamento=tipo,
+                                           tipo="CODIGO_ISO", referencia_texto="19/16/13", limite_alerta=1,
+                                           origem="NORMA", fonte="Metas recomendadas")
+        cp = self.dossie()["amostras"][1]["ensaios"][2]
+        self.assertEqual((cp["meta"]["referencia_texto"], cp["meta"]["escopo"]), ("19/16/13", "Tipo de equipamento"))
+        self.assertEqual((cp["situacao_meta"], cp["excesso_meta"]), ("FORA", 1))  # 19/17/14
+        ReferenciaParametro.objects.create(parametro=self.param[("CP", "ISO4406")], equipamento=self.uh,
+                                           tipo="CODIGO_ISO", referencia_texto="20/18/15",
+                                           origem="FABRICANTE_EQUIPAMENTO", fonte="Manual da UH")
+        cp = self.dossie()["amostras"][1]["ensaios"][2]
+        self.assertEqual((cp["meta"]["escopo"], cp["situacao_meta"]), ("Equipamento", "DENTRO"))
 
     def test_historico_por_equipamento(self):
         r = self.api.get(f"/api/fluidos-historico/?equipamento={self.uh.id}")
@@ -605,17 +639,29 @@ class GrauDeRiscoTest(SimpleTestCase):
         self.assertEqual(osp["GR-4"], [0, 0, 0, 0])
 
 
-class GrauIsoVgTest(SimpleTestCase):
-    def test_le_o_grau_iso_vg(self):
-        for texto, esperado in (("ISO VG 68", D("68")), ("VG 46", D("46")), ("ISO 220", D("220")), ("32", D("32")),
-                                ("iso vg 1,5", D("1.5"))):
-            self.assertEqual(cf.grau_iso_vg(texto), esperado, texto)
-        for texto in ("SAE 40", "", None, "ISO VG"):
-            self.assertIsNone(cf.grau_iso_vg(texto), texto)
-
-
 class CatalogoDoModeloTest(TestCase):
     """O que veio do relatório-modelo do laboratório (migração 0007)."""
+
+    def test_viscosidade_a_100_fora_da_analise(self):
+        fq = Ensaio.objects.get(modulo=FLUIDO, sigla="FQ")
+        self.assertFalse(ParametroEnsaio.objects.get(ensaio=fq, codigo="VISC100").ativo)
+        self.assertEqual(ParametroEnsaio.objects.get(ensaio=fq, codigo="IV").norma, "ASTM D2270")
+        api = APIClient()
+        api.force_authenticate(User.objects.create_user(email="v@thermo.com", nome="V", perfil="TECNICO"))
+        codigos = [p["codigo"] for e in api.get("/api/ensaios/?modulo=FLUIDO_LUBRIFICANTE").data["results"]
+                   if e["sigla"] == "FQ" for p in e["parametros"]]
+        self.assertNotIn("VISC100", codigos)
+        self.assertIn("DENSIDADE", codigos)
+
+    def test_metas_de_limpeza_recomendadas_da_tabela(self):
+        from .models import MetaLimpezaRecomendada
+
+        metas = dict(MetaLimpezaRecomendada.objects.values_list("nome", "codigo"))
+        self.assertEqual(len(metas), 13)
+        self.assertEqual((metas["Redutores"], metas["Servo-válvulas"], metas["Bomba de Engrenagens"]),
+                         ("19/16/13", "14/12/10", "19/17/14"))
+        tbn = ParametroEnsaio.objects.get(ensaio__modulo=FLUIDO, codigo="TBN")
+        self.assertEqual(tbn.norma, "ASTM D2896")
 
     def test_tbn_depois_do_tan_e_norma_dos_insoluveis(self):
         fq = [p.codigo for p in ParametroEnsaio.objects.filter(ensaio__modulo=FLUIDO, ensaio__sigla="FQ").order_by("ordem")]

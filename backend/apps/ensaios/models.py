@@ -323,17 +323,52 @@ class ProdutoFluido(Catalogo):
 
     fabricante = models.CharField("Fabricante", max_length=80, blank=True)
     aplicacao = models.CharField("Aplicação", max_length=15, choices=AplicacaoFluido.choices, blank=True)
-    grau_viscosidade = models.CharField("Grau de viscosidade", max_length=20, blank=True, help_text="Ex.: ISO VG 46")
-    viscosidade_40c_cst = models.DecimalField("Viscosidade a 40 °C do óleo novo (cSt)", max_digits=8,
-                                              decimal_places=2, null=True, blank=True)
+    grau_viscosidade = models.CharField(
+        "Grau / classificação de viscosidade", max_length=20, blank=True,
+        help_text="Só informativo, em qualquer classificação: ISO VG 46, SAE 40, AGMA 4…",
+    )
+    # Valores da ficha técnica do fabricante (óleo novo). A viscosidade a 40 °C é a base
+    # da variação da viscosidade das amostras (critério do responsável técnico).
+    viscosidade_40c_cst = models.DecimalField(
+        "Viscosidade cinemática a 40 °C do óleo novo (cSt = mm²/s) — ASTM D445", max_digits=8, decimal_places=2,
+        null=True, blank=True, help_text="Da ficha técnica do fabricante. É a base da variação da viscosidade.",
+    )
+    # Cada fabricante informa a densidade numa temperatura (15 °C pela ASTM D4052, 20 °C pela
+    # ASTM D1298…): o valor vai com a temperatura e o método da ficha técnica.
+    densidade_g_cm3 = models.DecimalField("Densidade do óleo novo (g/cm³)", max_digits=6, decimal_places=4,
+                                          null=True, blank=True)
+    densidade_temperatura_c = models.DecimalField("Temperatura da densidade (°C)", max_digits=4, decimal_places=1,
+                                                  null=True, blank=True, help_text="Ex.: 15 (ASTM D4052) ou 20 (ASTM D1298).")
+    densidade_metodo = models.CharField("Método da densidade", max_length=30, blank=True,
+                                        help_text="Ex.: ASTM D4052, ASTM D1298.")
+    tbn_mgkoh_g = models.DecimalField("TBN do óleo novo (mgKOH/g) — ASTM D2896", max_digits=6, decimal_places=2,
+                                      null=True, blank=True, help_text="Óleos de motor. Base do acompanhamento do TBN.")
+    indice_viscosidade = models.DecimalField(
+        "Índice de viscosidade do óleo novo — ASTM D2270", max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Número adimensional (ex.: 100). Não é a viscosidade.",
+    )
+    # Não usada na análise (responsável técnico, 08/10/2026): fica só para os dados já gravados.
     viscosidade_100c_cst = models.DecimalField("Viscosidade a 100 °C do óleo novo (cSt)", max_digits=8,
                                                decimal_places=2, null=True, blank=True)
-    indice_viscosidade = models.DecimalField("Índice de viscosidade", max_digits=6, decimal_places=1,
-                                             null=True, blank=True)
 
     class Meta(Catalogo.Meta):
         verbose_name = "Produto lubrificante / hidráulico"
         verbose_name_plural = "Produtos lubrificantes / hidráulicos"
+
+
+class MetaLimpezaRecomendada(Catalogo):
+    """
+    Meta de limpeza ISO 4406 recomendada por máquina/componente (tabela de referência do
+    responsável técnico). É consulta e ponto de partida: a meta que a análise usa é a
+    cadastrada em "Referências dos parâmetros" (por equipamento, tipo de equipamento…).
+    """
+
+    codigo = models.CharField("Código ISO 4406 recomendado", max_length=12, help_text="X/Y/Z, ex.: 18/16/13")
+    fonte = models.CharField("Fonte", max_length=250, blank=True)
+
+    class Meta(Catalogo.Meta):
+        verbose_name = "Meta de limpeza ISO 4406 recomendada"
+        verbose_name_plural = "Metas de limpeza ISO 4406 recomendadas"
 
 
 class CondicaoOperacionalColeta(models.TextChoices):
@@ -443,6 +478,9 @@ class ReferenciaParametro(BaseModel):
     # Escopo
     cliente = models.ForeignKey("cadastros.Cliente", on_delete=models.CASCADE, null=True, blank=True,
                                 related_name="referencias_fluido")
+    tipo_equipamento = models.ForeignKey("cadastros.TipoEquipamento", on_delete=models.CASCADE, null=True,
+                                         blank=True, related_name="referencias_fluido",
+                                         verbose_name="Só para o tipo de equipamento")
     equipamento = models.ForeignKey("cadastros.Equipamento", on_delete=models.CASCADE, null=True, blank=True,
                                     related_name="referencias_fluido")
     produto = models.ForeignKey(ProdutoFluido, on_delete=models.CASCADE, null=True, blank=True,
@@ -452,10 +490,10 @@ class ReferenciaParametro(BaseModel):
     tipo = models.CharField("Tipo", max_length=12, choices=TipoReferencia.choices)
     valor_base = models.DecimalField("Valor de base", max_digits=14, decimal_places=4, null=True, blank=True,
                                      help_text="Óleo novo/nominal, para referência do tipo Variação.")
-    base_grau_iso = models.BooleanField(
-        "Base = grau ISO VG do fluido da amostra", default=False,
-        help_text="Na Variação da viscosidade a 40 °C: a base é o grau ISO VG do fluido da coleta "
-                  "(ISO VG 68 → 68 cSt), em vez de um valor fixo.",
+    base_oleo_novo = models.BooleanField(
+        "Base = valor do óleo novo (cadastro do fluido)", default=False,
+        help_text="Na Variação: a base é o valor do óleo novo do fluido da coleta (viscosidade a 40 °C, densidade, "
+                  "índice de viscosidade ou TBN, da ficha técnica), em vez de um valor fixo.",
     )
     limite_alerta = models.DecimalField("Limite de alerta", max_digits=14, decimal_places=4, null=True, blank=True,
                                         help_text="Na Variação, em %; na meta ISO, graus de código acima da meta.")

@@ -79,12 +79,13 @@ type Form = {
   numero_patrimonio: string;
   ano_fabricacao: string;
   classe_iso: string;
+  tipo_base: string;
   criticidade: string;
 };
 
 const FORM_VAZIO: Form = {
   tag: "", nome: "", tipo_equipamento: "", fabricante: "", modelo: "", numero_serie: "",
-  numero_patrimonio: "", ano_fabricacao: "", classe_iso: "", criticidade: "",
+  numero_patrimonio: "", ano_fabricacao: "", classe_iso: "", tipo_base: "", criticidade: "",
 };
 
 /** Valores de placa que ficaram em colunas genéricas do equipamento (cadastro anterior). */
@@ -199,7 +200,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   async function recarregarEquipamento() {
     if (!editando) return;
     const e = await api<Equipamento>(`/equipamentos/${equipamentoId}/`);
-    setForm((f) => ({ ...f, classe_iso: e.classe_iso || "" }));
+    setForm((f) => ({ ...f, classe_iso: e.classe_iso || "", tipo_base: e.tipo_base || "" }));
     aplicarDatasheets(e);
   }
 
@@ -218,6 +219,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
           numero_patrimonio: e.numero_patrimonio ?? "",
           ano_fabricacao: e.ano_fabricacao ? String(e.ano_fabricacao) : "",
           classe_iso: e.classe_iso || "",
+          tipo_base: e.tipo_base || "",
           criticidade: e.criticidade ?? "",
         });
         aplicarDatasheets(e);
@@ -261,7 +263,10 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         ano_fabricacao: form.ano_fabricacao === "" ? null : Number(form.ano_fabricacao),
         criticidade: form.criticidade,
       };
-      if (avaliaVibracao && categoria !== "MOTOR_ELETRICO") body.classe_iso = form.classe_iso;
+      if (avaliaVibracao && categoria !== "MOTOR_ELETRICO") {
+        body.classe_iso = form.classe_iso;
+        body.tipo_base = form.tipo_base;
+      }
 
       const gravado = editando
         ? await api<Equipamento>(`/equipamentos/${equipamentoId}/`, { method: "PATCH", body })
@@ -311,7 +316,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
       ] satisfies [string, string][]).filter(([, v]) => v !== "")
     : [];
   const criterioSalvo =
-    salvo?.criterio_vibracao && salvo.classe_iso === form.classe_iso ? salvo.criterio_vibracao : null;
+    salvo?.criterio_vibracao && salvo.classe_iso === form.classe_iso && (salvo.tipo_base || "") === form.tipo_base
+      ? salvo.criterio_vibracao : null;
 
   return (
     <PageBody>
@@ -557,6 +563,22 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
                 )}
               </Select>
             </Field>
+            {(form.classe_iso === "G1" || form.classe_iso === "G2") && (
+              <Field
+                label={categoria === "MOTOR_ELETRICO" ? "Tipo de base (dos dados do motor)" : "Tipo de base (fundação)"}
+                hint="Nos Grupos 1 e 2 a base rígida tem limites mais rigorosos (ISO 20816-3)."
+              >
+                <Select
+                  value={form.tipo_base}
+                  disabled={categoria === "MOTOR_ELETRICO"}
+                  onChange={(e) => set("tipo_base", e.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  <option value="RIGIDA">Rígida</option>
+                  <option value="FLEXIVEL">Flexível</option>
+                </Select>
+              </Field>
+            )}
             {criterioSalvo ? (
               <CriterioAplicado criterio={criterioSalvo} />
             ) : (

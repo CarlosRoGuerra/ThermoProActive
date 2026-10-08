@@ -47,6 +47,20 @@ CABECALHO_CLASSES = {
     "I": ("Classe I", "até 15 kW"), "G2": ("Grupo 2", "15 a 300 kW"), "G1": ("Grupo 1", "> 300 kW"),
     "II": ("Classe II", "15 a 75 kW"), "III": ("Classe III", "Rígida · > 75 kW"), "IV": ("Classe IV", "Flexível · > 75 kW"),
 }
+BASE_CABECALHO = {"RIGIDO": "Base rígida", "FLEXIVEL": "Base flexível"}
+ORDEM_SUPORTE = {"": 0, "RIGIDO": 1, "FLEXIVEL": 2}
+
+
+def colunas_severidade(linhas):
+    """Uma coluna por grupo e, nos grupos da ISO 20816-3, por tipo de base: (chave, título, subtítulo, critério)."""
+    colunas = []
+    for c in sorted(linhas, key=lambda c: (ORDEM_CLASSES.index(c["classe"]) if c["classe"] in ORDEM_CLASSES else 99,
+                                          ORDEM_SUPORTE.get(c.get("suporte", ""), 9))):
+        titulo, sub = CABECALHO_CLASSES.get(c["classe"], (c.get("rotulo", c["classe"]), ""))
+        if c.get("suporte"):
+            sub = f"{BASE_CABECALHO[c['suporte']]} · {sub}"
+        colunas.append((f"{c['classe']}|{c.get('suporte', '')}", titulo, sub, c))
+    return colunas
 
 
 def grade_severidade(linhas):
@@ -385,17 +399,16 @@ def _tabela_iso(doc, rel):
     from apps.cadastros.criterios import notas_tabela_severidade, tabela_severidade
 
     linhas = tabela_severidade(rel.data_termino, rel.cliente_id)
-    zonas = {c["classe"]: tuple(float(c["limites"][k]) for k in ("ab", "bc", "cd")) for c in linhas}
-    classes = [c for c in ORDEM_CLASSES if c in zonas]
+    colunas = colunas_severidade(linhas)
+    classes = {c["classe"] for c in linhas}
     norma = " / ".join(dict.fromkeys(c["norma"].replace(" ", "-") for c in linhas)) or "ISO-10816-1"
-    cab = CABECALHO_CLASSES
     # A tabela começa em página nova: garante que ela caiba INTEIRA numa folha
     # (o Word ignora keepNext em linhas de tabela; a quebra-antes é o método seguro).
     quebra = doc.add_paragraph()
     quebra.paragraph_format.page_break_before = True
     quebra.paragraph_format.space_after = Pt(0)
     quebra.paragraph_format.space_before = Pt(0)
-    tab = doc.add_table(rows=2, cols=2 + len(classes))
+    tab = doc.add_table(rows=2, cols=2 + len(colunas))
     tab.style = "Table Grid"
     tab.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -409,26 +422,52 @@ def _tabela_iso(doc, rel):
     # Título (linha mesclada) + subcabeçalho.
     top = tab.rows[0].cells
     top[0].merge(top[-1])
-    termo = "Grupos" if {"G1", "G2"} & set(classes) else "Classes"
+    termo = "Grupos" if {"G1", "G2"} & classes else "Classes"
     _cell(top[0], f"Norma {norma} — Severidade · Faixas de Velocidade e {termo} de Máquina",
           bold=True, size=10, color=VERMELHO)
     hdr = tab.rows[1].cells
     _cell(hdr[0], "V [mm/s] RMS", fill="F1F5F9")
     _cell(hdr[1], "V [in/s] Pico", fill="F1F5F9")
-    for i, cl in enumerate(classes):
-        _cell(hdr[2 + i], f"{cab[cl][0]}\n{cab[cl][1]}", fill="F1F5F9")
+    for i, (_, titulo, sub, _c) in enumerate(colunas):
+        _cell(hdr[2 + i], f"{titulo}\n{sub}", fill="F1F5F9")
 
     for mm, pol in grade_severidade(linhas):
         row = tab.add_row().cells
         _cell(row[0], f"{mm:.2f}", bold=True)
         _cell(row[1], f"{pol:.2f}", bold=True)
-        for i, cl in enumerate(classes):
-            txt, fill, fg = _sev(mm, zonas[cl])
+        for i, (_, _t, _s, c) in enumerate(colunas):
+            txt, fill, fg = _sev(mm, tuple(float(c["limites"][k]) for k in ("ab", "bc", "cd")))
             _cell(row[2 + i], txt, bold=True, color=fg, fill=fill)
 
     # Reforço: nenhuma LINHA da tabela pode ser dividida entre páginas.
     for row in tab.rows:
         _cant_split(row)
+
+    # Deslocamento (µm RMS): limites de zona dos grupos que a norma publica (ISO 20816-3).
+    com_desloc = [col for col in colunas if col[3].get("deslocamento")]
+    if com_desloc:
+        _p(doc, "", size=4)
+        td = doc.add_table(rows=2, cols=1 + len(com_desloc))
+        td.style = "Table Grid"
+        td.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        topo = td.rows[0].cells
+        topo[0].merge(topo[-1])
+        _cell(topo[0], "Deslocamento [µm] RMS — Limites de Zona", bold=True, size=10, color=VERMELHO)
+        cab_d = td.rows[1].cells
+        _cell(cab_d[0], "Zona", fill="F1F5F9")
+        for i, (_, titulo, sub, _c) in enumerate(com_desloc):
+            _cell(cab_d[1 + i], f"{titulo}\n{sub}", fill="F1F5F9")
+        for z, (nome, fill, fg) in enumerate(_SEV):
+            row = td.add_row().cells
+            _cell(row[0], f"{'ABCD'[z]} — {nome}", bold=True, color=fg, fill=fill)
+            for i, (_, _t, _s, c) in enumerate(com_desloc):
+                d = c["deslocamento"]
+                limites = [float(d["ab"]), float(d["bc"]), float(d["cd"])]
+                faixa = (f"< {limites[0]:g}" if z == 0 else f"> {limites[2]:g}" if z == 3
+                         else f"{limites[z - 1]:g} – {limites[z]:g}")
+                _cell(row[1 + i], faixa.replace(".", ","), bold=True)
+        for row in td.rows:
+            _cant_split(row)
 
     # Limite que não é da norma sai identificado, nunca como valor oficial.
     for nota in notas_tabela_severidade(linhas):

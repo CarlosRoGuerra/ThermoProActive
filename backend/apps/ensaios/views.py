@@ -15,6 +15,7 @@ from .models import (
     ColetaOleo,
     Ensaio,
     ItemChecklistVisual,
+    MetaLimpezaRecomendada,
     ParametroEnsaio,
     PontoColeta,
     ProdutoFluido,
@@ -30,6 +31,7 @@ from .serializers import (
     EnsaioSerializer,
     FluidoInspecaoSerializer,
     ItemChecklistVisualSerializer,
+    MetaLimpezaRecomendadaSerializer,
     ParametroEnsaioSerializer,
     PontoColetaSerializer,
     ProdutoFluidoSerializer,
@@ -74,6 +76,14 @@ class ParametroEnsaioViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ParametroEnsaioSerializer
     pagination_class = CatalogoPagination
     filterset_fields = ["ensaio", "ensaio__modulo", "calculado"]
+
+
+class MetaLimpezaRecomendadaViewSet(CatalogoViewSet):
+    """Metas de limpeza ISO 4406 recomendadas por máquina/componente (consulta para cadastrar a meta)."""
+
+    queryset = MetaLimpezaRecomendada.objects.ativos()
+    serializer_class = MetaLimpezaRecomendadaSerializer
+    search_fields = ["nome", "codigo"]
 
 
 class ProdutoFluidoViewSet(CatalogoViewSet):

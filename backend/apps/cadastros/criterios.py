@@ -6,9 +6,15 @@ O equipamento só informa o grupo (`Equipamento.classe_iso`); os limites vêm de
 escolha, entre os registros ativos do grupo e em vigor na data:
 
   1. do próprio cliente antes dos que valem para todos;
-  2. acordo com o cliente, depois o critério do responsável técnico, depois a
+  2. o do suporte da máquina (base rígida/flexível) antes do que vale para qualquer
+     suporte — nos Grupos 1 e 2 da ISO 20816-3 a base muda os limites. Máquina sem
+     o tipo de base informado é avaliada pela base RÍGIDA (a coluna mais rigorosa);
+  3. acordo com o cliente, depois o critério do responsável técnico, depois a
      norma e por último o legado;
-  3. a vigência mais recente.
+  4. a vigência mais recente.
+
+O critério pode trazer também os limites de deslocamento (µm RMS), quando a norma
+do grupo publica (ISO 20816-3).
 
 Sem nenhum registro (banco sem a carga inicial, testes de função pura), vale
 `apps.coletas.rules.FAIXAS_ISO_VRMS` — os mesmos números da carga inicial.
@@ -17,7 +23,7 @@ from datetime import date
 
 from django.db.models import Q
 
-from .models import ClasseISO, CriterioSeveridadeVibracao, OrigemCriterio
+from .models import ClasseISO, CriterioSeveridadeVibracao, OrigemCriterio, TipoSuporte
 
 PRIORIDADE_ORIGEM = {
     OrigemCriterio.ACORDO_CLIENTE: 0, OrigemCriterio.RESPONSAVEL_TECNICO: 1, OrigemCriterio.NORMA: 2,
@@ -32,11 +38,31 @@ ROTULO_GRUPO = {
 }
 
 
-def rotulo_grupo(classe) -> str:
-    return ROTULO_GRUPO.get(classe, f"Classe {classe}")
+ROTULO_SUPORTE = {TipoSuporte.RIGIDO: "base rígida", TipoSuporte.FLEXIVEL: "base flexível"}
+# `Equipamento.tipo_base` / `DadosTecnicosMotor.tipo_base` (RIGIDA/FLEXIVEL) → suporte do critério.
+SUPORTE_DA_BASE = {"RIGIDA": TipoSuporte.RIGIDO, "FLEXIVEL": TipoSuporte.FLEXIVEL}
+#: Sem o tipo de base informado, vale a coluna mais rigorosa.
+SUPORTE_PRESUMIDO = TipoSuporte.RIGIDO
 
 
-def _vigentes(classe, data, cliente_id):
+def rotulo_grupo(classe, suporte="") -> str:
+    base = ROTULO_GRUPO.get(classe, f"Classe {classe}")
+    return f"{base} · {ROTULO_SUPORTE[suporte]}" if suporte in ROTULO_SUPORTE else base
+
+
+def suporte_do_equipamento(eq):
+    """Suporte do critério pelo tipo de base cadastrado (None = não informado)."""
+    return SUPORTE_DA_BASE.get(getattr(eq, "tipo_base", "") or "")
+
+
+def aviso_de_base(classe, suporte) -> tuple:
+    """Diagnóstico quando o grupo depende da base e ela não foi informada."""
+    if classe in (ClasseISO.G1, ClasseISO.G2) and not suporte:
+        return ("Tipo de base não informado no cadastro: avaliado pelos limites da base rígida (os mais rigorosos).",)
+    return ()
+
+
+def _todos_vigentes(classe, data, cliente_id):
     data = data or date.today()
     qs = CriterioSeveridadeVibracao.objects.ativos().filter(classe=classe).filter(
         Q(vigencia_inicio__isnull=True) | Q(vigencia_inicio__lte=data),
@@ -45,11 +71,16 @@ def _vigentes(classe, data, cliente_id):
     return qs.filter(Q(cliente__isnull=True) | Q(cliente_id=cliente_id)) if cliente_id else qs.filter(cliente__isnull=True)
 
 
+def _vigentes(classe, data, cliente_id, suporte=None):
+    return _todos_vigentes(classe, data, cliente_id).filter(Q(suporte="") | Q(suporte=suporte or SUPORTE_PRESUMIDO))
+
+
 def _ordenar(criterios, cliente_id):
     return sorted(
         criterios,
         key=lambda c: (
             0 if cliente_id and c.cliente_id == cliente_id else 1,
+            0 if c.suporte else 1,
             PRIORIDADE_ORIGEM.get(c.origem, 9),
             -(c.vigencia_inicio.toordinal() if c.vigencia_inicio else 0),
             -c.id,
@@ -57,26 +88,32 @@ def _ordenar(criterios, cliente_id):
     )
 
 
-def criterio_vigente(classe, data=None, cliente_id=None):
-    """O critério que a análise aplica a uma máquina do grupo `classe` (ou None)."""
+def criterio_vigente(classe, data=None, cliente_id=None, suporte=None):
+    """O critério que a análise aplica a uma máquina do grupo `classe` e do suporte dado (ou None)."""
     if not classe:
         return None
-    candidatos = _ordenar(_vigentes(classe, data, cliente_id), cliente_id)
+    candidatos = _ordenar(_vigentes(classe, data, cliente_id, suporte), cliente_id)
     return candidatos[0] if candidatos else None
 
 
-def referencia_da_norma(classe, data=None):
+def referencia_da_norma(classe, data=None, suporte=None):
     """O valor publicado pela norma para o grupo (para mostrar a diferença de um acordo)."""
-    candidatos = [c for c in _vigentes(classe, data, None) if c.origem == OrigemCriterio.NORMA]
+    candidatos = [c for c in _vigentes(classe, data, None, suporte) if c.origem == OrigemCriterio.NORMA]
     return _ordenar(candidatos, None)[0] if candidatos else None
 
 
-def faixas_vigentes(classe, data=None, cliente_id=None):
-    """Limites {A, B, C} (mm/s) do critério vigente, no formato de `FAIXAS_ISO_VRMS`; None sem registro."""
-    c = criterio_vigente(classe, data, cliente_id)
+def faixas_vigentes(classe, data=None, cliente_id=None, suporte=None):
+    """
+    Limites {A, B, C} (mm/s) do critério vigente, no formato de `FAIXAS_ISO_VRMS`; None
+    sem registro. Com limites de deslocamento cadastrados, também "deslocamento": {A, B, C} (µm).
+    """
+    c = criterio_vigente(classe, data, cliente_id, suporte)
     if c is None:
         return None
-    return {"A": c.limite_ab, "B": c.limite_bc, "C": c.limite_cd}
+    faixas = {"A": c.limite_ab, "B": c.limite_bc, "C": c.limite_cd}
+    if c.desloc_cd is not None:
+        faixas["deslocamento"] = {"A": c.desloc_ab, "B": c.desloc_bc, "C": c.desloc_cd}
+    return faixas
 
 
 def descricao_curta(c) -> str:
@@ -84,7 +121,7 @@ def descricao_curta(c) -> str:
     if c is None:
         return ""
     norma = f"{c.norma_codigo}:{c.norma_edicao}" if c.norma_edicao else c.norma_codigo
-    texto = f"{norma}, {rotulo_grupo(c.classe).lower()}"
+    texto = f"{norma}, {rotulo_grupo(c.classe, c.suporte).lower()}"
     if c.origem == OrigemCriterio.ACORDO_CLIENTE:
         texto += " — limites por acordo com o cliente"
     elif c.origem == OrigemCriterio.RESPONSAVEL_TECNICO:
@@ -103,9 +140,12 @@ def resumo_criterio(c):
         "norma": c.norma_codigo,
         "edicao": c.norma_edicao,
         "classe": c.classe,
-        "rotulo": rotulo_grupo(c.classe),
+        "suporte": c.suporte,
+        "rotulo": rotulo_grupo(c.classe, c.suporte),
         "descricao_grupo": c.descricao_grupo,
         "limites": {"ab": c.limite_ab, "bc": c.limite_bc, "cd": c.limite_cd},
+        "deslocamento": ({"ab": c.desloc_ab, "bc": c.desloc_bc, "cd": c.desloc_cd}
+                         if c.desloc_cd is not None else None),
         "origem": c.origem,
         "origem_display": c.get_origem_display(),
         "fonte": c.fonte,
@@ -121,11 +161,17 @@ def tabela_severidade(data=None, cliente_id=None):
     """
     linhas = []
     for classe in ORDEM_TABELA:
-        aplicado = criterio_vigente(classe, data, cliente_id)
-        if aplicado is None:
+        todos = list(_todos_vigentes(classe, data, cliente_id))
+        if not todos:
             continue
-        norma = None if aplicado.origem == OrigemCriterio.NORMA else referencia_da_norma(classe, data)
-        linhas.append({**resumo_criterio(aplicado), "referencia_norma": resumo_criterio(norma)})
+        # Grupo com critério por suporte (ISO 20816-3): uma coluna para cada base.
+        suportes = [s for s in (TipoSuporte.RIGIDO, TipoSuporte.FLEXIVEL) if any(c.suporte == s for c in todos)]
+        for suporte in suportes or [""]:
+            grupo = [c for c in todos if c.suporte == suporte] if suportes else todos
+            aplicado = _ordenar(grupo, cliente_id)[0]
+            norma = (None if aplicado.origem == OrigemCriterio.NORMA
+                     else referencia_da_norma(classe, data, suporte or None))
+            linhas.append({**resumo_criterio(aplicado), "referencia_norma": resumo_criterio(norma)})
     return linhas or _tabela_de_reserva()
 
 
@@ -135,9 +181,9 @@ def _tabela_de_reserva():
 
     return [
         {
-            "id": None, "norma": "ISO 10816-1", "edicao": "", "classe": classe, "rotulo": rotulo_grupo(classe),
-            "descricao_grupo": "",
-            "limites": {"ab": f["A"], "bc": f["B"], "cd": f["C"]},
+            "id": None, "norma": "ISO 10816-1", "edicao": "", "classe": classe, "suporte": "",
+            "rotulo": rotulo_grupo(classe), "descricao_grupo": "",
+            "limites": {"ab": f["A"], "bc": f["B"], "cd": f["C"]}, "deslocamento": None,
             "origem": OrigemCriterio.LEGADO, "origem_display": OrigemCriterio.LEGADO.label,
             "fonte": "Tabela de reserva do sistema — critérios não cadastrados.", "cliente": None,
             "referencia_norma": None,
@@ -159,7 +205,7 @@ def notas_tabela_severidade(linhas) -> list[str]:
     notas = []
     nomes = {"ab": "Bom/Satisfatório", "bc": "Satisfatório/Alerta", "cd": "Alerta/Perigo"}
     for c in linhas:
-        rotulo = rotulo_grupo(c["classe"])
+        rotulo = c.get("rotulo") or rotulo_grupo(c["classe"])
         if c["origem"] == OrigemCriterio.NORMA:
             continue
         if c["origem"] == OrigemCriterio.LEGADO:

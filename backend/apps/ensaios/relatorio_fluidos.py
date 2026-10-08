@@ -58,8 +58,12 @@ STATUS_FLUIDO_ROTULO = {
     SituacaoResultado.SEM_RESULTADO: STATUS_ROTULO[SituacaoResultado.SEM_RESULTADO],
 }
 
-ESCOPO_ROTULO = (("equipamento_id", "Equipamento"), ("produto_id", "Fluido"), ("cliente_id", "Cliente"),
-                 ("aplicacao", "Aplicação"))
+# Parâmetro da análise → campo do óleo novo no cadastro do fluido (ficha técnica).
+CAMPO_OLEO_NOVO = {"VISC40": "viscosidade_40c_cst", "DENSIDADE": "densidade_g_cm3", "IV": "indice_viscosidade",
+                   "TBN": "tbn_mgkoh_g"}
+
+ESCOPO_ROTULO = (("equipamento_id", "Equipamento"), ("tipo_equipamento_id", "Tipo de equipamento"),
+                 ("produto_id", "Fluido"), ("cliente_id", "Cliente"), ("aplicacao", "Aplicação"))
 
 
 # ------------------------------- Referências ---------------------------------
@@ -67,7 +71,7 @@ class ResolvedorReferencias:
     """
     Escolhe a referência de cada parâmetro: entre as ativas, em vigor na data da
     coleta e com o escopo compatível (campo vazio = qualquer), a mais específica —
-    equipamento (8) > fluido (4) > cliente (2) > aplicação (1); empate, a de
+    equipamento (16) > tipo de equipamento (8) > fluido (4) > cliente (2) > aplicação (1); empate, a de
     vigência mais recente. Carrega tudo de uma vez.
     """
 
@@ -77,7 +81,7 @@ class ResolvedorReferencias:
             self.por_parametro[r.parametro_id].append(r)
 
     def para(self, parametro_id, *, data=None, cliente_id=None, equipamento_id=None, produto_id=None,
-             aplicacao=""):
+             aplicacao="", tipo_equipamento_id=None):
         candidatos = []
         for r in self.por_parametro.get(parametro_id, ()):
             if data and ((r.vigencia_inicio and r.vigencia_inicio > data) or (r.vigencia_fim and r.vigencia_fim < data)):
@@ -86,7 +90,10 @@ class ResolvedorReferencias:
                 continue
             if (r.produto_id and r.produto_id != produto_id) or (r.aplicacao and r.aplicacao != aplicacao):
                 continue
-            peso = 8 * bool(r.equipamento_id) + 4 * bool(r.produto_id) + 2 * bool(r.cliente_id) + bool(r.aplicacao)
+            if r.tipo_equipamento_id and r.tipo_equipamento_id != tipo_equipamento_id:
+                continue
+            peso = (16 * bool(r.equipamento_id) + 8 * bool(r.tipo_equipamento_id) + 4 * bool(r.produto_id)
+                    + 2 * bool(r.cliente_id) + bool(r.aplicacao))
             candidatos.append((peso, r.vigencia_inicio or date.min, r.id, r))
         return max(candidatos, key=lambda c: c[:3])[3] if candidatos else None
 
@@ -117,9 +124,9 @@ def texto_referencia(r, casas=2, unidade="", base=None) -> str:
             partes.append(f"Crítico < {_num(r.limite_critico, casas)}")
         return " · ".join(partes) + (u if partes else "")
     if r.tipo == TipoReferencia.VARIACAO:
-        if r.base_grau_iso:
-            partes.append(f"Base grau ISO VG ({_num(base, casas)}{u})" if base is not None
-                          else "Base grau ISO VG (não informado)")
+        if r.base_oleo_novo:
+            partes.append(f"Base óleo novo ({_num(base, casas)}{u})" if base is not None
+                          else "Base óleo novo (não cadastrada no fluido)")
         else:
             partes.append(f"Base {_num(r.valor_base, casas)}{u}")
         if r.limite_alerta is not None:
@@ -135,21 +142,21 @@ def texto_referencia(r, casas=2, unidade="", base=None) -> str:
     return r.referencia_texto
 
 
-def base_da_referencia(r, base_iso):
-    """Valor de base que vale para a referência: o grau ISO VG da amostra ou o valor fixo."""
+def base_da_referencia(r, valor_oleo_novo):
+    """Valor de base que vale para a referência: o do óleo novo do fluido da coleta ou o valor fixo."""
     if r is None:
         return None
-    return base_iso if r.base_grau_iso else r.valor_base
+    return valor_oleo_novo if r.base_oleo_novo else r.valor_base
 
 
-def resumo_referencia(r, casas=2, unidade="", base_iso=None):
+def resumo_referencia(r, casas=2, unidade="", valor_oleo_novo=None):
     if r is None:
         return None
-    base = base_da_referencia(r, base_iso)
+    base = base_da_referencia(r, valor_oleo_novo)
     escopo = next((rotulo for campo, rotulo in ESCOPO_ROTULO if getattr(r, campo)), "Geral")
     return {
         "id": r.id, "tipo": r.tipo, "tipo_display": r.get_tipo_display(),
-        "valor_base": base, "base_grau_iso": r.base_grau_iso,
+        "valor_base": base, "base_oleo_novo": r.base_oleo_novo,
         "limite_alerta": r.limite_alerta, "limite_critico": r.limite_critico,
         "referencia_texto": r.referencia_texto, "texto": texto_referencia(r, casas, unidade, base),
         "origem": r.origem, "origem_display": r.get_origem_display(), "fonte": r.fonte,
@@ -164,13 +171,29 @@ def _celula(v):
     return {"valor": v.valor, "texto": v.valor_texto, "estado": v.estado, "metodo": v.metodo}
 
 
-def _base_iso(campanha):
-    """Viscosidade nominal (cSt) do grau ISO VG do fluido da coleta da campanha."""
+def _rotulo_oleo_novo(codigo, valor, produto) -> str:
+    """Como a ficha mostra o valor do óleo novo (a densidade vai com a temperatura e o método)."""
+    if codigo == "DENSIDADE":
+        extras = [f"a {_num(produto.densidade_temperatura_c, 0)} °C" if produto.densidade_temperatura_c is not None else "",
+                  produto.densidade_metodo]
+        return " · ".join(x for x in [f"Óleo novo: {_num(valor, 4)}", *extras] if x)
+    return f"Óleo novo: {_num(valor, 2 if codigo != 'IV' else 0)}"
+
+
+def _oleo_novo_rotulos(campanha) -> dict:
     coleta = campanha.coleta_fluido if campanha else None
-    if coleta is None:
-        return None
-    grau = coleta.grau_viscosidade or (coleta.produto.grau_viscosidade if coleta.produto_id else "")
-    return cf.grau_iso_vg(grau)
+    if coleta is None or not coleta.produto_id:
+        return {}
+    return {codigo: _rotulo_oleo_novo(codigo, valor, coleta.produto) for codigo, valor in _oleo_novo(campanha).items()}
+
+
+def _oleo_novo(campanha) -> dict:
+    """Valores do óleo novo (ficha técnica do fluido cadastrado na coleta), por código do parâmetro."""
+    coleta = campanha.coleta_fluido if campanha else None
+    if coleta is None or not coleta.produto_id:
+        return {}
+    return {codigo: getattr(coleta.produto, campo) for codigo, campo in CAMPO_OLEO_NOVO.items()
+            if getattr(coleta.produto, campo) is not None}
 
 
 def _contexto_referencia(campanha, equipamento):
@@ -179,6 +202,7 @@ def _contexto_referencia(campanha, equipamento):
     cliente_id = equipamento.setor.area.cliente_id if equipamento.setor_id else None
     return {
         "data": campanha.data if campanha else None, "cliente_id": cliente_id, "equipamento_id": equipamento.id,
+        "tipo_equipamento_id": equipamento.tipo_equipamento_id,
         "produto_id": coleta.produto_id if coleta else None, "aplicacao": coleta.aplicacao if coleta else "",
     }
 
@@ -225,16 +249,19 @@ def observacoes_geradas(linhas, corpo) -> list:
         obs.append(texto + ".")
     if corpo.get("tipo") == "CP" and corpo.get("situacao_meta") == "FORA":
         atual = next((c for c in corpo["codigos"] if c["atual"]), None)
+        excesso = corpo["excesso_meta"]
+        # Cada grau da escala ≈ dobro de partículas: 3 graus acima ≈ 8× (ISO 4406).
         obs.append(f"Código de limpeza ISO 4406 {atual['codigo'] if atual else ''} acima da meta "
-                   f"{corpo['meta']['referencia_texto']} em {corpo['excesso_meta']} "
-                   f"{'grau' if corpo['excesso_meta'] == 1 else 'graus'}.")
+                   f"{corpo['meta']['referencia_texto']} em {excesso} {'grau' if excesso == 1 else 'graus'} "
+                   f"(cerca de {2 ** min(excesso, 10)}× mais partículas que a meta).")
     return obs
 
 
 def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento, resolvedor, solicitado) -> dict:
     """Ficha de um ensaio (FQ, EF ou CP) de uma amostra, com o histórico das coletas."""
     escopo = _contexto_referencia(atual, equipamento)
-    base_iso = _base_iso(atual)
+    oleo_novo = _oleo_novo(atual)
+    rotulos_oleo_novo = _oleo_novo_rotulos(atual)
     digitados = [p for p in params if not p.calculado]
     # CP: as contagens são avaliadas juntas, pelo código ISO 4406 contra a meta —
     # contagem sem referência própria não é "parâmetro sem referência".
@@ -249,7 +276,7 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
         if ref is not None and cel is not None and resultado is not None and resultado.situacao == REALIZADO:
             avaliacao = cf.classificar(
                 tipo=ref.tipo, valor=cel["valor"], texto=cel["texto"], estado=cel["estado"] or "MEDIDO",
-                valor_base=base_da_referencia(ref, base_iso), limite_alerta=ref.limite_alerta,
+                valor_base=base_da_referencia(ref, oleo_novo.get(p.codigo)), limite_alerta=ref.limite_alerta,
                 limite_critico=ref.limite_critico,
                 referencia_texto=ref.referencia_texto,
             )
@@ -259,7 +286,9 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
             "codigo": p.codigo, "nome": p.nome, "simbolo": p.simbolo, "grupo": p.grupo, "unidade": p.unidade,
             "norma": p.norma, "metodo": (cel or {}).get("metodo", ""), "casas": p.casas_decimais,
             "no_grafico": p.no_grafico, "qualitativo": p.tipo_limite == "QUALITATIVO",
-            "valores": valores, "referencia": resumo_referencia(ref, p.casas_decimais, p.unidade, base_iso),
+            "valores": valores,
+            "referencia": resumo_referencia(ref, p.casas_decimais, p.unidade, oleo_novo.get(p.codigo)),
+            "oleo_novo": oleo_novo.get(p.codigo), "oleo_novo_texto": rotulos_oleo_novo.get(p.codigo, ""),
             "status": avaliacao["status"], "variacao_pct": avaliacao["variacao_pct"],
             "sem_referencia": bool(tem_valor and ref is None and p.codigo not in avaliado_pelo_codigo),
             "tendencia": cf.tendencia([v["valor"] for v in valores]),
@@ -329,7 +358,7 @@ CAMPOS_AVALIACAO = ("observacoes_geradas", "tipo", "status", "status_rotulo", "a
 def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
     """Pior estado de um ensaio numa coleta (referências da época). None sem referência para avaliar."""
     escopo = _contexto_referencia(campanha, equipamento)
-    base_iso = _base_iso(campanha)
+    oleo_novo = _oleo_novo(campanha)
     statuses = []
     for p in (p for p in params if not p.calculado):
         v = campanha.primeiro(p.codigo)
@@ -338,7 +367,7 @@ def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
             continue
         statuses.append(cf.classificar(
             tipo=ref.tipo, valor=v.valor, texto=v.valor_texto, estado=v.estado or "MEDIDO",
-            valor_base=base_da_referencia(ref, base_iso), limite_alerta=ref.limite_alerta,
+            valor_base=base_da_referencia(ref, oleo_novo.get(p.codigo)), limite_alerta=ref.limite_alerta,
             limite_critico=ref.limite_critico,
             referencia_texto=ref.referencia_texto,
         )["status"])

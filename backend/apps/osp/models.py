@@ -177,6 +177,9 @@ class OrdemServico(TimeStampedModel):
     amplitude_aceleracao = models.DecimalField(
         "Amplitude aceleração global (mm/s²)", max_digits=8, decimal_places=2, null=True, blank=True
     )
+    amplitude_deslocamento = models.DecimalField(
+        "Amplitude deslocamento global (µm RMS)", max_digits=8, decimal_places=1, null=True, blank=True
+    )
 
     responsavel = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
@@ -310,6 +313,7 @@ class OrdemServico(TimeStampedModel):
             grau_risco=grau,
             amplitude_velocidade=achado.velocidade_global,
             amplitude_aceleracao=achado.aceleracao_global,
+            amplitude_deslocamento=achado.deslocamento_global,
             gerada_automaticamente=True,
         )
         # Número do relatório: "sequencial do cliente / sequencial global do BD".

@@ -12,6 +12,9 @@ export function AmplitudesVibracao({ o }: { o: OspD }) {
       <div style={{ ...LINHA_MEDICAO, fontWeight: 700 }}>Amplitudes [valor global]</div>
       <div style={LINHA_MEDICAO}><span style={{ fontWeight: 700 }}>Aceleração [g&rsquo;s]:</span> {o.amplitude_aceleracao ?? "—"}</div>
       <div style={LINHA_MEDICAO}><span style={{ fontWeight: 700 }}>Velocidade [mm/s]:</span> {o.amplitude_velocidade ?? "—"}</div>
+      {o.amplitude_deslocamento != null && (
+        <div style={LINHA_MEDICAO}><span style={{ fontWeight: 700 }}>Deslocamento [µm]:</span> {o.amplitude_deslocamento}</div>
+      )}
     </>
   );
 }
@@ -33,6 +36,28 @@ const CABECALHO: Record<string, [string, string]> = {
   II: ["Classe II", "15 a 75 kW"], III: ["Classe III", "Rígida · > 75 kW"], IV: ["Classe IV", "Flexível · > 75 kW"],
 };
 const ORDEM_CLASSES = ["I", "G2", "G1", "II", "III", "IV"];
+const BASE: Record<string, string> = { RIGIDO: "Base rígida", FLEXIVEL: "Base flexível" };
+const ORDEM_SUPORTE: Record<string, number> = { "": 0, RIGIDO: 1, FLEXIVEL: 2 };
+
+type Coluna = { chave: string; titulo: string; sub: string; c: LinhaSeveridade };
+/** Uma coluna por grupo e, nos grupos da ISO 20816-3, por tipo de base (rígida/flexível). */
+function colunasSeveridade(linhas: LinhaSeveridade[]): Coluna[] {
+  return [...linhas]
+    .sort((a, b) => ORDEM_CLASSES.indexOf(a.classe) - ORDEM_CLASSES.indexOf(b.classe)
+      || (ORDEM_SUPORTE[a.suporte ?? ""] ?? 9) - (ORDEM_SUPORTE[b.suporte ?? ""] ?? 9))
+    .map((c) => {
+      const [titulo, sub] = CABECALHO[c.classe] ?? [c.rotulo, ""];
+      return { chave: `${c.classe}|${c.suporte ?? ""}`, titulo, sub: c.suporte ? `${BASE[c.suporte]} · ${sub}` : sub, c };
+    });
+}
+const faixaDesloc = (d: { ab: string; bc: string; cd: string }, z: number) => {
+  const l = [d.ab, d.bc, d.cd].map((v) => Number(v).toLocaleString("pt-BR"));
+  return z === 0 ? `< ${l[0]}` : z === 3 ? `> ${l[2]}` : `${l[z - 1]} – ${l[z]}`;
+};
+const ZONAS_DESLOC: { nome: string; bg: string; fg: string }[] = [
+  { nome: "A — Bom", bg: "#22c55e", fg: "#fff" }, { nome: "B — Satisfatório", bg: "#a3e635", fg: "#1f2937" },
+  { nome: "C — Alerta", bg: "#f59e0b", fg: "#1f2937" }, { nome: "D — Perigo", bg: "#ef4444", fg: "#fff" },
+];
 
 /** Escala fixa da ISO + os limites dos grupos da ISO 20816-3 que não estão nela (senão uma zona some). */
 function gradeSeveridade(linhas: LinhaSeveridade[]): [number, number][] {
@@ -56,10 +81,10 @@ function sevISO(v: number, z: [number, number, number]) {
 export function TabelaISO10816({ d }: { d: DossieShell }) {
   const linhas: LinhaSeveridade[] = d.carta.tabela_severidade ?? [];
   if (!linhas.length) return null;
-  const zonas = Object.fromEntries(
-    linhas.map((c) => [c.classe, [Number(c.limites.ab), Number(c.limites.bc), Number(c.limites.cd)] as [number, number, number]]),
-  );
-  const classes = ORDEM_CLASSES.filter((cl) => cl in zonas);
+  const colunas = colunasSeveridade(linhas);
+  const zona = (c: LinhaSeveridade) => [Number(c.limites.ab), Number(c.limites.bc), Number(c.limites.cd)] as [number, number, number];
+  const classes = colunas.map((col) => col.c.classe);
+  const comDesloc = colunas.filter((col) => col.c.deslocamento);
   const norma = [...new Set(linhas.map((c) => c.norma.replace(/ /g, "-")))].join(" / ") || "ISO-10816-1";
   const termo = classes.some((cl) => cl.startsWith("G")) ? "Grupos" : "Classes";
   const th = { border: "0.2mm solid #94a3b8", padding: "1mm", textAlign: "center" as const, fontWeight: 700, background: "#f1f5f9" };
@@ -68,12 +93,12 @@ export function TabelaISO10816({ d }: { d: DossieShell }) {
     <>
       <table style={{ width: "170mm", margin: "3mm auto", borderCollapse: "collapse", fontSize: "8.5pt", tableLayout: "fixed", breakInside: "avoid" }}>
         <thead>
-          <tr><th colSpan={2 + classes.length} style={{ ...th, color: "#c00", fontSize: "11pt", background: "#fff" }}>Norma {norma} — Severidade · Faixas de Velocidade e {termo} de Máquina</th></tr>
+          <tr><th colSpan={2 + colunas.length} style={{ ...th, color: "#c00", fontSize: "11pt", background: "#fff" }}>Norma {norma} — Severidade · Faixas de Velocidade e {termo} de Máquina</th></tr>
           <tr>
             <th style={th}>V [mm/s]<br />RMS</th>
             <th style={th}>V [in/s]<br />Pico</th>
-            {classes.map((cl) => (
-              <th key={cl} style={th}>{CABECALHO[cl][0]}<br /><span style={{ fontWeight: 400 }}>{CABECALHO[cl][1]}</span></th>
+            {colunas.map((col) => (
+              <th key={col.chave} style={th}>{col.titulo}<br /><span style={{ fontWeight: 400 }}>{col.sub}</span></th>
             ))}
           </tr>
         </thead>
@@ -82,14 +107,35 @@ export function TabelaISO10816({ d }: { d: DossieShell }) {
             <tr key={mm}>
               <td style={{ ...td, fontWeight: 700 }}>{mm.toFixed(2)}</td>
               <td style={{ ...td, fontWeight: 700 }}>{pol.toFixed(2)}</td>
-              {classes.map((cl) => {
-                const s = sevISO(mm, zonas[cl]);
-                return <td key={cl} style={{ ...td, background: s.bg, color: s.fg }}>{s.txt}</td>;
+              {colunas.map((col) => {
+                const s = sevISO(mm, zona(col.c));
+                return <td key={col.chave} style={{ ...td, background: s.bg, color: s.fg }}>{s.txt}</td>;
               })}
             </tr>
           ))}
         </tbody>
       </table>
+      {comDesloc.length > 0 && (
+        <table style={{ width: "170mm", margin: "3mm auto", borderCollapse: "collapse", fontSize: "8.5pt", tableLayout: "fixed", breakInside: "avoid" }}>
+          <thead>
+            <tr><th colSpan={1 + comDesloc.length} style={{ ...th, color: "#c00", fontSize: "11pt", background: "#fff" }}>Deslocamento [µm] RMS — Limites de Zona</th></tr>
+            <tr>
+              <th style={th}>Zona</th>
+              {comDesloc.map((col) => (
+                <th key={col.chave} style={th}>{col.titulo}<br /><span style={{ fontWeight: 400 }}>{col.sub}</span></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ZONAS_DESLOC.map((z, i) => (
+              <tr key={z.nome}>
+                <td style={{ ...td, fontWeight: 700, background: z.bg, color: z.fg }}>{z.nome}</td>
+                {comDesloc.map((col) => <td key={col.chave} style={{ ...td, fontWeight: 700 }}>{faixaDesloc(col.c.deslocamento!, i)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       {(d.carta.notas_severidade ?? []).map((nota) => (
         <p key={nota} style={{ width: "170mm", margin: "1mm auto 0", fontSize: "7.5pt", fontStyle: "italic", textAlign: "justify" }}>
           {nota}

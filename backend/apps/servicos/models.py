@@ -263,12 +263,13 @@ class BalanceamentoPonto(BaseModel):
 
             equipamento = self.servico.equipamento
             cliente_id = equipamento.setor.area.cliente_id if equipamento.setor_id else None
-            criterio = criterios.criterio_vigente(equipamento.classe_iso, cliente_id=cliente_id)
+            suporte = criterios.suporte_do_equipamento(equipamento)
+            criterio = criterios.criterio_vigente(equipamento.classe_iso, cliente_id=cliente_id, suporte=suporte)
             resultado = rules.avaliar_ponto(
                 classe_iso=equipamento.classe_iso,
                 reference_mms=self.reference_mms,
                 trim_mms=self.trim_mms,
-                faixas=criterios.faixas_vigentes(equipamento.classe_iso, cliente_id=cliente_id),
+                faixas=criterios.faixas_vigentes(equipamento.classe_iso, cliente_id=cliente_id, suporte=suporte),
                 criterio=criterios.descricao_curta(criterio),
             )
             self.residual_pct = resultado.residual_pct

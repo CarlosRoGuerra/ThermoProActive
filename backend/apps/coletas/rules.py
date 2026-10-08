@@ -27,11 +27,11 @@ FAIXAS_ISO_VRMS = {
     "II":  {"A": Decimal("1.12"), "B": Decimal("4.49"), "C": Decimal("7.10")},
     "III": {"A": Decimal("1.80"), "B": Decimal("4.50"), "C": Decimal("11.20")},
     "IV":  {"A": Decimal("2.80"), "B": Decimal("7.10"), "C": Decimal("18.00")},
-    # ISO 20816-3:2022, zonas da fundação flexível aplicadas ao grupo inteiro —
-    # critério do responsável técnico (07/10/2026): crítico acima de 7,1 (Grupo 2)
-    # e de 11,0 mm/s (Grupo 1).
-    "G2":  {"A": Decimal("2.30"), "B": Decimal("4.50"), "C": Decimal("7.10")},
-    "G1":  {"A": Decimal("3.50"), "B": Decimal("7.10"), "C": Decimal("11.00")},
+    # ISO 20816-3:2022 (Tabelas A.1 e A.2) — reserva pela base RÍGIDA, a mais
+    # rigorosa (máquina sem o tipo de base informado). Os critérios cadastrados
+    # separam rígida e flexível e trazem o deslocamento (µm RMS).
+    "G2":  {"A": Decimal("1.40"), "B": Decimal("2.80"), "C": Decimal("4.50")},
+    "G1":  {"A": Decimal("2.30"), "B": Decimal("4.50"), "C": Decimal("7.10")},
 }
 
 # Zona ISO → criticidade base
@@ -55,6 +55,19 @@ class ResultadoVibracao:
     zona_iso: str
     criticidade: str
     diagnostico: str
+
+
+ZONAS = "ABCD"
+
+
+def _zona(valor: Decimal, faixa: dict) -> str:
+    if valor <= faixa["A"]:
+        return "A"
+    if valor <= faixa["B"]:
+        return "B"
+    if valor <= faixa["C"]:
+        return "C"
+    return "D"
 
 
 def _zona_por_vrms(classe_iso: str, vrms: Decimal, faixas: dict | None = None) -> str:
@@ -81,6 +94,8 @@ def classificar_vibracao(
     fator_crista: Decimal | None = None,
     historico_vrms: list[Decimal] | None = None,
     faixas: dict | None = None,
+    deslocamento: Decimal | None = None,
+    avisos: tuple = (),
 ) -> ResultadoVibracao:
     """
     Classifica uma medição de vibração.
@@ -91,9 +106,17 @@ def classificar_vibracao(
         fator_crista: fator de crista (opcional) — alta = impactos/rolamento.
         historico_vrms: Vrms das medições anteriores do mesmo ponto (mais recentes).
         faixas: limites {A, B, C} do critério vigente (`apps.cadastros.criterios`);
-            sem eles, `FAIXAS_ISO_VRMS`.
+            sem eles, `FAIXAS_ISO_VRMS`. Pode trazer "deslocamento": {A, B, C} (µm RMS).
+        deslocamento: deslocamento RMS global (µm). Com limites de deslocamento no
+            critério, a zona é a PIOR entre velocidade e deslocamento (ISO 20816-3).
+        avisos: observações do cadastro para o diagnóstico (ex.: base não informada).
     """
     zona = _zona_por_vrms(classe_iso, velocidade_rms, faixas)
+    zona_desloc = None
+    if deslocamento is not None and faixas and faixas.get("deslocamento"):
+        zona_desloc = _zona(Decimal(deslocamento), faixas["deslocamento"])
+        if ZONAS.index(zona_desloc) > ZONAS.index(zona):
+            zona = zona_desloc
     criticidade = ZONA_PARA_CRITICIDADE[zona]
     diagnosticos = []
 
@@ -123,6 +146,9 @@ def classificar_vibracao(
         "D": "Vibração na zona D (inadmissível — risco de dano; intervenção recomendada).",
     }[zona]
     diagnosticos.insert(0, base)
+    if zona_desloc is not None:
+        diagnosticos.insert(1, f"Deslocamento {deslocamento} µm na zona {zona_desloc}.")
+    diagnosticos.extend(avisos)
     if not faixas and classe_iso not in FAIXAS_ISO_VRMS:
         diagnosticos.insert(1, "Classe da máquina não definida no cadastro: avaliado pelos limites da Classe II.")
 

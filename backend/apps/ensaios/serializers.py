@@ -12,6 +12,7 @@ from .models import (
     Ensaio,
     InspecaoVisualColeta,
     ItemChecklistVisual,
+    MetaLimpezaRecomendada,
     OrigemReferencia,
     ParametroEnsaio,
     PontoColeta,
@@ -48,7 +49,7 @@ class ParametroEnsaioSerializer(serializers.ModelSerializer):
 
 
 class EnsaioSerializer(serializers.ModelSerializer):
-    parametros = ParametroEnsaioSerializer(many=True, read_only=True)
+    parametros = serializers.SerializerMethodField()
     modulo_display = serializers.CharField(source="get_modulo_display", read_only=True)
     # Fluidos: aplicações em que o ensaio vem marcado por padrão na coleta.
     padrao_em = serializers.SerializerMethodField()
@@ -57,8 +58,25 @@ class EnsaioSerializer(serializers.ModelSerializer):
         model = Ensaio
         exclude = ["ativo"]
 
+    def get_parametros(self, obj) -> list:
+        # Parâmetro desativado no catálogo (ex.: viscosidade a 100 °C dos fluidos) some do editor.
+        return ParametroEnsaioSerializer([p for p in obj.parametros.all() if p.ativo], many=True).data
+
     def get_padrao_em(self, obj) -> list:
         return sorted({s.aplicacao for s in obj.solicitacoes_padrao.all() if s.ativo})
+
+
+class MetaLimpezaRecomendadaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MetaLimpezaRecomendada
+        exclude = ["ativo"]
+
+    def validate_codigo(self, value):
+        from .calculos_fluidos import ler_codigo
+
+        if ler_codigo(value) is None:
+            raise serializers.ValidationError("Informe o código no formato X/Y/Z (ex.: 18/16/13).")
+        return value.replace(" ", "")
 
 
 class ProdutoFluidoSerializer(serializers.ModelSerializer):
@@ -98,6 +116,7 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True, default=None)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True, default=None)
     produto_nome = serializers.CharField(source="produto.nome", read_only=True, default=None)
+    tipo_equipamento_nome = serializers.CharField(source="tipo_equipamento.nome", read_only=True, default=None)
 
     class Meta:
         model = ReferenciaParametro
@@ -126,11 +145,15 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
         else:
             if alerta is None and critico is None:
                 raise serializers.ValidationError("Informe o limite de alerta, o crítico ou os dois.")
-            if tipo == TipoReferencia.VARIACAO and not base and not valor("base_grau_iso"):
+            if tipo == TipoReferencia.VARIACAO and not base and not valor("base_oleo_novo"):
                 raise serializers.ValidationError({"valor_base": "A variação precisa do valor de base (óleo novo/nominal)."})
-            if valor("base_grau_iso") and (tipo != TipoReferencia.VARIACAO or getattr(parametro, "codigo", "") != "VISC40"):
+            from .relatorio_fluidos import CAMPO_OLEO_NOVO
+
+            if valor("base_oleo_novo") and (tipo != TipoReferencia.VARIACAO
+                                            or getattr(parametro, "codigo", "") not in CAMPO_OLEO_NOVO):
                 raise serializers.ValidationError({
-                    "base_grau_iso": "A base pelo grau ISO VG vale só para a variação da viscosidade a 40 °C.",
+                    "base_oleo_novo": "A base pelo óleo novo vale na variação da viscosidade a 40 °C, da densidade "
+                                      "a 15 °C ou do índice de viscosidade.",
                 })
             if alerta is not None and critico is not None:
                 fora_de_ordem = critico < alerta if tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO) else critico > alerta
@@ -142,6 +165,9 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
         equipamento, cliente = valor("equipamento"), valor("cliente")
         if equipamento is not None and cliente is not None and equipamento.setor.area.cliente_id != cliente.id:
             raise serializers.ValidationError({"equipamento": "O equipamento é de outro cliente."})
+        tipo_eq = valor("tipo_equipamento")
+        if equipamento is not None and tipo_eq is not None and equipamento.tipo_equipamento_id != tipo_eq.id:
+            raise serializers.ValidationError({"tipo_equipamento": "O equipamento é de outro tipo."})
         if valor("origem") != OrigemReferencia.NORMA and not (valor("fonte") or "").strip():
             raise serializers.ValidationError({"fonte": "Informe a fonte (manual, laudo, contrato, acordo) da referência."})
         return attrs

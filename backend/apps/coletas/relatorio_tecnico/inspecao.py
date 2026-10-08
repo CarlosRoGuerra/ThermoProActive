@@ -298,6 +298,7 @@ def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict
             # Medições do Achado. Cada módulo do front mostra só as suas.
             "amplitude_velocidade": a.velocidade_global,
             "amplitude_aceleracao": a.aceleracao_global,
+            "amplitude_deslocamento": a.deslocamento_global,
             "temperatura_medida": a.temperatura_medida,
             "temperatura_referencia": a.temperatura_referencia,
             "delta_t": a.delta_t,
