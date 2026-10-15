@@ -16,6 +16,7 @@ from .models import (
     Ensaio,
     ItemChecklistVisual,
     MetaLimpezaRecomendada,
+    ValorOleoNovo,
     ParametroEnsaio,
     PontoColeta,
     ProdutoFluido,
@@ -32,6 +33,7 @@ from .serializers import (
     FluidoInspecaoSerializer,
     ItemChecklistVisualSerializer,
     MetaLimpezaRecomendadaSerializer,
+    ValorOleoNovoSerializer,
     ParametroEnsaioSerializer,
     PontoColetaSerializer,
     ProdutoFluidoSerializer,
@@ -76,6 +78,15 @@ class ParametroEnsaioViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ParametroEnsaioSerializer
     pagination_class = CatalogoPagination
     filterset_fields = ["ensaio", "ensaio__modulo", "calculado"]
+
+
+class ValorOleoNovoViewSet(CatalogoViewSet):
+    """Boletim do óleo novo: valor de cada parâmetro no fluido novo (linha de base)."""
+
+    queryset = ValorOleoNovo.objects.ativos().select_related("produto", "parametro__ensaio")
+    serializer_class = ValorOleoNovoSerializer
+    filterset_fields = ["produto"]
+    search_fields = ["produto__nome", "parametro__nome"]
 
 
 class MetaLimpezaRecomendadaViewSet(CatalogoViewSet):

@@ -214,7 +214,7 @@ export type DossieTransformador = DossieShell & DadosTransformador;
 export type EstadoFluido = "ROTINA" | "ALERTA" | "CRITICA";
 export type StatusFluido = EstadoFluido | "SEM_CRITERIO" | Exclude<SituacaoEnsaio, "REALIZADO">;
 export type ReferenciaFluido = {
-  id: number; tipo: "MAXIMO" | "MINIMO" | "VARIACAO" | "CODIGO_ISO" | "QUALITATIVO"; tipo_display: string;
+  id: number; tipo: "MAXIMO" | "MINIMO" | "VARIACAO" | "QUEDA" | "AUMENTO" | "CODIGO_ISO" | "QUALITATIVO"; tipo_display: string;
   valor_base: number | null; limite_alerta: number | null; limite_critico: number | null; referencia_texto: string;
   /** Variação com base no valor do óleo novo do fluido da coleta (`valor_base` já resolvido). */
   base_oleo_novo?: boolean;

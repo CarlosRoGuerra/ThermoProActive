@@ -176,9 +176,15 @@ class CatalogoFluidosTest(CenarioFluidos, TestCase):
             self.assertIsNone(p.limite, p.codigo)
         # As únicas referências da carga são as gerais do responsável técnico (07/10/2026), com fonte.
         refs = ReferenciaParametro.objects.select_related("parametro")
-        self.assertEqual({(r.parametro.codigo, r.origem) for r in refs},
-                         {("VISC40", "RESPONSAVEL_TECNICO"), ("AGUA", "RESPONSAVEL_TECNICO"),
-                          ("TAN", "RESPONSAVEL_TECNICO")})
+        self.assertEqual({r.origem for r in refs}, {"RESPONSAVEL_TECNICO"})
+        self.assertEqual({r.parametro.codigo for r in refs if r.parametro.ensaio.sigla == "FQ"}, {"VISC40", "AGUA", "TAN"})
+        # EF (13/10/2026): 20 dos 21 elementos (o potássio não foi citado); desgaste por aplicação.
+        ef = [r for r in refs if r.parametro.ensaio.sigla == "EF"]
+        self.assertEqual(len({r.parametro.codigo for r in ef}), 20)
+        fe = {r.aplicacao: (r.limite_alerta, r.limite_critico) for r in ef if r.parametro.codigo == "FE"}
+        self.assertEqual(fe, {"HIDRAULICO": (D("15"), D("30")), "LUBRIFICANTE": (D("80"), D("150"))})
+        tipos = {r.parametro.codigo: r.tipo for r in ef if not r.aplicacao}
+        self.assertEqual((tipos["SI"], tipos["ZN"], tipos["CA"], tipos["NA"]), ("AUMENTO", "QUEDA", "AUMENTO", "MAXIMO"))
         self.assertTrue(all(r.fonte and r.cliente_id is None for r in refs))
         tan = next(r for r in refs if r.parametro.codigo == "TAN")
         self.assertEqual((tan.tipo, tan.limite_alerta, tan.limite_critico), ("MAXIMO", D("2.0"), None))
@@ -390,8 +396,10 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         # FQ e EF da UH foram pedidos e ainda não têm laudo.
         self.assertEqual(uh["ensaios"][0]["status"], "SEM_RESULTADO")
         ef = red["ensaios"][1]
-        self.assertEqual(ef["status"], "ALERTA")
-        self.assertEqual(ef["sem_referencia"], 1)  # o Si não tem referência
+        # Fe 58 > 50 (referência do equipamento: alerta) e Si 21 ppm acima do óleo novo (sem boletim,
+        # base 0) > 15 = crítico (referência geral de 13/10/2026).
+        self.assertEqual(ef["status"], "CRITICA")
+        self.assertEqual(ef["sem_referencia"], 0)
 
     def test_kpis_proprios_da_tecnologia(self):
         k = self.dossie()["kpis"]
@@ -434,7 +442,7 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         red, uh = self.dossie()["amostras"]
         fq, ef = red["ensaios"]
         self.assertEqual(fq["observacoes_geradas"], [])  # FQ sem referência: nada a dizer
-        self.assertEqual(len(ef["observacoes_geradas"]), 1)
+        self.assertEqual(len(ef["observacoes_geradas"]), 2)  # Fe e Si
         self.assertIn("Ferro: 58,0 ppm, em alerta (referência: Alerta > 50,0 · Crítico > 150,0 ppm)",
                       ef["observacoes_geradas"][0])
         cp = uh["ensaios"][2]
@@ -445,7 +453,7 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
         g = self.dossie()["graficos"]
         self.assertEqual({x["rotulo"]: x["total"] for x in g["condicoes"]}, {"GR-4": 2})
         self.assertEqual({x["rotulo"]: x["total"] for x in g["componentes"]}, {"Redutor": 2})
-        self.assertEqual({x["rotulo"] for x in g["anomalias"]}, {"Ferro", "Código ISO 4406"})
+        self.assertEqual({x["rotulo"] for x in g["anomalias"]}, {"Ferro", "Silício", "Código ISO 4406"})
         # Março: só a UH foi avaliada (CP acima da meta); setembro: os dois equipamentos.
         self.assertEqual(g["graus_tempo"]["meses"], ["mar/26", "set/26"])
         gr4 = next(s for s in g["graus_tempo"]["series"] if s["gr"] == "GR-4")
@@ -538,6 +546,15 @@ class RelatorioFluidosTest(CenarioFluidos, TestCase):
                                            origem="FABRICANTE_EQUIPAMENTO", fonte="Manual da UH")
         cp = self.dossie()["amostras"][1]["ensaios"][2]
         self.assertEqual((cp["meta"]["escopo"], cp["situacao_meta"]), ("Equipamento", "DENTRO"))
+
+    def test_boletim_do_oleo_novo_e_a_linha_de_base(self):
+        from .models import ValorOleoNovo
+
+        # Silício 6 ppm no óleo novo (antiespumante): 21 no usado = +15, não passa do crítico.
+        ValorOleoNovo.objects.create(produto=self.produto, parametro=self.param[("EF", "SI")], valor=D("6"))
+        ef = self.dossie()["amostras"][0]["ensaios"][1]
+        si = next(x for x in ef["linhas"] if x["codigo"] == "SI")
+        self.assertEqual((si["status"], si["referencia"]["texto"]), ("ROTINA", "Óleo novo 6,0 ppm · Crítico +15,0 ppm"))
 
     def test_historico_por_equipamento(self):
         r = self.api.get(f"/api/fluidos-historico/?equipamento={self.uh.id}")
@@ -637,6 +654,26 @@ class GrauDeRiscoTest(SimpleTestCase):
         self.assertEqual(osp["GR-2"], [1, 1, 0, 0])  # eq1 aberta; eq3 corrigida (era GR-2)
         self.assertEqual(osp["GR-3"], [0, 0, 1, 1])  # eq2 reincidente; eq4 não reavaliada
         self.assertEqual(osp["GR-4"], [0, 0, 0, 0])
+
+
+class QuedaAumentoTest(SimpleTestCase):
+    """Comparação com o óleo novo (boletim): consumo de aditivo e contaminação."""
+
+    def test_queda_de_aditivo(self):
+        r = lambda v: cf.classificar(tipo="QUEDA", valor=v, valor_base=400, limite_alerta=15, limite_critico=25)  # noqa: E731
+        self.assertEqual(r(350)["status"], "ROTINA")    # −12,5%
+        self.assertEqual(r(330)["status"], "ALERTA")    # −17,5%
+        self.assertEqual(r(290)["status"], "CRITICA")   # −27,5%
+        self.assertEqual(r(500)["status"], "ROTINA")    # subir não é consumo
+        self.assertEqual(r(330)["variacao_pct"], D("-17.5"))
+        self.assertIsNone(cf.classificar(tipo="QUEDA", valor=300, valor_base=None, limite_alerta=15)["status"])
+
+    def test_aumento_sobre_o_oleo_novo(self):
+        r = lambda v, base=None: cf.classificar(tipo="AUMENTO", valor=v, valor_base=base, limite_critico=15)  # noqa: E731
+        self.assertEqual(r(10)["status"], "ROTINA")
+        self.assertEqual(r(16)["status"], "CRITICA")         # sem boletim: base 0
+        self.assertEqual(r(16, base=6)["status"], "ROTINA")  # antiespumante de silicone no óleo novo
+        self.assertEqual(r(22, base=6)["status"], "CRITICA")
 
 
 class CatalogoDoModeloTest(TestCase):

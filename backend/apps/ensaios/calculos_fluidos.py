@@ -154,6 +154,26 @@ def classificar(*, tipo, valor=None, texto="", estado="MEDIDO", valor_base=None,
         absoluta = abs(variacao)
         saida["status"] = CRITICA if critico is not None and absoluta > critico else (
             ALERTA if alerta is not None and absoluta > alerta else ROTINA)
+    elif tipo == "QUEDA":
+        # Consumo de aditivo: quanto caiu, em %, em relação ao óleo novo. Subir não é anomalia.
+        base = _d(valor_base)
+        if not base:
+            return saida
+        variacao = (v - base) / base * Decimal("100")
+        saida["variacao_pct"] = variacao.quantize(Decimal("0.1"))
+        if critico is None and alerta is None:
+            return saida
+        queda = -variacao
+        saida["status"] = CRITICA if critico is not None and queda > critico else (
+            ALERTA if alerta is not None and queda > alerta else ROTINA)
+    elif tipo == "AUMENTO":
+        # Contaminação: quanto subiu, em valor, sobre o óleo novo (sem boletim, base 0).
+        base = _d(valor_base) or Decimal("0")
+        aumento = v - base
+        if critico is None and alerta is None:
+            return saida
+        saida["status"] = CRITICA if critico is not None and aumento > critico else (
+            ALERTA if alerta is not None and aumento > alerta else ROTINA)
     return saida
 
 

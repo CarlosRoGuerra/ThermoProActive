@@ -134,6 +134,22 @@ def texto_referencia(r, casas=2, unidade="", base=None) -> str:
         if r.limite_critico is not None:
             partes.append(f"Crítico ±{_num(r.limite_critico, 0)}%")
         return " · ".join(partes)
+    if r.tipo in (TipoReferencia.QUEDA, TipoReferencia.AUMENTO):
+        if r.base_oleo_novo:
+            if base is not None:
+                partes.append(f"Óleo novo {_num(base, casas)}{u}")
+            elif r.tipo == TipoReferencia.AUMENTO:
+                partes.append("Óleo novo sem boletim (base 0)")
+            else:
+                partes.append("Óleo novo sem boletim")
+        elif r.valor_base is not None:
+            partes.append(f"Base {_num(r.valor_base, casas)}{u}")
+        sinal, sufixo = ("−", "%") if r.tipo == TipoReferencia.QUEDA else ("+", u)
+        if r.limite_alerta is not None:
+            partes.append(f"Alerta {sinal}{_num(r.limite_alerta, 0 if r.tipo == TipoReferencia.QUEDA else casas)}{sufixo}")
+        if r.limite_critico is not None:
+            partes.append(f"Crítico {sinal}{_num(r.limite_critico, 0 if r.tipo == TipoReferencia.QUEDA else casas)}{sufixo}")
+        return " · ".join(partes)
     if r.tipo == TipoReferencia.CODIGO_ISO:
         texto = f"Meta {r.referencia_texto}"
         if r.limite_critico is not None:
@@ -173,6 +189,8 @@ def _celula(v):
 
 def _rotulo_oleo_novo(codigo, valor, produto) -> str:
     """Como a ficha mostra o valor do óleo novo (a densidade vai com a temperatura e o método)."""
+    if codigo not in CAMPO_OLEO_NOVO:
+        return f"Óleo novo: {_num(valor, 1)}"
     if codigo == "DENSIDADE":
         extras = [f"a {_num(produto.densidade_temperatura_c, 0)} °C" if produto.densidade_temperatura_c is not None else "",
                   produto.densidade_metodo]
@@ -188,12 +206,19 @@ def _oleo_novo_rotulos(campanha) -> dict:
 
 
 def _oleo_novo(campanha) -> dict:
-    """Valores do óleo novo (ficha técnica do fluido cadastrado na coleta), por código do parâmetro."""
+    """
+    Valores do óleo novo do fluido cadastrado na coleta, por código do parâmetro: os da
+    ficha técnica (viscosidade, densidade, IV, TBN) e os do boletim do óleo novo
+    (elementos da espectrometria etc.). O boletim prevalece quando os dois existem.
+    """
     coleta = campanha.coleta_fluido if campanha else None
     if coleta is None or not coleta.produto_id:
         return {}
-    return {codigo: getattr(coleta.produto, campo) for codigo, campo in CAMPO_OLEO_NOVO.items()
-            if getattr(coleta.produto, campo) is not None}
+    valores = {codigo: getattr(coleta.produto, campo) for codigo, campo in CAMPO_OLEO_NOVO.items()
+               if getattr(coleta.produto, campo) is not None}
+    for v in coleta.produto.valores_oleo_novo.filter(ativo=True).select_related("parametro"):
+        valores[v.parametro.codigo] = v.valor
+    return valores
 
 
 def _contexto_referencia(campanha, equipamento):

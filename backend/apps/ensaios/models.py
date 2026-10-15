@@ -371,6 +371,30 @@ class MetaLimpezaRecomendada(Catalogo):
         verbose_name_plural = "Metas de limpeza ISO 4406 recomendadas"
 
 
+class ValorOleoNovo(BaseModel):
+    """
+    Boletim do óleo novo (amostra de referência do lote): o valor de um parâmetro no
+    fluido novo — ex.: zinco 400 ppm. É a linha de base das referências "Queda" (consumo
+    de aditivo) e "Aumento" (contaminação) e da variação marcada com base no óleo novo.
+    """
+
+    produto = models.ForeignKey("ensaios.ProdutoFluido", on_delete=models.CASCADE, related_name="valores_oleo_novo",
+                                verbose_name="Fluido")
+    parametro = models.ForeignKey("ensaios.ParametroEnsaio", on_delete=models.CASCADE, related_name="valores_oleo_novo",
+                                  verbose_name="Parâmetro")
+    valor = models.DecimalField("Valor no óleo novo", max_digits=14, decimal_places=4)
+    fonte = models.CharField("Fonte (boletim, lote, laudo)", max_length=250, blank=True)
+    data = models.DateField("Data do boletim", null=True, blank=True)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Valor do óleo novo (boletim)"
+        verbose_name_plural = "Valores do óleo novo (boletim)"
+        constraints = [models.UniqueConstraint(fields=["produto", "parametro"], name="uniq_valor_oleo_novo")]
+
+    def __str__(self):
+        return f"{self.produto} — {self.parametro}: {self.valor}"
+
+
 class CondicaoOperacionalColeta(models.TextChoices):
     EM_OPERACAO = "EM_OPERACAO", "Em operação"
     APOS_PARADA = "APOS_PARADA", "Logo após a parada"
@@ -451,6 +475,8 @@ class TipoReferencia(models.TextChoices):
     MAXIMO = "MAXIMO", "Máximo (alerta/crítico acima do limite)"
     MINIMO = "MINIMO", "Mínimo (alerta/crítico abaixo do limite)"
     VARIACAO = "VARIACAO", "Variação em relação ao valor de base (%)"
+    QUEDA = "QUEDA", "Queda em relação ao óleo novo (%) — consumo de aditivo"
+    AUMENTO = "AUMENTO", "Aumento sobre o óleo novo (valor) — contaminação"
     CODIGO_ISO = "CODIGO_ISO", "Meta de limpeza ISO 4406"
     QUALITATIVO = "QUALITATIVO", "Resultado esperado (texto)"
 

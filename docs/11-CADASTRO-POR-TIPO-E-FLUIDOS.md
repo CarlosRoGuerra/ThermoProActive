@@ -343,7 +343,26 @@ O responsável técnico apontou que a base dos ±20% não pode depender do **tex
 
 Migrações `ensaios/0011` e `0012` (schema) e `0013` (catálogo e metas).
 
-### 12.3 Em aberto
+### 12.3 Espectrometria (EF) — 13/10/2026
+
+O responsável técnico mandou os limites da EF (óleo em uso, ASTM D5185 — a D4951 é controle do
+óleo novo, só aditivos). Valem os da 2ª mensagem ("comparação com o óleo novo"), que tem alerta e
+crítico; a 1ª tinha números diferentes e não foi usada.
+
+| Grupo | Regra (referência geral, origem "responsável técnico") |
+| --- | --- |
+| Desgaste — hidráulico | Fe 15/30 · Cu 10/20 · Al 5/15 · Cr 3/8 · Pb 5/10 · Sn 5/10 ppm (alerta/crítico) |
+| Desgaste — lubrificante (redutores e engrenagens) | Fe 80/150 · Cu 25/50 · Al 15/30 · Cr 5/15 · Pb 10/25 · Sn 10/25 ppm (Fe crítico "150 a 200": vale 150) |
+| Contaminação | Si: aumento > 15 ppm sobre o óleo novo = crítico · Na > 15 ppm = alerta |
+| Metais traço | Mn, Ti, Ni, Ag, V > 5 ppm = alerta |
+| Aditivos | Zn, P, B, Mo, Ba: queda > 15% do óleo novo = alerta, > 25% = crítico · Ca, Mg: aumento > 20 ppm = alerta (mistura com óleo de motor) |
+
+Novidades: **Boletim do óleo novo** (`ValorOleoNovo`: valor de cada parâmetro no fluido novo,
+linha de base) e os tipos de referência **Queda** (consumo de aditivo, %) e **Aumento**
+(contaminação, valor sobre o óleo novo; sem boletim, base 0). Sem boletim, a queda dos aditivos
+fica sem classificação. Potássio não foi citado (sem referência). Migrações `ensaios/0014–0015`.
+
+### 12.4 Em aberto
 
 1. Preencher o **tipo de base** das máquinas dos Grupos 1 e 2 (no banco local, as 11 do Grupo 2
    estão sem; até lá, valem os limites da base rígida).

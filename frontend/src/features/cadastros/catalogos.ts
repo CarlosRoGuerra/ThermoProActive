@@ -335,6 +335,21 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
   },
   // Fluidos lubrificantes e hidráulicos.
   {
+    // Linha de base das referências "Queda", "Aumento" e da variação pelo óleo novo.
+    key: "valores-oleo-novo",
+    label: "Boletim do óleo novo (valores de referência)",
+    endpoint: "valores-oleo-novo",
+    fields: [
+      { key: "produto", label: "Fluido", type: "ref", required: true, optionsEndpoint: "produtos-fluido" },
+      { key: "parametro", label: "Parâmetro", type: "ref", required: true,
+        optionsEndpoint: "parametros-ensaio?ensaio__modulo=FLUIDO_LUBRIFICANTE" },
+      { key: "valor", label: "Valor no óleo novo", type: "number", required: true },
+      { key: "fonte", label: "Fonte (boletim, lote, laudo)", maxLength: 250 },
+      { key: "data", label: "Data do boletim", type: "date" },
+    ],
+    columns: ["produto_nome", "parametro_nome", "valor", "fonte", "data"],
+  },
+  {
     // Consulta para cadastrar a meta de limpeza (Referências → Meta ISO 4406).
     key: "metas-limpeza-iso",
     label: "Metas de limpeza ISO 4406 recomendadas",
@@ -391,13 +406,15 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
         { valor: "MAXIMO", texto: "Máximo (alerta/crítico acima do limite)" },
         { valor: "MINIMO", texto: "Mínimo (alerta/crítico abaixo do limite)" },
         { valor: "VARIACAO", texto: "Variação em relação ao valor de base (%)" },
+        { valor: "QUEDA", texto: "Queda em relação ao óleo novo (%) — consumo de aditivo" },
+        { valor: "AUMENTO", texto: "Aumento sobre o óleo novo (valor) — contaminação" },
         { valor: "CODIGO_ISO", texto: "Meta de limpeza ISO 4406 (parâmetro Código ISO)" },
         { valor: "QUALITATIVO", texto: "Resultado esperado (texto)" },
       ] },
       { key: "limite_alerta", label: "Limite de alerta (na variação, em %)", type: "number" },
       { key: "limite_critico", label: "Limite crítico (na variação, em %; na meta ISO, graus acima)", type: "number" },
       { key: "valor_base", label: "Valor de base (óleo novo / nominal)", type: "number" },
-      { key: "base_oleo_novo", label: "Base = valor do óleo novo no cadastro do fluido (viscosidade a 40 °C, densidade a 15 °C ou IV)", type: "boolean" },
+      { key: "base_oleo_novo", label: "Base = valor do óleo novo (ficha técnica ou boletim do óleo novo do fluido)", type: "boolean" },
       { key: "referencia_texto", label: "Meta ISO (X/Y/Z) ou resultado esperado", maxLength: 40 },
       { key: "equipamento", label: "Só para o equipamento", type: "ref", optionsEndpoint: "equipamentos" },
       { key: "tipo_equipamento", label: "Só para o tipo de equipamento (ex.: metas de limpeza recomendadas)", type: "ref", optionsEndpoint: "tipos-equipamento" },

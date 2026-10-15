@@ -41,6 +41,16 @@ function linhasDeReferencia(r: ReferenciaFluido | null, casas: number): Ref[] {
       add(b * (1 + pct / 100), rotulo, cor);
       add(b * (1 - pct / 100), rotulo, cor);
     }
+  } else if (r.tipo === "QUEDA" && r.valor_base) {
+    // Consumo de aditivo: a linha fica abaixo do óleo novo.
+    const b = Number(r.valor_base);
+    if (r.limite_alerta != null) add(b * (1 - Number(r.limite_alerta) / 100), "Alerta", STATUS_KPI.warning);
+    if (r.limite_critico != null) add(b * (1 - Number(r.limite_critico) / 100), "Crítico", STATUS_KPI.critical);
+  } else if (r.tipo === "AUMENTO") {
+    // Contaminação: a linha fica acima do óleo novo (sem boletim, base 0).
+    const b = Number(r.valor_base ?? 0);
+    if (r.limite_alerta != null) add(b + Number(r.limite_alerta), "Alerta", STATUS_KPI.warning);
+    if (r.limite_critico != null) add(b + Number(r.limite_critico), "Crítico", STATUS_KPI.critical);
   }
   return saida;
 }

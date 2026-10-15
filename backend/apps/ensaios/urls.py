@@ -8,6 +8,7 @@ from .views import (
     FluidoHistoricoView,
     FluidoInspecaoViewSet,
     MetaLimpezaRecomendadaViewSet,
+    ValorOleoNovoViewSet,
     ItemChecklistVisualViewSet,
     ParametroEnsaioViewSet,
     PontoColetaViewSet,
@@ -36,6 +37,7 @@ router.register("transformadores-inspecao", TransformadorInspecaoViewSet, basena
 router.register("parametros-ensaio", ParametroEnsaioViewSet, basename="parametroensaio")
 router.register("produtos-fluido", ProdutoFluidoViewSet, basename="produtofluido")
 router.register("metas-limpeza-iso", MetaLimpezaRecomendadaViewSet, basename="metalimpezarecomendada")
+router.register("valores-oleo-novo", ValorOleoNovoViewSet, basename="valoroleonovo")
 router.register("solicitacoes-padrao-ensaio", SolicitacaoPadraoEnsaioViewSet, basename="solicitacaopadraoensaio")
 router.register("referencias-parametro", ReferenciaParametroViewSet, basename="referenciaparametro")
 router.register("coletas-fluido", ColetaFluidoViewSet, basename="coletafluido")

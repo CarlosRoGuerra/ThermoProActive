@@ -13,6 +13,7 @@ from .models import (
     InspecaoVisualColeta,
     ItemChecklistVisual,
     MetaLimpezaRecomendada,
+    ValorOleoNovo,
     OrigemReferencia,
     ParametroEnsaio,
     PontoColeta,
@@ -64,6 +65,23 @@ class EnsaioSerializer(serializers.ModelSerializer):
 
     def get_padrao_em(self, obj) -> list:
         return sorted({s.aplicacao for s in obj.solicitacoes_padrao.all() if s.ativo})
+
+
+class ValorOleoNovoSerializer(serializers.ModelSerializer):
+    produto_nome = serializers.CharField(source="produto.nome", read_only=True)
+    parametro_nome = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ValorOleoNovo
+        exclude = ["ativo"]
+
+    def get_parametro_nome(self, obj) -> str:
+        return f"{obj.parametro.ensaio.sigla} — {obj.parametro.nome}"
+
+    def validate_parametro(self, value):
+        if value.ensaio.modulo != FLUIDO:
+            raise serializers.ValidationError("Parâmetro de outra tecnologia.")
+        return value
 
 
 class MetaLimpezaRecomendadaSerializer(serializers.ModelSerializer):
@@ -145,15 +163,12 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
         else:
             if alerta is None and critico is None:
                 raise serializers.ValidationError("Informe o limite de alerta, o crítico ou os dois.")
-            if tipo == TipoReferencia.VARIACAO and not base and not valor("base_oleo_novo"):
-                raise serializers.ValidationError({"valor_base": "A variação precisa do valor de base (óleo novo/nominal)."})
-            from .relatorio_fluidos import CAMPO_OLEO_NOVO
-
-            if valor("base_oleo_novo") and (tipo != TipoReferencia.VARIACAO
-                                            or getattr(parametro, "codigo", "") not in CAMPO_OLEO_NOVO):
+            if tipo in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA) and not base and not valor("base_oleo_novo"):
+                raise serializers.ValidationError({"valor_base": "Informe o valor de base ou marque a base pelo óleo novo."})
+            if valor("base_oleo_novo") and tipo not in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA,
+                                                        TipoReferencia.AUMENTO):
                 raise serializers.ValidationError({
-                    "base_oleo_novo": "A base pelo óleo novo vale na variação da viscosidade a 40 °C, da densidade "
-                                      "a 15 °C ou do índice de viscosidade.",
+                    "base_oleo_novo": "A base pelo óleo novo vale nos tipos Variação, Queda e Aumento.",
                 })
             if alerta is not None and critico is not None:
                 fora_de_ordem = critico < alerta if tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO) else critico > alerta
