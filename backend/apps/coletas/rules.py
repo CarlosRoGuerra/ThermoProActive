@@ -9,7 +9,6 @@ Ver detalhamento em docs/01-DISCOVERY-modulos-tecnicos.md (§2 e §3).
 """
 from dataclasses import dataclass
 from decimal import Decimal
-from statistics import mean
 
 # Limite SUPERIOR de velocidade RMS (mm/s) de cada zona, por classe.
 # zona D = acima do limite da zona C.
@@ -96,6 +95,7 @@ def classificar_vibracao(
     faixas: dict | None = None,
     deslocamento: Decimal | None = None,
     avisos: tuple = (),
+    fator_evolucao: Decimal | None = None,
 ) -> ResultadoVibracao:
     """
     Classifica uma medição de vibração.
@@ -111,6 +111,15 @@ def classificar_vibracao(
             critério, a zona é a PIOR entre velocidade e deslocamento (ISO 20816-3).
         avisos: observações do cadastro para o diagnóstico (ex.: base não informada).
     """
+    from .analise_preditiva import numero_finito
+
+    velocidade_rms = numero_finito(velocidade_rms)
+    if velocidade_rms is None or velocidade_rms < 0:
+        return ResultadoVibracao("", "", "Leitura ausente ou inválida; avaliação inconclusiva.")
+    if faixas is not None:
+        limites = [numero_finito(faixas.get(zona)) for zona in "ABC"]
+        if any(v is None or v < 0 for v in limites) or not (limites[0] <= limites[1] <= limites[2]):
+            return ResultadoVibracao("", "", "Limites inválidos; avaliação inconclusiva.")
     zona = _zona_por_vrms(classe_iso, velocidade_rms, faixas)
     zona_desloc = None
     if deslocamento is not None and faixas and faixas.get("deslocamento"):
@@ -121,16 +130,20 @@ def classificar_vibracao(
     diagnosticos = []
 
     # Regra de evolução (tendência — itens 2.4.1.2 / 2.4.1.3)
-    if historico_vrms:
-        media_hist = Decimal(mean(historico_vrms))
-        if media_hist > 0 and velocidade_rms > media_hist * FATOR_EVOLUCAO:
+    historico_valido = [numero_finito(v) for v in historico_vrms or []]
+    fator_evolucao = numero_finito(fator_evolucao)
+    if historico_valido and all(v is not None and v >= 0 for v in historico_valido) and fator_evolucao is not None and fator_evolucao > 1:
+        media_hist = sum(historico_valido) / len(historico_valido)
+        if media_hist > 0 and velocidade_rms > media_hist * fator_evolucao:
             criticidade = _eleva(criticidade)
             diagnosticos.append(
                 f"Tendência de agravamento: {velocidade_rms} mm/s > "
-                f"{FATOR_EVOLUCAO}× a média histórica ({media_hist:.2f} mm/s)."
+                f"{fator_evolucao}× a média histórica ({media_hist:.2f} mm/s). "
+                "Elevação por procedimento configurado; não confirma causa de falha."
             )
 
     # Diagnóstico assistido (item 2.4.2.3)
+    fator_crista = numero_finito(fator_crista)
     if fator_crista is not None and fator_crista > FATOR_CRISTA_ALERTA:
         diagnosticos.append(
             f"Fator de crista {fator_crista} > {FATOR_CRISTA_ALERTA}: "
@@ -139,12 +152,11 @@ def classificar_vibracao(
         if criticidade == "NORMAL":
             criticidade = "ALERTA"
 
-    base = {
-        "A": "Vibração na zona A (equipamento em ótima condição).",
-        "B": "Vibração na zona B (operação contínua aceitável).",
-        "C": "Vibração na zona C (tolerável — recomenda-se monitoramento próximo).",
-        "D": "Vibração na zona D (inadmissível — risco de dano; intervenção recomendada).",
-    }[zona]
+    base = (
+        f"Velocidade RMS na zona {zona} do critério aplicado. "
+        "A classificação da leitura não identifica a causa de falha; "
+        "diagnóstico e recomendação dependem de avaliação técnica."
+    )
     diagnosticos.insert(0, base)
     if zona_desloc is not None:
         diagnosticos.insert(1, f"Deslocamento {deslocamento} µm na zona {zona_desloc}.")
@@ -161,19 +173,13 @@ def classificar_vibracao(
 
 # =============================================================================
 # Termografia infravermelha — Anexo I 2.3.2.2.
-# Classificação por ΔT (ponto quente vs. ponto de referência), limiares
-# NBR 15572 / NETA. Limiares parametrizáveis (Cláusula 12.4).
-# Ver docs/01-DISCOVERY-modulos-tecnicos.md.
+# O ΔT é aritmético. Sem confirmação de referência, aplicação e critério por
+# sistema, não é suficiente para classificar uma condição ou recomendar reparo.
 # =============================================================================
-
-# ΔT (°C) sobre a referência:
-TERMO_DELTA_ALERTA = Decimal("3")    # 4–15°C: provável deficiência → reparo programado
-TERMO_DELTA_CRITICO = Decimal("15")  # > 15°C: discrepância grave → reparo imediato
-
 
 @dataclass
 class ResultadoTermografia:
-    delta_t: Decimal
+    delta_t: Decimal | None
     criticidade: str
     diagnostico: str
 
@@ -181,21 +187,14 @@ class ResultadoTermografia:
 def classificar_termografia(
     temperatura_ponto: Decimal, temperatura_referencia: Decimal
 ) -> ResultadoTermografia:
-    """Classifica uma medição termográfica pelo ΔT em relação à referência."""
+    """Registra o ΔT, mantendo a decisão técnica pendente de critério aplicável."""
+    from .analise_preditiva import numero_finito
+    temperatura_ponto, temperatura_referencia = numero_finito(temperatura_ponto), numero_finito(temperatura_referencia)
+    if temperatura_ponto is None or temperatura_referencia is None:
+        return ResultadoTermografia(None, "", "Temperaturas ausentes ou inválidas; avaliação inconclusiva.")
     delta = temperatura_ponto - temperatura_referencia
-
-    if delta > TERMO_DELTA_CRITICO:
-        criticidade = "CRITICO"
-        recomendacao = "Discrepância grave: reparo corretivo imediato recomendado."
-    elif delta > TERMO_DELTA_ALERTA:
-        criticidade = "ALERTA"
-        recomendacao = "Provável deficiência: programar reparo na próxima oportunidade."
-    else:
-        criticidade = "NORMAL"
-        recomendacao = "Dentro do esperado: manter monitoramento periódico."
-
     diagnostico = (
         f"ΔT = {delta:.1f}°C (ponto {temperatura_ponto}°C / referência "
-        f"{temperatura_referencia}°C). {recomendacao}"
+        f"{temperatura_referencia}°C). Classificação pendente de critério específico validado."
     )
-    return ResultadoTermografia(delta_t=delta, criticidade=criticidade, diagnostico=diagnostico)
+    return ResultadoTermografia(delta_t=delta, criticidade="", diagnostico=diagnostico)

@@ -13,8 +13,8 @@ análise preditiva, laudos, ordens de serviço e portal do cliente), desenvolvid
 |---|---|
 | 2.1 Login e Controle de Acesso (portais separados, RBAC, cookies HttpOnly, MFA e sessões) | ✅ |
 | 2.2 Cadastros — principais + **catálogos** (normas, tipos, criticidade, grupos) + **rotas** | ✅ completo |
-| 2.3 Coleta — **10 de 10 categorias** (vibração ISO, termografia ΔT, fluidos, ensaios elétricos, ultrassom, espessura, qualidade de energia, sensitiva, corretiva) | ✅ |
-| 2.4 Análise Preditiva — motor de regras por tipo + tendência | ✅ |
+| 2.3 Coleta — 10 categorias mapeadas; cobertura técnica e critérios variam por subtipo | Parcial — [matriz e pendências](docs/12-CONFORMIDADE-COLETA-ANEXO-I-2.3.md) |
+| 2.4 Análise Preditiva — regras determinísticas, histórico comparável, replay e eventos rastreáveis | Parcial — [regras e validações pendentes](docs/13-ANALISE-PREDITIVA-ANEXO-I-2.4.md) |
 | 2.5 Laudos Técnicos — geração automática consolidada, emissão, impressão/PDF | ✅ |
 | 2.6 **OSP** — geração automática a partir de medição crítica + SLA + fluxo de status | ✅ |
 | 2.7 Portal do Cliente — **home dedicada** (`/portal`): dashboard personalizado, índice de disponibilidade, histórico de serviços; escopo por cliente, somente leitura | ✅ |
@@ -25,6 +25,11 @@ análise preditiva, laudos, ordens de serviço e portal do cliente), desenvolvid
 Detalhes em [`docs/00-ARQUITETURA.md`](docs/00-ARQUITETURA.md),
 [`docs/01-DISCOVERY-modulos-tecnicos.md`](docs/01-DISCOVERY-modulos-tecnicos.md) e
 [`docs/02-modelo-de-prompts.md`](docs/02-modelo-de-prompts.md).
+
+A [auditoria de coleta técnica](docs/12-CONFORMIDADE-COLETA-ANEXO-I-2.3.md)
+separa os campos implementados das fichas e regras ainda pendentes de homologação.
+Novas leituras sem critério específico aplicável ficam pendentes de avaliação,
+sem conclusão automática de normalidade.
 
 ## Como rodar
 
@@ -108,8 +113,10 @@ http://localhost:3000/admin/login (equipe interna).
    só do próprio cliente. Uma URL interna digitada à mão (`/clientes`, `/cadastros`) é
    traduzida para o equivalente do portal — ver `docs/08-FRONTEND-REDESIGN.md`.
 
-> **SLA vencendo (2.10.2.4):** agende o comando para rodar diariamente (cron):
-> `docker compose exec backend python manage.py verificar_slas --dias 2`
+> **Notificações (2.10):** o serviço `agendador` dos composes de produção processa a fila de
+> e-mail/WhatsApp (retentativas) a cada 60 s e o alerta de SLA a cada 60 min — sem cron.
+> Diagnóstico dos canais, sem revelar credenciais: `docker compose exec backend python manage.py verificar_canais`.
+> Detalhes, matriz de eventos e o que depende do cliente: `docs/17-NOTIFICACOES-ANEXO-I-2.10.md`.
 
 ## Estrutura
 ```

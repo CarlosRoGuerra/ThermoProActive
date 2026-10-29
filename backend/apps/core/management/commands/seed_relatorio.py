@@ -38,7 +38,7 @@ from apps.coletas.models import (
     TipoAnalise,
 )
 from apps.laudos.models import Laudo
-from apps.osp.models import Acompanhamento, GrauRisco, OrdemServico
+from apps.osp.models import HistoricoOSP, Acompanhamento, GrauRisco, OrdemServico
 
 User = get_user_model()
 
@@ -88,6 +88,8 @@ class Command(BaseCommand):
         # --- Limpa execução anterior -------------------------------------
         antigo = Cliente.objects.filter(cnpj=CNPJ_DEMO).first()
         if antigo:
+            # O histórico da OSP é protegido: dado de DEMONSTRAÇÃO, apagado de propósito.
+            HistoricoOSP.objects.filter(osp__cliente=antigo).delete()
             OrdemServico.objects.filter(cliente=antigo).delete()
             Laudo.objects.filter(inspecao__cliente=antigo).delete()
             MedicaoVibracao.objects.filter(inspecao__cliente=antigo).delete()

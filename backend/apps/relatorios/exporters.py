@@ -14,12 +14,27 @@ from .reports import Relatorio
 
 ACCENT = colors.HexColor("#4f46e5")
 
+#: Caracteres que planilhas interpretam como início de fórmula. Texto vindo do
+#: usuário (diagnóstico, nome, TAG) que comece assim é neutralizado com um
+#: apóstrofo — senão "=HYPERLINK(...)" num diagnóstico vira fórmula no Excel.
+INICIO_DE_FORMULA = ("=", "+", "-", "@", chr(9), chr(13))
+
+
+def _celula(valor):
+    """Números seguem números (soma no Excel); texto é neutralizado contra fórmula."""
+    if isinstance(valor, bool) or valor is None:
+        return "" if valor is None else str(valor)
+    if isinstance(valor, (int, float)):
+        return valor
+    texto = str(valor)
+    return "'" + texto if texto.startswith(INICIO_DE_FORMULA) else texto
+
 
 def to_csv(rel: Relatorio) -> bytes:
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")  # ';' abre direto no Excel pt-BR
-    writer.writerow(rel.colunas)
-    writer.writerows(rel.linhas)
+    writer.writerow([_celula(c) for c in rel.colunas])
+    writer.writerows([[_celula(c) for c in row] for row in rel.linhas])
     return buf.getvalue().encode("utf-8-sig")  # BOM p/ acentuação no Excel
 
 
@@ -27,14 +42,14 @@ def to_xlsx(rel: Relatorio) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Relatório"
-    ws.append(rel.colunas)
+    ws.append([_celula(c) for c in rel.colunas])
     header_fill = PatternFill("solid", fgColor="4F46E5")
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
         cell.alignment = Alignment(vertical="center")
     for row in rel.linhas:
-        ws.append([str(c) for c in row])
+        ws.append([_celula(c) for c in row])
     for col in ws.columns:
         largura = max((len(str(c.value or "")) for c in col), default=10)
         ws.column_dimensions[col[0].column_letter].width = min(max(largura + 2, 12), 60)

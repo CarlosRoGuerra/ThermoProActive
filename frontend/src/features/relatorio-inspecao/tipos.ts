@@ -8,6 +8,7 @@
  * transformador (`DadosTransformador` — óleo isolante e ensaios elétricos).
  */
 import type { Corretiva } from "./corretiva-balanceamento";
+import type { EvidenciaLaudo } from "@/lib/types";
 
 /* ------------------------------- Shell ------------------------------------ */
 export type Instrumento = {
@@ -23,6 +24,8 @@ export type Prestador = {
   email: string; telefone: string; site: string; logomarca: string | null;
 };
 export type Cabecalho = {
+  /** Personalização textual no mesmo espaço da capa, preservando a geometria. */
+  titulo_documento?: string;
   prestador: Prestador | null;
   empresa: string; nome_fantasia: string; cnpj: string; endereco: string; cidade_uf: string; contato: string; departamento: string;
   endereco_linha1: string; endereco_linha2: string;
@@ -63,6 +66,7 @@ export type LinhaSeveridade = {
 };
 
 export type DossieShell = {
+  evidencias_laudo?: EvidenciaLaudo[];
   /** Chave do módulo técnico da tecnologia (sempre explícita; sem módulo o backend recusa). */
   modulo: string;
   cabecalho: Cabecalho;

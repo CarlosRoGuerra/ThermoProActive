@@ -179,7 +179,6 @@ export function OspForm({ ospId }: { ospId?: number }) {
         recomendacao: campos.recomendacao,
         observacao: campos.observacao,
         descricao_corretiva: campos.descricao_corretiva,
-        status: campos.status,
         acompanhamento: campos.acompanhamento,
         resultado_confirmacao: campos.resultado_confirmacao,
       };
@@ -423,7 +422,9 @@ export function OspForm({ ospId }: { ospId?: number }) {
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status">
-            <Select value={campos.status} onChange={(e) => set("status", e.target.value)}>
+            {/* O status só muda pela lista de ordens: lá valem as regras de transição,
+                a permissão por perfil e o histórico. Aqui é somente leitura. */}
+            <Select value={campos.status} disabled onChange={() => {}}>
               <option value="ABERTA">Aberta</option>
               <option value="PLANEJADA">Planejada</option>
               <option value="EXECUTADA">Executada</option>

@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Leitura e renderização de PDFs nos testes; não exigidos pela API em produção.
+pypdf==6.21.2
+pypdfium2==5.14.0

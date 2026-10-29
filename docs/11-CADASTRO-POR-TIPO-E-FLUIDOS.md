@@ -362,6 +362,10 @@ linha de base) e os tipos de referência **Queda** (consumo de aditivo, %) e **A
 (contaminação, valor sobre o óleo novo; sem boletim, base 0). Sem boletim, a queda dos aditivos
 fica sem classificação. Potássio não foi citado (sem referência). Migrações `ensaios/0014–0015`.
 
+**21/10/2026:** potássio — alerta > 25 ppm, crítico > 50 ppm (`ensaios/0016`). Compressores usam
+óleo hidráulico (coleta com aplicação "Hidráulico": limites e CP do hidráulico); mancais usam graxa
+(fora da análise de óleo). Os limites de "lubrificante" ficam para redutores e engrenagens.
+
 ### 12.4 Em aberto
 
 1. Preencher o **tipo de base** das máquinas dos Grupos 1 e 2 (no banco local, as 11 do Grupo 2

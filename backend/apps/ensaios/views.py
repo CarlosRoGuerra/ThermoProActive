@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -180,10 +181,17 @@ class ResultadoEnsaioViewSet(_DadoDeEnsaioViewSet):
         .select_related("item__carregamento__tecnologia", "ensaio", "instrumento",
                         "item__equipamento__dados_transformador", "item__equipamento__setor__area",
                         "item__coleta_oleo", "item__registro_eletrico", "item__coleta_fluido")
-        .prefetch_related("valores__parametro", "ensaio__parametros")
+        .prefetch_related("valores__parametro", "ensaio__parametros", "revisoes")
     )
     serializer_class = ResultadoEnsaioSerializer
     filterset_fields = _DadoDeEnsaioViewSet.filterset_fields + ["ensaio", "ensaio__modulo", "situacao"]
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        from .contexto import registrar_revisao
+        registrar_revisao(instance, self.request.user)
+        instance.ativo = False
+        instance.save(update_fields=["ativo", "atualizado_em"])
 
 
 # ------------------------- Fila de lançamento (leitura) -------------------------

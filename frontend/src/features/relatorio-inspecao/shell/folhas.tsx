@@ -90,7 +90,7 @@ export function CapaRelatorio({ cab }: { cab: Cabecalho }) {
 
       {/* Título "Relatório Técnico" — topo visual calibrado em ~64mm */}
       <div style={{ position: "absolute", right: "5mm", top: "63.6mm", width: "120mm", textAlign: "right" }}>
-        <p style={{ fontSize: "18pt", fontWeight: 700, color: "#64748b" }}>Relatório Técnico</p>
+        <p style={{ fontSize: "18pt", fontWeight: 700, color: "#64748b" }}>{cab.titulo_documento || "Relatório Técnico"}</p>
       </div>
 
       {/* Número do relatório — calibrado para o topo visual ~76,4mm */}

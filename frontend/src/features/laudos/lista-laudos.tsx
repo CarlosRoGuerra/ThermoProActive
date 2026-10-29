@@ -108,14 +108,14 @@ export function ListaLaudos({
     // foi revertida junto com o documento (ver docs/08-FRONTEND-REDESIGN.md).
     ...(ehCliente
       ? []
-      : [
+      : l.status === "RASCUNHO" ? [
           {
-            label: "Relatório técnico completo",
-            href: `${baseHref}/${l.id}/relatorio`,
+            label: "Consultar fonte do rascunho",
+            href: l.relatorio_origem ? `/relatorios-inspecao/${l.relatorio_origem}` : `${baseHref}/${l.id}/relatorio`,
             icon: FileText,
           } as ItemMenu,
-        ]),
-    { label: "Imprimir / salvar PDF", href: `${baseHref}/${l.id}`, icon: Printer },
+        ] : []),
+    { label: l.pdf_disponivel ? "Abrir documento e baixar PDF" : "Consultar prévia", href: `${baseHref}/${l.id}`, icon: Printer },
   ];
 
   return (
@@ -125,7 +125,7 @@ export function ListaLaudos({
         title="Laudos técnicos"
         description={
           ehCliente
-            ? "Os laudos emitidos e assinados pelo responsável técnico. Abra para ler o diagnóstico, as recomendações e a conclusão, e imprima ou salve em PDF."
+            ? "Consulte o conteúdo emitido, a aprovação registrada e o PDF disponibilizado pela equipe técnica."
             : "Laudos gerados a partir das inspeções, em ordem de criação (Anexo I 2.5)."
         }
         trilha={[{ label: "Laudos técnicos" }]}
@@ -160,11 +160,11 @@ export function ListaLaudos({
             <EmptyState
               icon={ScrollText}
               title="Nenhum laudo disponível ainda"
-              description="Os laudos aparecem aqui depois que a análise das medições é concluída e o documento é assinado pelo responsável técnico."
+              description="Os laudos aparecem aqui depois que a equipe conclui a análise e emite o documento."
               comoFunciona={[
                 "A equipe executa a rota de inspeção na sua planta.",
-                "As medições são analisadas contra as normas aplicáveis.",
-                "O laudo é emitido, assinado e publicado neste portal.",
+                "A equipe analisa as medições pelos critérios aplicáveis.",
+                "O responsável aprova a emissão e o documento é disponibilizado neste portal.",
               ]}
             />
           ) : (

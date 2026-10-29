@@ -459,7 +459,15 @@ export interface AtividadeCorretiva extends Carregamento {
   itens: ItemCorretivo[];
 }
 
-export interface MedicaoVibracao {
+export interface ClassificacaoMedicao {
+  classificacao_status?: "PENDENTE" | "CLASSIFICADA" | "LEGADO";
+  criterio_aplicado?: Record<string, unknown>;
+  historico_classificacao?: Record<string, unknown>[];
+  instrumento?: number | null;
+  coletado_por?: number | null;
+}
+
+export interface MedicaoVibracao extends ClassificacaoMedicao {
   id: number;
   inspecao: number;
   equipamento: number;
@@ -467,10 +475,12 @@ export interface MedicaoVibracao {
   componente: number | null;
   componente_nome: string | null;
   ponto_medicao: string;
+  subtipo?: string;
+  parametros?: Record<string, unknown>;
   direcao: "H" | "V" | "A";
   direcao_display: string;
   rotacao_rpm: number | null;
-  velocidade_rms: string;
+  velocidade_rms: string | null;
   aceleracao_rms: string | null;
   deslocamento_pp: string | null;
   fator_crista: string | null;
@@ -482,7 +492,7 @@ export interface MedicaoVibracao {
   data_hora: string;
 }
 
-export interface MedicaoTermografia {
+export interface MedicaoTermografia extends ClassificacaoMedicao {
   id: number;
   inspecao: number;
   equipamento: number;
@@ -504,7 +514,7 @@ export interface MedicaoTermografia {
   data_hora: string;
 }
 
-export interface MedicaoTecnica {
+export interface MedicaoTecnica extends ClassificacaoMedicao {
   id: number;
   inspecao: number;
   equipamento: number;
@@ -513,9 +523,10 @@ export interface MedicaoTecnica {
   componente_nome: string | null;
   tipo: string;
   tipo_display: string;
+  subtipo?: string;
   ponto_medicao: string;
   grandeza: string;
-  valor: string;
+  valor: string | null;
   unidade: string;
   valor_referencia: string | null;
   parametros: Record<string, unknown>;
@@ -572,7 +583,32 @@ export interface OrdemServico {
   responsavel_nome: string | null;
   sla_data: string | null;
   sla_vencido: boolean;
+  sla_origem?: string;
+  sla_cumprido?: boolean | null;
+  aprovado_por_nome?: string | null;
+  aprovado_em?: string | null;
+  /** O que ESTE usuário pode fazer agora (o backend é quem decide). */
+  transicoes_permitidas?: TransicaoOsp[];
   finalizada_em: string | null;
+  criado_em: string;
+}
+
+export interface TransicaoOsp {
+  status: string;
+  acao: string;
+  motivo_obrigatorio: boolean;
+}
+
+export interface HistoricoOsp {
+  id: number;
+  tipo: string;
+  tipo_display: string;
+  ator_nome: string;
+  ator_perfil: string;
+  status_anterior: string;
+  status_novo: string;
+  alteracoes: Record<string, unknown>;
+  motivo: string;
   criado_em: string;
 }
 
@@ -580,7 +616,10 @@ export interface Laudo {
   id: number;
   numero: string;
   versao: number;
-  inspecao: number;
+  inspecao: number | null;
+  relatorio_origem?: number | null;
+  cliente_id?: number;
+  tipo_analise?: string;
   cliente_nome: string;
   titulo: string;
   criticidade_geral: Criticidade | "";
@@ -594,6 +633,68 @@ export interface Laudo {
   status_display: string;
   data_emissao: string | null;
   criado_em: string;
+  anterior?: number | null;
+  documento_raiz?: number | null;
+  template?: number | null;
+  assinatura?: AssinaturaLaudo | null;
+  snapshot_hash?: string;
+  pdf_disponivel?: boolean;
+  pdf_hash?: string;
+  motivo_revisao?: string;
+  cancelado_em?: string | null;
+  motivo_cancelamento?: string;
+}
+
+export interface AssinaturaLaudo {
+  metodo: string;
+  usuario_id: number;
+  nome: string;
+  conselho: string;
+  data_hora: string;
+  assinatura_criptografica: boolean;
+  limitacao?: string;
+}
+
+export interface ConfiguracaoTemplateLaudo {
+  titulo_documento: string;
+  rodape: string;
+  secoes: string[];
+}
+
+export interface TemplateLaudo {
+  id: number;
+  nome: string;
+  cliente: number | null;
+  tipo_analise: string;
+  configuracao: ConfiguracaoTemplateLaudo;
+  versao: number;
+  ativo: boolean;
+}
+
+export interface EventoLaudo {
+  id: number;
+  tipo: string;
+  tipo_display?: string;
+  usuario_nome?: string;
+  criado_em: string;
+  motivo?: string;
+}
+
+export interface DocumentoLaudo {
+  schema: string;
+  origem: { tipo: string; id: number; cliente_id: number };
+  template: { id: number | null; nome: string; versao: number; configuracao: Partial<ConfiguracaoTemplateLaudo> };
+  evidencias: EvidenciaLaudo[];
+  graficos: { titulo: string; unidade: string; pontos: { data: string; valor: string | number }[] }[];
+  medicoes: { id: number; equipamento_tag: string; ponto_medicao: string; classificacao_status: string; criticidade: string }[];
+}
+
+export interface EvidenciaLaudo {
+  id: number;
+  nome: string;
+  legenda: string;
+  url?: string;
+  data_uri?: string;
 }
 
 export interface Notificacao {
@@ -611,22 +712,35 @@ export interface Notificacao {
   criado_em: string;
 }
 
+/** `null` = sem base de cálculo no recorte (a tela mostra "—"); 0 = medido e deu zero. */
 export interface DashboardExecutivo {
   kpis: {
     osps_total: number;
     osps_finalizadas: number;
-    taxa_conclusao: number;
+    osps_canceladas: number;
+    osps_sla_vencido: number;
+    sla_cumprido_pct: number | null;
+    taxa_conclusao: number | null;
     mttr_horas: number | null;
     mtbf_dias: number | null;
   };
-  custos: { real: number; estimado: number };
+  custos: {
+    real: number | null;
+    estimado: number | null;
+    osps_com_custo_real: number;
+    osps_sem_custo_real: number;
+    osps_com_custo_estimado: number;
+    /** Σ (emergencial − preditiva) — fórmula do cliente (Seção D). */
+    retorno_investimento: number | null;
+    osps_com_avaliacao: number;
+  };
   evolucao: { mes: string; criticas: number; osps: number }[];
   performance: {
     cliente: string;
     osps: number;
     finalizadas: number;
     criticas: number;
-    custo_real: number;
+    custo_real: number | null;
   }[];
 }
 
@@ -634,13 +748,36 @@ export interface Dashboard {
   total_inspecoes: number;
   inspecoes_abertas: number;
   total_medicoes: number;
-  medicoes_por_criticidade: Record<Criticidade, number>;
+  medicoes_por_criticidade: Record<Criticidade, number> & { PENDENTE?: number };
+  medicoes_pendentes?: number;
   equipamentos_criticos: {
+    equipamento_id: number;
     equipamento__tag: string;
     equipamento__nome: string;
+    cliente: string;
     ocorrencias: number;
   }[];
+  /** PROXY: equipamento com 2+ OSPs não canceladas no período. */
+  falhas_recorrentes: {
+    equipamentos: { equipamento_id: number; equipamento__tag: string; equipamento__nome: string; osps: number }[];
+    total_equipamentos: number;
+    osps_reincidentes: number;
+  };
+  sla_atendimento: {
+    finalizadas_com_prazo: number;
+    no_prazo: number;
+    percentual: number | null;
+    abertas_vencidas: number;
+  };
+  /** PROXY: (ativos − ativos com medição crítica) / ativos. */
+  disponibilidade: {
+    percentual: number | null;
+    equipamentos_ativos: number;
+    equipamentos_com_critica: number;
+  };
   osps_abertas: number;
+  osps_sla_vencido: number;
+  osps_por_status: Record<string, number>;
   osps_total: number;
 }
 
@@ -650,6 +787,7 @@ export interface ReportDef {
   descricao: string;
   categoria: string;
   interno_only: boolean;
+  aceita_parque?: boolean;
 }
 
 export interface ReportData {
@@ -657,6 +795,10 @@ export interface ReportData {
   colunas: string[];
   linhas: (string | number)[][];
   total_linhas: number;
+  /** Prévia paginada no servidor; o arquivo exportado leva todas as linhas. */
+  pagina: number;
+  paginas: number;
+  page_size: number;
 }
 
 export interface Paginated<T> {
@@ -691,6 +833,7 @@ export interface EquipamentoAtencao {
 export interface EstadoEquipamento {
   criticidade: Criticidade | "";
   medicoes: number;
+  pendentes?: number;
   ultima_medicao: string | null;
 }
 
@@ -699,7 +842,10 @@ export interface PortalVisaoGeral {
   indicadores: {
     equipamentos_monitorados: number;
     equipamentos_atencao: number;
-    indice_disponibilidade: number;
+    equipamentos_pendentes?: number;
+    medicoes_pendentes?: number;
+    /** PROXY; null quando não há equipamento ativo. */
+    indice_disponibilidade: number | null;
     inspecoes: number;
     osps_abertas: number;
     laudos_disponiveis: number;

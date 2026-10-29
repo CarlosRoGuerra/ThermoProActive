@@ -13,6 +13,7 @@ import {
   EstadoBadge,
   Field,
   MetricCard,
+  Modal,
   MetricGrid,
   PageBody,
   PageHeader,
@@ -22,6 +23,7 @@ import {
   Select,
   SemDado,
   StatusBadge,
+  Textarea,
   Toolbar,
   grauDe,
   useToast,
@@ -34,7 +36,7 @@ import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { useClientes } from "@/lib/hierarquia";
 import { usePermissoes } from "@/lib/permissions";
 import { data as fmtData, diasAte, plural, texto } from "@/lib/format";
-import type { OrdemServico } from "@/lib/types";
+import type { OrdemServico, TransicaoOsp } from "@/lib/types";
 
 /* ==========================================================================
    Ordens de Serviço Preditivas (visão interna)
@@ -113,20 +115,38 @@ export default function OspsPage() {
 
   const visiveis = filtro === "abertas" ? abertas : filtro === "vencidas" ? vencidas : lista.itens;
 
-  async function mudarStatus(o: OrdemServico, status: string) {
+  // Cancelar, reabrir e rejeitar a aprovação exigem motivo (vai para o histórico).
+  const [pendente, setPendente] = useState<{ osp: OrdemServico; transicao: TransicaoOsp } | null>(null);
+  const [motivo, setMotivo] = useState("");
+
+  function pedirMudanca(o: OrdemServico, status: string) {
+    const transicao = o.transicoes_permitidas?.find((t) => t.status === status);
+    if (!transicao) return;
+    if (transicao.motivo_obrigatorio) {
+      setMotivo("");
+      setPendente({ osp: o, transicao });
+    } else {
+      void mudarStatus(o, status);
+    }
+  }
+
+  async function mudarStatus(o: OrdemServico, status: string, justificativa?: string) {
     const r = await mutacao.executar(() =>
-      api(`/osps/${o.id}/status/`, { method: "PATCH", body: { status } })
+      api(`/osps/${o.id}/status/`, { method: "PATCH", body: { status, motivo: justificativa } })
     );
     if (r.ok) {
       toast.sucesso(`Ordem ${codigo(o)} agora está ${ROTULO_STATUS[status]?.toLowerCase()}`, {
         descricao:
           status === "AGUARDANDO_APROVACAO"
-            ? "Os aprovadores do cliente foram notificados."
+            ? "Quem aprova a execução foi notificado."
             : undefined,
       });
+      setPendente(null);
       lista.recarregar();
     } else {
+      // 403/409 do fluxo chegam aqui com a explicação do servidor.
       toast.erro(r.falha.titulo, { descricao: r.falha.descricao });
+      lista.recarregar();
     }
   }
 
@@ -228,17 +248,19 @@ export default function OspsPage() {
       mobile: "meta",
       valor: (o) => o.status_display,
       celula: (o) =>
-        pode("osp:mudar-status") ? (
+        pode("osp:mudar-status") && (o.transicoes_permitidas?.length ?? 0) > 0 ? (
           // O select fica na linha porque avançar o status é a ação mais
           // frequente da tela; o clique não propaga para a linha.
           <span onClick={(e) => e.stopPropagation()} className="inline-flex">
             <Select
               value={o.status}
               aria-label={`Situação da ordem ${codigo(o)}`}
-              onChange={(e) => mudarStatus(o, e.target.value)}
+              onChange={(e) => pedirMudanca(o, e.target.value)}
               className="h-8 w-auto min-w-40 py-0 text-xs"
             >
-              {FLUXO_STATUS.map((s) => (
+              {/* Só o estado atual + o que o servidor permite a ESTE perfil. */}
+              <option value={o.status}>{ROTULO_STATUS[o.status] ?? o.status_display}</option>
+              {FLUXO_STATUS.filter((s) => o.transicoes_permitidas?.some((t) => t.status === s)).map((s) => (
                 <option key={s} value={s}>
                   {ROTULO_STATUS[s]}
                 </option>
@@ -376,6 +398,40 @@ export default function OspsPage() {
           )
         }
       />
+
+      <Modal
+        aberto={!!pendente}
+        onFechar={() => setPendente(null)}
+        title={pendente ? `${ROTULO_STATUS[pendente.transicao.status]} — ordem ${codigo(pendente.osp)}` : ""}
+        description="O motivo fica registrado no histórico da ordem e não pode ser apagado."
+        tamanho="sm"
+        travarFundo
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setPendente(null)} disabled={mutacao.enviando}>
+              Voltar
+            </Button>
+            <Button
+              size="sm"
+              loading={mutacao.enviando}
+              disabled={!motivo.trim()}
+              onClick={() => pendente && void mudarStatus(pendente.osp, pendente.transicao.status, motivo.trim())}
+            >
+              Confirmar
+            </Button>
+          </>
+        }
+      >
+        <Field label="Motivo" obrigatorio>
+          <Textarea
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            rows={4}
+            placeholder="Explique a decisão"
+            data-autofocus
+          />
+        </Field>
+      </Modal>
     </PageBody>
   );
 }

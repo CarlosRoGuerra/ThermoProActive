@@ -4,8 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Notificacao, PreferenciaNotificacao
-from .serializers import NotificacaoSerializer, PreferenciaNotificacaoSerializer
+from .models import EventoPreditivo, Notificacao, PreferenciaNotificacao
+from .serializers import EventoPreditivoSerializer, NotificacaoSerializer, PreferenciaNotificacaoSerializer
 
 
 class NotificacaoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -16,7 +16,7 @@ class NotificacaoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     filterset_fields = ["lida", "evento", "nivel"]
 
     def get_queryset(self):
-        return Notificacao.objects.filter(destinatario=self.request.user)
+        return Notificacao.objects.filter(destinatario=self.request.user).prefetch_related("entregas")
 
     @action(detail=False, methods=["get"])
     def resumo(self, request):
@@ -45,3 +45,16 @@ class NotificacaoViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             serializer.save()
             return Response(serializer.data)
         return Response(PreferenciaNotificacaoSerializer(pref).data)
+
+
+class EventoPreditivoViewSet(viewsets.ReadOnlyModelViewSet):
+    """Evidência da transição, limitada ao cliente da inspeção; não reprocessa."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = EventoPreditivoSerializer
+    filterset_fields = ["inspecao", "equipamento", "medicao_tipo", "medicao_id", "criticidade"]
+
+    def get_queryset(self):
+        from apps.coletas.views import escopo_cliente
+        return escopo_cliente(EventoPreditivo.objects.select_related("inspecao", "equipamento", "osp"),
+                              self.request.user, "inspecao__cliente")

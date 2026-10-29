@@ -183,7 +183,7 @@ export function RegistroColetaFluido({
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-fg">Fluido</h3>
           <Field label="Aplicação do fluido" obrigatorio erro={erros.aplicacao}
-            hint="Define os ensaios padrão: lubrificante → FQ e EF; hidráulico → FQ, EF e CP.">
+            hint="Hidráulico: unidades hidráulicas e compressores (FQ, EF e CP). Lubrificante: redutores e engrenagens (FQ e EF). Define os ensaios padrão e os limites da espectrometria.">
             <SegmentedControl
               label="Aplicação do fluido"
               valor={aplicacao}

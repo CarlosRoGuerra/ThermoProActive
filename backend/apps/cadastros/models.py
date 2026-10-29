@@ -767,6 +767,15 @@ class CriterioSeveridadeVibracao(BaseModel):
                                 help_text="Vazio = vale para todos os clientes.")
     vigencia_inicio = models.DateField("Vigência — início", null=True, blank=True)
     vigencia_fim = models.DateField("Vigência — fim", null=True, blank=True)
+    # Procedimento de evolução separado dos limites normativos; só opera
+    # após homologação explícita. Valores iniciais são do procedimento legado.
+    evolucao_habilitada = models.BooleanField(default=False)
+    evolucao_fator = models.DecimalField(max_digits=8, decimal_places=3, default=Decimal("1.5"),
+                                         validators=[MinValueValidator(Decimal("1.001"))])
+    evolucao_janela = models.PositiveSmallIntegerField(default=3, validators=[MinValueValidator(1), MaxValueValidator(1000)])
+    evolucao_fonte = models.CharField(max_length=250, blank=True)
+    evolucao_validacao = models.CharField(max_length=10, default="PENDENTE",
+                                         choices=[("PENDENTE", "Pendente de homologação"), ("VALIDADO", "Validado pelo responsável")])
 
     class Meta(BaseModel.Meta):
         verbose_name = "Critério de severidade de vibração"
@@ -782,6 +791,12 @@ class CriterioSeveridadeVibracao(BaseModel):
     def __str__(self):
         base = f"{self.norma_codigo}{':' + self.norma_edicao if self.norma_edicao else ''} — Classe {self.classe}"
         return f"{base} ({self.get_origem_display()})"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if self.evolucao_habilitada and (self.evolucao_validacao != "VALIDADO" or not self.evolucao_fonte.strip()):
+            raise ValidationError({"evolucao_habilitada": "Habilitar evolução exige homologação e fonte documentada."})
 
 
 class ClassificacaoInspecao(Catalogo):

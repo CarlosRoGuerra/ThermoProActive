@@ -13,7 +13,6 @@ praticamente indistinguíveis (ΔE 5,3 em visão normal).
 """
 from collections import Counter, defaultdict
 from datetime import date
-from decimal import Decimal
 
 from django.db.models import Count, Max
 
@@ -45,13 +44,6 @@ CORES_CATEGORICAS = [
     "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
     "#e87ba4", "#008300", "#4a3aa7", "#8a8a85",
 ]
-
-#: Limites ISO 10816 (zona C) por classe — a linha de referência "aceitável".
-LIMITE_VRMS_POR_CLASSE = {
-    "I": Decimal("4.50"), "II": Decimal("7.10"),
-    "III": Decimal("11.20"), "IV": Decimal("18.00"),
-}
-LIMITE_ACELERACAO = Decimal("2.0")  # g — referência usada nos relatórios
 
 MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun",
                "jul", "ago", "set", "out", "nov", "dez"]
@@ -100,7 +92,7 @@ def montar_secao_b(inspecao) -> dict:
 
     inspecoes = Inspecao.objects.filter(cliente=cliente).order_by("data")
     osps = (
-        OrdemServico.objects.filter(cliente=cliente)
+        OrdemServico.objects.validas().filter(cliente=cliente)
         .select_related("tipo_anomalia", "tipo_componente")
     )
 
@@ -109,14 +101,14 @@ def montar_secao_b(inspecao) -> dict:
     for o in osps:
         if o.grau_risco:
             condicoes[o.grau_risco.replace("GR", "GR-")] += 1
-    # Equipamentos medidos sem OSP estão em normalidade operacional.
+    # Ausência de OSP não comprova normalidade das leituras.
     total_medidos = (
         MedicaoVibracao.objects.filter(inspecao__cliente=cliente)
         .values("equipamento").distinct().count()
     )
     sem_osp = max(total_medidos - sum(condicoes.values()), 0)
     if sem_osp:
-        condicoes["OK"] = sem_osp
+        condicoes["AVALIAÇÃO PENDENTE"] = sem_osp
 
     cor_de = lambda r: CORES_GR.get(r.replace("-", ""), CORES_CONDICAO.get(r, "#b0b0aa"))
     total_cond = sum(condicoes.values()) or 1
@@ -181,20 +173,12 @@ def montar_secao_b(inspecao) -> dict:
         )
         if agg["pico_v"] is None:
             continue
-        classes = set(
-            MedicaoVibracao.objects.filter(inspecao=insp)
-            .values_list("equipamento__classe_iso", flat=True)
-        )
-        limite = max(
-            (LIMITE_VRMS_POR_CLASSE.get(c, Decimal("7.10")) for c in classes),
-            default=Decimal("7.10"),
-        )
         amplitude.append({
             "mes": _rotulo_mes(_chave_mes(insp.data)),
             "pico_velocidade": agg["pico_v"],
-            "limite_velocidade": limite,
+            "limite_velocidade": None,
             "pico_aceleracao": agg["pico_a"],
-            "limite_aceleracao": LIMITE_ACELERACAO,
+            "limite_aceleracao": None,
         })
 
     # --- 7. Controle das OSPs (situação na reavaliação) -------------------

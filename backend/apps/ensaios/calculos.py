@@ -120,14 +120,17 @@ def percentual_do_limite(valor, limite):
     return Decimal(valor) / Decimal(limite) * _CEM
 
 
-def avaliar(*, valor, texto, estado, tipo_limite, limite, limite_superior, referencia_texto):
+def avaliar(*, valor, texto, estado, tipo_limite, limite, limite_superior, referencia_texto,
+            limite_deteccao=None):
     """
     True = dentro do limite, False = fora, None = sem critério ou sem valor.
 
-    Abaixo do LD/LQ ou não detectado conta como dentro de um máximo e fora de um
-    mínimo. Indisponível não é avaliado.
+    Abaixo do LD/LQ só permite conclusão quando o limite analítico informado
+    comprova a relação com o critério. Ausência de detecção não significa zero.
     """
     abaixo = estado in ("ABAIXO_LD", "ABAIXO_LQ", "NAO_DETECTADO")
+    if estado not in ("MEDIDO", "ABAIXO_LD", "ABAIXO_LQ", "NAO_DETECTADO"):
+        return None
     if tipo_limite == "QUALITATIVO":
         if not texto or not referencia_texto:
             return None
@@ -135,7 +138,13 @@ def avaliar(*, valor, texto, estado, tipo_limite, limite, limite_superior, refer
     if tipo_limite == "INFORMATIVO" or estado == "INDISPONIVEL":
         return None
     if abaixo:
+        if limite_deteccao is None or limite is None:
+            return None
+        if Decimal(limite_deteccao) <= 0 or Decimal(limite_deteccao) > Decimal(limite):
+            return None
         return {"MAXIMO": True, "MINIMO": False}.get(tipo_limite)
+    if estado != "MEDIDO":
+        return None
     if valor is None or limite is None:
         return None
     valor, limite = Decimal(valor), Decimal(limite)

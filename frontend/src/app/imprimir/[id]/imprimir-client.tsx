@@ -98,7 +98,7 @@ export default function ImprimirClient({ relatorioId, recorte = "" }: { relatori
   if (erro) return <div className="p-6 text-sm text-red-600">{erro}</div>;
 
   return (
-    <div>
+    <div data-pdf-pronto={d && !status && !erro && !mostrarFonte ? "true" : "false"}>
       <style>{CHROME_CSS}</style>
 
       <div className="no-print sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2">

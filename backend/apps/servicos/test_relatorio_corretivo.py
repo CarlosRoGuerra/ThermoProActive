@@ -240,6 +240,28 @@ class RelatorioCorretivoTest(base.AnaliseBalanceamentoTest):
         ServicoCampo.objects.filter(pk=self.servico_id).update(osp=origem)
         return origem, achado_pred
 
+    def test_gerar_de_achado_e_idempotente_inclusive_com_leitura_velha(self):
+        """Confirmar a mesma análise duas vezes, ou em duas abas, gera uma única OSP."""
+        from unittest.mock import patch
+
+        _, achado = self._osp_de_origem()
+        primeira = OrdemServico.objects.get(achado=achado)
+        self.assertEqual(OrdemServico.gerar_de_achado(achado).pk, primeira.pk)
+        self.assertEqual(OrdemServico.gerar_de_achado(Achado.objects.get(pk=achado.pk)).pk, primeira.pk)
+
+        # Leitura velha: a outra transação já criou, mas esta ainda não viu.
+        filtrar = OrdemServico.objects.filter
+        chamadas = []
+
+        def primeira_leitura_e_velha(*args, **kwargs):
+            chamadas.append(1)
+            return OrdemServico.objects.none() if len(chamadas) == 1 else filtrar(*args, **kwargs)
+
+        with patch.object(OrdemServico.objects, "filter", side_effect=primeira_leitura_e_velha):
+            self.assertEqual(OrdemServico.gerar_de_achado(achado).pk, primeira.pk)
+        self.assertEqual(OrdemServico.objects.filter(achado=achado).count(), 1)
+        self.assertEqual(primeira.historico.count(), 1)
+
     def test_osp_de_origem_aparece_na_folha_mesmo_sem_vinculo_direto_ao_achado(self):
         origem, achado_pred = self._osp_de_origem()
         self.assertEqual(self.salvar().status_code, 200)

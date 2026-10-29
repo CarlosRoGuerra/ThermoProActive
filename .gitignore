@@ -10,6 +10,7 @@ backend/.env
 .env.*.local
 backend/media/
 backend/staticfiles/
+backend/test-artifacts/
 
 # Node / Next.js
 node_modules/

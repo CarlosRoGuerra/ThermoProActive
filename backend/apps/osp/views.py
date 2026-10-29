@@ -1,13 +1,16 @@
+from rest_framework import status as http
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import InternoEditaClienteResponde, IsInterno
+from apps.accounts.permissions import InternoEditaClienteResponde
 from apps.coletas.views import escopo_cliente
 
+from . import services
 from .models import OrdemServico
-from .serializers import OrdemServicoSerializer, StatusUpdateSerializer
+from .serializers import HistoricoOSPSerializer, OrdemServicoSerializer, StatusUpdateSerializer
 
 
 class OrdemServicoViewSet(viewsets.ModelViewSet):
@@ -23,10 +26,21 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = OrdemServico.objects.select_related(
-            "cliente", "equipamento", "responsavel",
+            "cliente", "equipamento", "responsavel", "aprovado_por",
             "achado__item__carregamento__relatorio",
-        )
+        ).prefetch_related("achado__imagens")
+        # `?sla_vencido=true`: só as abertas fora do prazo (o painel e o filtro
+        # usam a mesma definição de `OrdemServico.sla_vencido`).
+        if str(self.request.query_params.get("sla_vencido", "")).lower() in ("1", "true", "sim"):
+            qs = qs.com_sla_vencido()
         return escopo_cliente(qs, self.request.user)
+
+    def handle_exception(self, exc):
+        # Violação de regra do fluxo (transição inválida, sem permissão, ...)
+        # vira resposta estruturada com `codigo`, venha da view ou do serializer.
+        if isinstance(exc, services.ErroOSP):
+            return Response({"detail": exc.mensagem, "codigo": exc.codigo}, status=exc.http)
+        return super().handle_exception(exc)
 
     def _impedir_cruzar_cliente(self, validated_data):
         """
@@ -58,33 +72,40 @@ class OrdemServicoViewSet(viewsets.ModelViewSet):
         self._impedir_cruzar_cliente(serializer.validated_data)
         serializer.save()
 
-    @action(detail=True, methods=["patch"], permission_classes=[IsInterno])
+    def destroy(self, request, *args, **kwargs):
+        # A OSP é registro de auditoria (histórico, SLA, custos): não se apaga,
+        # se CANCELA — o histórico permanece.
+        self.get_object()
+        return Response(
+            {"detail": "OSP não é excluída: use o cancelamento (o histórico é preservado).",
+             "codigo": "exclusao_nao_permitida"},
+            status=http.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @action(detail=True, methods=["patch"], permission_classes=[IsAuthenticated])
     def status(self, request, pk=None):
         """
-        Atualiza o status da OSP — fluxo do item 2.6.3.
+        Move a OSP de status — fluxo do item 2.6.3.
 
-        Restrito à equipe interna: o status é a leitura que a CONTRATADA faz do
-        andamento. O cliente informa as DATAS e o que foi feito (campos de
-        retorno); quem move a OSP de coluna, a partir disso, é a equipe.
+        Corpo: `{"status": "...", "motivo": "..."}` (motivo obrigatório para
+        cancelar, reabrir e rejeitar a aprovação). A regra e a permissão por
+        perfil moram em `services.transicionar`; aqui só se traduz a resposta:
+        409 transição inválida · 403 sem permissão · 400 sem motivo.
         """
-        osp = self.get_object()
+        osp = self.get_object()  # já escopado por cliente (404 fora do escopo)
         serializer = StatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        novo_status = serializer.validated_data["status"]
-        osp.status = novo_status
-        osp.save()
+        osp, alterou = services.transicionar(
+            osp.pk, serializer.validated_data["status"], request.user,
+            serializer.validated_data.get("motivo", ""),
+        )
+        dados = OrdemServicoSerializer(
+            self.get_queryset().get(pk=osp.pk), context=self.get_serializer_context()
+        ).data
+        return Response({**dados, "alterado": alterou})
 
-        # Notifica aprovadores quando entra em aprovação (Anexo I 2.10.2.5).
-        if novo_status == "AGUARDANDO_APROVACAO":
-            from apps.notificacoes.models import EventoNotificacao, Nivel
-            from apps.notificacoes.services import aprovadores_do_cliente, notificar
-
-            notificar(
-                EventoNotificacao.APROVACAO_PENDENTE,
-                aprovadores_do_cliente(osp.cliente),
-                titulo=f"Aprovação pendente: OSP {osp.numero}",
-                mensagem=f"A OSP {osp.numero} ({osp.equipamento.tag}) aguarda sua aprovação.",
-                url="/osps",
-                nivel=Nivel.ALERTA,
-            )
-        return Response(OrdemServicoSerializer(osp).data)
+    @action(detail=True, methods=["get"])
+    def historico(self, request, pk=None):
+        """Trilha completa da OSP, do mais antigo ao mais recente (2.6.2.3)."""
+        osp = self.get_object()
+        return Response(HistoricoOSPSerializer(osp.historico.all(), many=True).data)

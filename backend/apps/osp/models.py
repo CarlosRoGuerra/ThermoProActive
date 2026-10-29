@@ -8,7 +8,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from apps.cadastros.models import Cliente, Equipamento
@@ -64,6 +64,16 @@ DESCRICAO_GR = {
 }
 
 
+def calcular_sla(prioridade, grau_risco, inicio) -> tuple:
+    """
+    Prazo (data, origem) de uma OSP. O Grau de Risco, quando informado, manda
+    (glossário §6.2); sem ele vale o prazo da prioridade. `inicio` é date.
+    """
+    if grau_risco in PRAZO_GR_DIAS:
+        return inicio + timedelta(days=PRAZO_GR_DIAS[grau_risco]), "GRAU_RISCO"
+    return inicio + timedelta(days=SLA_DIAS.get(prioridade, 7)), "PRIORIDADE"
+
+
 class StatusOSP(models.TextChoices):
     """
     Ciclo de vida acordado na reunião de 22/07/2026:
@@ -116,6 +126,44 @@ STATUS_ABERTOS = {
     StatusOSP.EM_EXECUCAO,
     StatusOSP.AGUARDANDO_APROVACAO,
 }
+
+#: Estados finais: só saem deles por REABERTURA (com motivo, por gestor).
+STATUS_ENCERRADOS = {StatusOSP.FINALIZADA, StatusOSP.CANCELADA}
+
+#: Transições válidas (de → para). Os dois ciclos convivem no mesmo campo:
+#: o do cliente (Aberta → Planejada → Executada → Finalizada, reunião de
+#: 22/07/2026) e o interno do Anexo I 2.6.3 (Aberta → Em análise → Em execução →
+#: Aguardando aprovação → Finalizada/Cancelada). Tudo que não está aqui é
+#: rejeitado. Quem pode executar cada uma está em `osp.services.PERMISSAO_TRANSICAO`.
+TRANSICOES = {
+    StatusOSP.ABERTA: {StatusOSP.EM_ANALISE, StatusOSP.PLANEJADA, StatusOSP.CANCELADA},
+    StatusOSP.EM_ANALISE: {StatusOSP.EM_EXECUCAO, StatusOSP.PLANEJADA, StatusOSP.CANCELADA},
+    StatusOSP.PLANEJADA: {StatusOSP.EM_EXECUCAO, StatusOSP.EXECUTADA, StatusOSP.CANCELADA},
+    StatusOSP.EM_EXECUCAO: {
+        StatusOSP.EXECUTADA, StatusOSP.AGUARDANDO_APROVACAO, StatusOSP.CANCELADA,
+    },
+    StatusOSP.EXECUTADA: {
+        StatusOSP.AGUARDANDO_APROVACAO, StatusOSP.FINALIZADA, StatusOSP.CANCELADA,
+    },
+    # Aprovar = FINALIZADA; rejeitar = volta a EM_EXECUCAO (com motivo).
+    StatusOSP.AGUARDANDO_APROVACAO: {
+        StatusOSP.FINALIZADA, StatusOSP.EM_EXECUCAO, StatusOSP.CANCELADA,
+    },
+    # Reabertura: sempre para ABERTA, para a OSP recomeçar o ciclo e o SLA.
+    StatusOSP.FINALIZADA: {StatusOSP.ABERTA},
+    StatusOSP.CANCELADA: {StatusOSP.ABERTA},
+}
+
+
+class OrdemServicoQuerySet(models.QuerySet):
+    def validas(self):
+        """OSPs que ainda representam uma anomalia (exclui as canceladas)."""
+        return self.exclude(status=StatusOSP.CANCELADA)
+
+    def com_sla_vencido(self):
+        return self.filter(
+            status__in=STATUS_ABERTOS, sla_data__lt=timezone.now().date()
+        )
 
 
 class OrdemServico(TimeStampedModel):
@@ -186,6 +234,18 @@ class OrdemServico(TimeStampedModel):
         related_name="osps", verbose_name="Técnico responsável",
     )
     sla_data = models.DateField("Prazo (SLA)", null=True, blank=True)
+    sla_origem = models.CharField(
+        "Origem do prazo", max_length=12, blank=True, editable=False,
+        help_text="GRAU_RISCO, PRIORIDADE ou MANUAL — como o sla_data foi definido.",
+    )
+    sla_iniciado_em = models.DateTimeField(
+        "Início da contagem do SLA", null=True, blank=True, editable=False,
+        help_text="Abertura da OSP; recomeça numa reabertura.",
+    )
+    # Marcas de alerta: cada aviso de SLA sai UMA vez por prazo (idempotência
+    # do `verificar_slas`). Zeradas quando o prazo muda.
+    sla_aviso_vencendo_em = models.DateTimeField(null=True, blank=True, editable=False)
+    sla_aviso_vencido_em = models.DateTimeField(null=True, blank=True, editable=False)
     finalizada_em = models.DateTimeField("Finalizada em", null=True, blank=True)
 
     # --- Etapas alimentadas pelo cliente (reunião 22/07: data + responsável) --
@@ -203,6 +263,13 @@ class OrdemServico(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="osps_finalizadas", verbose_name="Finalização por",
     )
+    # Aprovação da execução (Anexo I 2.6.2.5): registro eletrônico interno —
+    # usuário autenticado + instante. NÃO é assinatura digital do cliente.
+    aprovado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="osps_aprovadas", verbose_name="Aprovação por", editable=False,
+    )
+    aprovado_em = models.DateTimeField("Aprovada em", null=True, blank=True, editable=False)
     descricao_corretiva = models.TextField(
         "Descrição da corretiva executada", blank=True,
         help_text="O que a equipe de manutenção efetivamente fez.",
@@ -242,10 +309,33 @@ class OrdemServico(TimeStampedModel):
         "Custo real (R$)", max_digits=12, decimal_places=2, null=True, blank=True
     )
 
+    objects = OrdemServicoQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Ordem de Serviço Preditiva"
         verbose_name_plural = "Ordens de Serviço Preditivas"
         ordering = ["-criado_em"]
+        constraints = [
+            # A mesma ocorrência (equipamento + inspeção) nunca tem duas OSPs
+            # automáticas em aberto — vale também sob concorrência, onde o
+            # `exists()` do serviço sozinho não basta.
+            models.UniqueConstraint(
+                fields=["equipamento", "inspecao"],
+                condition=models.Q(
+                    gerada_automaticamente=True,
+                    achado__isnull=True,
+                    inspecao__isnull=False,
+                    status__in=sorted(s.value for s in STATUS_ABERTOS),
+                ),
+                name="uniq_osp_automatica_aberta_por_ocorrencia",
+            ),
+            models.UniqueConstraint(
+                fields=["sequencial_global"], name="uniq_osp_sequencial_global",
+            ),
+            models.UniqueConstraint(
+                fields=["cliente", "sequencial_cliente"], name="uniq_osp_sequencial_cliente",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.numero} — {self.equipamento.tag}"
@@ -280,46 +370,57 @@ class OrdemServico(TimeStampedModel):
     @classmethod
     def gerar_de_achado(cls, achado):
         """
-        Cria a OSP de uma análise confirmada — 1 por análise (idempotente).
+        Cria a OSP de uma análise confirmada — 1 por análise (idempotente,
+        inclusive sob concorrência: a análise é travada e `achado` é único).
         Copia os dados técnicos do achado; a parte de execução/custo fica p/ depois.
         """
-        existente = getattr(achado, "osp", None)
-        if existente:
-            return existente
-        item = achado.item
-        cliente = item.carregamento.cliente
-        cond = achado.condicao
-        # Normaliza a sigla da condição ("GR-4" → "GR4") para casar com GrauRisco.
-        sigla = (cond.sigla or "").strip().upper().replace("-", "").replace(" ", "") if cond else ""
-        grau = sigla if sigla in GrauRisco.values else ""
-        titulo = (
-            (achado.tipo_componente.nome if achado.tipo_componente_id else "")
-            or achado.componente_texto
-            or "Análise preditiva"
-        )
-        seq = cls.proximo_sequencial_cliente(cliente)
-        osp = cls.objects.create(
-            cliente=cliente,
-            equipamento=item.equipamento,
-            achado=achado,
-            sequencial_cliente=seq,
-            titulo=titulo[:200],
-            tipo_anomalia=achado.tipo_anomalia,
-            tipo_componente=achado.tipo_componente,
-            componente=achado.componente_texto,
-            anomalia=achado.anomalia_texto,
-            recomendacao=achado.recomendacao_texto,
-            observacao=achado.observacoes,
-            grau_risco=grau,
-            amplitude_velocidade=achado.velocidade_global,
-            amplitude_aceleracao=achado.aceleracao_global,
-            amplitude_deslocamento=achado.deslocamento_global,
-            gerada_automaticamente=True,
-        )
-        # Número do relatório: "sequencial do cliente / sequencial global do BD".
-        achado.numero_osp = f"{seq}/{osp.sequencial_global}"
-        achado.save(update_fields=["numero_osp"])
-        return osp
+        with transaction.atomic():
+            # Serializa confirmações simultâneas da mesma análise (PostgreSQL).
+            type(achado).objects.select_for_update().get(pk=achado.pk)
+            existente = cls.objects.filter(achado_id=achado.pk).first()
+            if existente:
+                return existente
+            item = achado.item
+            cliente = item.carregamento.cliente
+            cond = achado.condicao
+            # Normaliza a sigla da condição ("GR-4" → "GR4") para casar com GrauRisco.
+            sigla = (cond.sigla or "").strip().upper().replace("-", "").replace(" ", "") if cond else ""
+            grau = sigla if sigla in GrauRisco.values else ""
+            titulo = (
+                (achado.tipo_componente.nome if achado.tipo_componente_id else "")
+                or achado.componente_texto
+                or "Análise preditiva"
+            )
+            try:
+                with transaction.atomic():
+                    osp = cls.objects.create(
+                        cliente=cliente,
+                        equipamento=item.equipamento,
+                        achado=achado,
+                        sequencial_cliente=cls.proximo_sequencial_cliente(cliente),
+                        titulo=titulo[:200],
+                        tipo_anomalia=achado.tipo_anomalia,
+                        tipo_componente=achado.tipo_componente,
+                        componente=achado.componente_texto,
+                        anomalia=achado.anomalia_texto,
+                        recomendacao=achado.recomendacao_texto,
+                        observacao=achado.observacoes,
+                        grau_risco=grau,
+                        amplitude_velocidade=achado.velocidade_global,
+                        amplitude_aceleracao=achado.aceleracao_global,
+                        amplitude_deslocamento=achado.deslocamento_global,
+                        gerada_automaticamente=True,
+                    )
+            except IntegrityError:
+                # Outra transação criou a OSP desta análise no meio do caminho.
+                existente = cls.objects.filter(achado_id=achado.pk).first()
+                if existente:
+                    return existente
+                raise
+            # Número do relatório: "sequencial do cliente / sequencial global do BD".
+            achado.numero_osp = f"{osp.sequencial_cliente}/{osp.sequencial_global}"
+            achado.save(update_fields=["numero_osp"])
+            return osp
 
     @property
     def sla_vencido(self) -> bool:
@@ -328,6 +429,20 @@ class OrdemServico(TimeStampedModel):
             and self.status in STATUS_ABERTOS
             and self.sla_data < timezone.now().date()
         )
+
+    @property
+    def sla_cumprido(self) -> bool | None:
+        """None enquanto não finalizada; depois, se a finalização respeitou o prazo."""
+        if self.status != StatusOSP.FINALIZADA or not self.sla_data or not self.finalizada_em:
+            return None
+        return timezone.localtime(self.finalizada_em).date() <= self.sla_data
+
+    @property
+    def tempo_ciclo_horas(self) -> float | None:
+        """Horas entre a abertura e a finalização (alimenta o MTTR)."""
+        if self.status != StatusOSP.FINALIZADA or not self.finalizada_em:
+            return None
+        return round((self.finalizada_em - self.criado_em).total_seconds() / 3600, 1)
 
     @property
     def grau_risco_descricao(self) -> str:
@@ -366,18 +481,15 @@ class OrdemServico(TimeStampedModel):
         """
         return self.total_emergencial - self.total_preditiva
 
-    def save(self, *args, **kwargs):
-        if not self.numero:
-            self.numero = self.proximo_numero()
-        # Carimba o sequencial global uma única vez, na criação.
-        if self.sequencial_global is None:
-            self.sequencial_global = self.proximo_sequencial_global()
-        # O prazo segue o Grau de Risco quando informado; senão, cai na prioridade.
-        if self.sla_data is None:
-            dias = PRAZO_GR_DIAS.get(self.grau_risco) or SLA_DIAS.get(self.prioridade, 7)
-            self.sla_data = timezone.now().date() + timedelta(days=dias)
-        # Carimba data/hora ao entrar em cada etapa do ciclo definido com o cliente.
+    def recalcular_sla(self, inicio=None):
+        """Redefine o prazo pela regra (GR ou prioridade) a partir de `inicio`."""
+        base = timezone.localtime(inicio or self.sla_iniciado_em or self.criado_em or timezone.now())
+        self.sla_data, self.sla_origem = calcular_sla(self.prioridade, self.grau_risco, base.date())
+        self.sla_aviso_vencendo_em = self.sla_aviso_vencido_em = None
+
+    def _carimbar(self):
         agora = timezone.now()
+        # Carimba data/hora ao entrar em cada etapa do ciclo definido com o cliente.
         if self.status == StatusOSP.PLANEJADA and self.planejado_em is None:
             self.planejado_em = agora
         if self.status == StatusOSP.EXECUTADA and self.executado_em is None:
@@ -387,4 +499,108 @@ class OrdemServico(TimeStampedModel):
         # Consolida o custo real a partir da Avaliação de Resultados.
         if self.custo_real is None and self.total_preditiva:
             self.custo_real = self.total_preditiva
+
+    #: Trechos das mensagens de violação de unicidade que indicam disputa pela
+    #: NUMERAÇÃO (e, portanto, merecem nova tentativa com outro número).
+    _COLISAO_NUMERACAO = ("numero", "sequencial")
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            self._carimbar()
+            return super().save(*args, **kwargs)
+
+        if self.sla_iniciado_em is None:
+            self.sla_iniciado_em = timezone.now()
+        # O prazo segue o Grau de Risco quando informado; senão, cai na prioridade.
+        if self.sla_data is None:
+            self.recalcular_sla(self.sla_iniciado_em)
+        elif not self.sla_origem:
+            self.sla_origem = "MANUAL"
+        self._carimbar()
+
+        numero_automatico = not self.numero
+        global_automatico = self.sequencial_global is None
+        tentativas = 5
+        for tentativa in range(1, tentativas + 1):
+            # max+1 não é atômico: duas criações simultâneas podem sortear o
+            # mesmo número. A unicidade no banco barra a segunda, que tenta de novo.
+            if numero_automatico:
+                self.numero = self.proximo_numero()
+            if global_automatico:
+                self.sequencial_global = self.proximo_sequencial_global()
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                break
+            except IntegrityError as exc:
+                texto = str(exc).lower()
+                if tentativa == tentativas or not any(t in texto for t in self._COLISAO_NUMERACAO):
+                    raise
+                if "sequencial_cliente" in texto and self.sequencial_cliente is not None:
+                    self.sequencial_cliente = self.proximo_sequencial_cliente(self.cliente)
+        ator = getattr(self, "_ator", None)
+        HistoricoOSP.objects.create(
+            osp=self, tipo=TipoHistorico.CRIACAO, ator=ator,
+            ator_nome=getattr(ator, "nome", "") or "Sistema",
+            ator_perfil=getattr(ator, "perfil", "") or "",
+            status_novo=self.status,
+            alteracoes={
+                "prioridade": self.prioridade, "grau_risco": self.grau_risco,
+                "sla_data": str(self.sla_data), "sla_origem": self.sla_origem,
+                "responsavel": self.responsavel_id,
+                "origem": "AUTOMATICA" if self.gerada_automaticamente else "MANUAL",
+                "criticidade_origem": self.criticidade_origem,
+            },
+        )
+
+
+class TipoHistorico(models.TextChoices):
+    CRIACAO = "CRIACAO", "Criação"
+    STATUS = "STATUS", "Mudança de status"
+    APROVACAO = "APROVACAO", "Aprovação da execução"
+    REJEICAO = "REJEICAO", "Rejeição da aprovação"
+    CANCELAMENTO = "CANCELAMENTO", "Cancelamento"
+    REABERTURA = "REABERTURA", "Reabertura"
+    EDICAO = "EDICAO", "Edição"
+    RETORNO_CLIENTE = "RETORNO_CLIENTE", "Retorno do cliente"
+    SLA = "SLA", "Alteração de prazo (SLA)"
+
+
+class HistoricoOSP(models.Model):
+    """
+    Trilha de auditoria da OSP (Anexo I 2.6.2.3) — somente acréscimo.
+
+    Nunca é editada nem apagada: cancelar, reabrir ou editar a OSP gera NOVAS
+    linhas. `ator_nome`/`ator_perfil` ficam copiados para a linha continuar
+    legível mesmo que o usuário seja desativado ou removido.
+    """
+
+    osp = models.ForeignKey(OrdemServico, on_delete=models.PROTECT, related_name="historico")
+    tipo = models.CharField(max_length=16, choices=TipoHistorico.choices)
+    ator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    ator_nome = models.CharField(max_length=160, blank=True)
+    ator_perfil = models.CharField(max_length=20, blank=True)
+    status_anterior = models.CharField(max_length=20, blank=True)
+    status_novo = models.CharField(max_length=20, blank=True)
+    alteracoes = models.JSONField(default=dict, blank=True)
+    motivo = models.TextField(blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Histórico da OSP"
+        verbose_name_plural = "Histórico das OSPs"
+        ordering = ["criado_em", "id"]
+        indexes = [models.Index(fields=["osp", "criado_em"])]
+
+    def __str__(self):
+        return f"{self.osp_id} · {self.tipo} · {self.criado_em:%Y-%m-%d %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValueError("O histórico da OSP é somente acréscimo.")
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("O histórico da OSP não pode ser apagado.")

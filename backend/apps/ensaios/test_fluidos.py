@@ -178,9 +178,11 @@ class CatalogoFluidosTest(CenarioFluidos, TestCase):
         refs = ReferenciaParametro.objects.select_related("parametro")
         self.assertEqual({r.origem for r in refs}, {"RESPONSAVEL_TECNICO"})
         self.assertEqual({r.parametro.codigo for r in refs if r.parametro.ensaio.sigla == "FQ"}, {"VISC40", "AGUA", "TAN"})
-        # EF (13/10/2026): 20 dos 21 elementos (o potássio não foi citado); desgaste por aplicação.
+        # EF (13 e 21/10/2026): os 21 elementos têm referência; desgaste por aplicação.
         ef = [r for r in refs if r.parametro.ensaio.sigla == "EF"]
-        self.assertEqual(len({r.parametro.codigo for r in ef}), 20)
+        self.assertEqual(len({r.parametro.codigo for r in ef}), 21)
+        k = next(r for r in ef if r.parametro.codigo == "K")
+        self.assertEqual((k.limite_alerta, k.limite_critico), (D("25"), D("50")))
         fe = {r.aplicacao: (r.limite_alerta, r.limite_critico) for r in ef if r.parametro.codigo == "FE"}
         self.assertEqual(fe, {"HIDRAULICO": (D("15"), D("30")), "LUBRIFICANTE": (D("80"), D("150"))})
         tipos = {r.parametro.codigo: r.tipo for r in ef if not r.aplicacao}
@@ -288,7 +290,9 @@ class ColetaFluidoApiTest(CenarioFluidos, TestCase):
         self.assertEqual([c["data"] for c in aval["campanhas"]], [date(2026, 3, 1), date(2026, 9, 1)])
         fe = next(linha for linha in aval["linhas"] if linha["codigo"] == "FE")
         self.assertEqual([v["valor"] for v in fe["valores"]], [D("12"), D("58")])
-        self.assertEqual(fe["tendencia"]["direcao"], "SOBE")
+        # Sem contexto histórico registrado não se presume comparabilidade.
+        self.assertIsNone(fe["tendencia"])
+        self.assertEqual(fe["comparacao"]["motivo"], "contexto_historico_nao_registrado")
         self.assertTrue(fe["sem_referencia"])
         self.assertIsNone(fe["status"])
         self.assertEqual(aval["grupos"], ["Metais de desgaste", "Contaminantes", "Aditivos"])

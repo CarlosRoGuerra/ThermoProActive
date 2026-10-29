@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Card, Spinner } from "@/components/ui";
+import type { EvidenciaLaudo } from "@/lib/types";
 import {
   AmplitudeGrafico,
   BarrasEmpilhadas,
@@ -28,6 +29,7 @@ type Parte = {
   departamento?: string;
   contato?: string;
   logo?: string | null;
+  rodape?: string;
 };
 type LinhaAvaliacao = {
   rotulo: string;
@@ -62,6 +64,7 @@ type Relatorio = {
   laudo: {
     numero: string;
     titulo: string;
+    titulo_documento?: string;
     data_medicao_campo: string | null;
     data_upload_osps: string | null;
     data_upload_relatorio: string | null;
@@ -86,6 +89,8 @@ type Relatorio = {
   fluxo_trabalho: string[];
   glossario: { sigla: string; descricao: string }[];
   consideracoes: string[];
+  rodape?: string;
+  evidencias_laudo?: EvidenciaLaudo[];
   secao_b: {
     resumo: {
       equipamentos_monitorados: number;
@@ -167,7 +172,7 @@ function Folha({
       </header>
       {children}
       <footer className="doc-rodape">
-        <span>thermoproactive.com.br</span>
+        <span>{contratada.rodape || "thermoproactive.com.br"}</span>
         <span>{pagina}</span>
       </footer>
     </section>
@@ -194,10 +199,12 @@ export default function RelatorioTecnicoPage() {
   }
   if (!r) return <Spinner label="Montando o relatório…" />;
 
-  const { contratada, contratante, laudo } = r;
+  const { contratante, laudo } = r;
+  const contratada = r.rodape ? { ...r.contratada, rodape: r.rodape } : r.contratada;
 
   return (
     <>
+      <span hidden data-pdf-pronto="true" />
       {/* Barra de ações — não sai na impressão */}
       <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link
@@ -224,7 +231,7 @@ export default function RelatorioTecnicoPage() {
               <p className="text-[9pt] uppercase tracking-[0.2em] text-[color:var(--doc-muted)]">
                 {contratada.nome}
               </p>
-              <h1 className="mt-1 text-[26pt] font-bold leading-tight">Relatório Técnico</h1>
+              <h1 className="mt-1 text-[26pt] font-bold leading-tight">{laudo.titulo_documento || "Relatório Técnico"}</h1>
               <p className="mt-1 font-mono text-[14pt] font-semibold text-[color:var(--doc-accent)]">
                 {laudo.numero}
               </p>
@@ -707,6 +714,14 @@ export default function RelatorioTecnicoPage() {
             </div>
           </Folha>
         ))}
+        {r.evidencias_laudo?.map((e, idx) => <Folha key={`evidencia-${e.id}`} contratada={contratada}
+          secao="Evidências" pagina={`Página ${idx + 1} E`}>
+          <figure>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={e.data_uri || e.url} alt={e.legenda || e.nome} className="mx-auto max-h-[200mm] max-w-full object-contain" />
+            <figcaption className="mt-3 text-[9pt]">{e.legenda || e.nome}</figcaption>
+          </figure>
+        </Folha>)}
       </div>
     </>
   );

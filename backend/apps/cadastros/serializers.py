@@ -342,6 +342,10 @@ class CriterioSeveridadeVibracaoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "fonte": "Critério fora da norma precisa da fonte (ata, contrato, e-mail) que o sustenta.",
             })
+        if valor("evolucao_habilitada") and (valor("evolucao_validacao") != "VALIDADO" or not (valor("evolucao_fonte") or "").strip()):
+            raise serializers.ValidationError({
+                "evolucao_habilitada": "Habilitar evolução exige homologação e fonte documentada; não é um limite normativo.",
+            })
         return attrs
 
 

@@ -2,16 +2,19 @@
 Coleta de Dados — Anexo I, item 2.3.
 
 `Inspecao` é o evento (visita/rota). `MedicaoVibracao` é o dado técnico do item 2.3.2.1.
-A classificação de criticidade (item 2.4) é calculada no `save()` via apps.coletas.rules.
+A classificação (item 2.4) registra sua base no momento da leitura. Sem critério
+aplicável validado, a coleta permanece pendente de avaliação técnica.
 
 Modelagem extensível: cada novo tipo de análise do item 2.3.2 (termografia, fluidos,
 ensaios elétricos…) vira uma nova tabela vinculada a `Inspecao`, sem alterar esta.
 """
 import re
+import json
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
 from apps.cadastros.models import (
@@ -89,6 +92,87 @@ class SistemaTermografia(models.TextChoices):
     PROCESSO = "PROCESSO", "Processos Industriais"
 
 
+class SubtipoVibracao(models.TextChoices):
+    MEC_DINAMICO = "MEC_DINAMICO", "Sistemas mecânicos dinâmicos"
+    ODS = "ODS", "ODS — Operational Deflection Shape"
+    MEC_ESTATICO = "MEC_ESTATICO", "Sistemas mecânicos estáticos"
+
+
+# O contrato identifica as modalidades, sem prescrever seus campos ou limites.
+SUBTIPOS_TECNICOS = {
+    "FLUIDOS": ("HIDRAULICO", "LUBRIFICANTE", "MINERAL_ISOLANTE"),
+    "ENSAIO_ELETRICO": ("TRANSFORMADOR_TTR", "TRANSFORMADOR_RI", "TRANSFORMADOR_RO", "MOTOR_RI"),
+    "ULTRASSOM": ("ELETRICO", "MECANICO"),
+    "ESPESSURA": ("ESPESSURA",),
+    "CORRETIVA": ("ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS", "BALANCEAMENTO"),
+    "SENSITIVA": ("SENSITIVA",),
+    "QUALIDADE_ENERGIA": ("QUALIDADE_ENERGIA",),
+}
+
+
+class ClassificacaoHistorica(TimeStampedModel):
+    """Congela a base aplicada; editar metadados não reclassifica medições antigas."""
+
+    classificacao_status = models.CharField(
+        max_length=12, default="LEGADO", editable=False,
+        choices=[("PENDENTE", "Critério pendente"), ("CLASSIFICADA", "Classificada"),
+                 ("LEGADO", "Resultado legado, base não registrada")],
+    )
+    criterio_aplicado = models.JSONField(default=dict, blank=True, editable=False)
+    historico_classificacao = models.JSONField(default=list, blank=True, editable=False)
+    coletado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, editable=False,
+        related_name="%(app_label)s_%(class)s_coletadas",
+    )
+
+    class Meta:
+        abstract = True
+
+    def _preparar_classificacao(self, campos, update_fields=None):
+        if update_fields is not None:
+            atualizados = {self._meta.get_field(campo).attname for campo in update_fields}
+            if not atualizados.intersection(campos):
+                return False
+        if self.pk:
+            anterior = type(self).objects.select_for_update().get(pk=self.pk)
+            if all(getattr(self, campo) == getattr(anterior, campo) for campo in campos):
+                return False
+            self.historico_classificacao = [*anterior.historico_classificacao, {
+                "registrado_em": timezone.now().isoformat(),
+                "alterado_por": getattr(self, "_autor_edicao", None),
+                "coletado_por": anterior.coletado_por_id,
+                "criticidade": anterior.criticidade,
+                "diagnostico": anterior.diagnostico_sugerido,
+                "status": anterior.classificacao_status,
+                "criterio": anterior.criterio_aplicado,
+                "dados": json.loads(json.dumps(
+                    {campo: getattr(anterior, campo) for campo in campos}, cls=DjangoJSONEncoder,
+                )),
+            }]
+        return True
+
+    def _campos_classificacao(self, kwargs):
+        from .analise_preditiva import analisar_historico, contexto_medicao, serializavel
+        if self.data_hora is None:
+            self.data_hora = timezone.now()
+        analise = getattr(self, "_analise_preditiva", None) or analisar_historico(self)
+        self.criterio_aplicado.update({
+            "motor": self.criterio_aplicado.get("motor", "coleta_pendente_v2"),
+            "contexto": contexto_medicao(self),
+            "analise_preditiva": analise,
+            "entradas": serializavel({campo.name: getattr(self, campo.attname) for campo in self._meta.fields
+                if campo.name not in {"id", "criterio_aplicado", "historico_classificacao", "diagnostico_sugerido",
+                                      "criticidade", "classificacao_status", "zona_iso", "criado_em", "atualizado_em"}}),
+            "saida": {"criticidade": self.criticidade, "diagnostico_sugerido": self.diagnostico_sugerido,
+                      "zona_iso": getattr(self, "zona_iso", ""), "status": self.classificacao_status},
+        })
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {
+                "criticidade", "diagnostico_sugerido", "classificacao_status",
+                "criterio_aplicado", "historico_classificacao",
+            }
+
+
 ORDEM_CRITICIDADE = {"NORMAL": 0, "ALERTA": 1, "CRITICO": 2}
 
 
@@ -131,15 +215,19 @@ class Inspecao(BaseModel):
         valores += [m.criticidade for m in self.medicoes_tecnicas.all()]
         if not valores:
             return Criticidade.NORMAL
-        return max(valores, key=lambda c: ORDEM_CRITICIDADE.get(c, 0))
+        # Um ponto pendente impede concluir normalidade do conjunto. Anomalias
+        # já identificadas continuam aparecendo com sua severidade real.
+        classificadas = [c for c in valores if c in ORDEM_CRITICIDADE]
+        maior = max(classificadas, key=ORDEM_CRITICIDADE.get) if classificadas else ""
+        return "" if "" in valores and maior == Criticidade.NORMAL else maior
 
 
-class MedicaoVibracao(TimeStampedModel):
+class MedicaoVibracao(ClassificacaoHistorica):
     """
     Medição de vibração em um ponto/direção — Anexo I 2.3.2.1.1.
 
-    `zona_iso`, `criticidade` e `diagnostico_sugerido` são calculados automaticamente
-    (não editáveis manualmente) pelo motor de regras em `save()`.
+    Resultado e base aplicada são persistidos juntos e permanecem estáveis ao
+    editar metadados. ODS e estruturas estáticas não usam limites de máquinas.
     """
 
     inspecao = models.ForeignKey(Inspecao, on_delete=models.CASCADE, related_name="medicoes_vibracao")
@@ -160,9 +248,13 @@ class MedicaoVibracao(TimeStampedModel):
         "Parâmetro", max_length=1, choices=ParametroMedicao.choices, blank=True
     )
     rotacao_rpm = models.PositiveIntegerField("Rotação na coleta (RPM)", null=True, blank=True)
+    subtipo = models.CharField(max_length=20, choices=SubtipoVibracao.choices,
+                               default=SubtipoVibracao.MEC_DINAMICO)
+    parametros = models.JSONField("Contexto da modalidade", default=dict, blank=True)
 
     # Grandezas medidas
-    velocidade_rms = models.DecimalField("Velocidade RMS (mm/s)", max_digits=7, decimal_places=2)
+    velocidade_rms = models.DecimalField("Velocidade RMS (mm/s)", max_digits=7, decimal_places=2,
+                                         null=True, blank=True)
     aceleracao_rms = models.DecimalField("Aceleração RMS (g)", max_digits=7, decimal_places=2, null=True, blank=True)
     deslocamento_pp = models.DecimalField("Deslocamento pico-a-pico (µm)", max_digits=8, decimal_places=2, null=True, blank=True)
     fator_crista = models.DecimalField("Fator de crista", max_digits=5, decimal_places=2, null=True, blank=True)
@@ -175,7 +267,7 @@ class MedicaoVibracao(TimeStampedModel):
     )
     diagnostico_sugerido = models.TextField("Diagnóstico sugerido", blank=True, editable=False)
 
-    data_hora = models.DateTimeField("Data/hora da medição", auto_now_add=True)
+    data_hora = models.DateTimeField("Data/hora da medição", default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Medição de vibração"
@@ -183,7 +275,10 @@ class MedicaoVibracao(TimeStampedModel):
         ordering = ["-data_hora"]
 
     def __str__(self):
-        return f"{self.equipamento.tag} — {self.ponto_medicao} ({self.direcao}): {self.velocidade_rms} mm/s"
+        leitura = next((f"{valor} {unidade}" for valor, unidade in (
+            (self.velocidade_rms, "mm/s"), (self.aceleracao_rms, "g"), (self.deslocamento_pp, "µm"),
+        ) if valor is not None), "amplitude não informada")
+        return f"{self.equipamento.tag} — {self.ponto_medicao} ({self.direcao}): {leitura}"
 
     @property
     def codigo_ponto(self) -> str:
@@ -194,32 +289,68 @@ class MedicaoVibracao(TimeStampedModel):
         return f"{self.numero_mancal or ''}{self.direcao or ''}{self.parametro or ''}"
 
     def _historico_vrms(self, limite: int = 3) -> list:
-        """Vrms das medições anteriores do mesmo equipamento/ponto/direção."""
-        qs = (
-            MedicaoVibracao.objects.filter(
-                equipamento=self.equipamento,
-                ponto_medicao=self.ponto_medicao,
-                direcao=self.direcao,
-            )
-            .exclude(pk=self.pk)
-            .order_by("-data_hora")[:limite]
-        )
-        return [m.velocidade_rms for m in qs]
+        from .analise_preditiva import analisar_historico
+        self._analise_preditiva = analisar_historico(self, limite)
+        return [Decimal(p["valor"]) for p in self._analise_preditiva["entradas"]]
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
-        from apps.cadastros.criterios import faixas_vigentes
+        campos = ("equipamento_id", "componente_id", "instrumento_id", "subtipo", "ponto_medicao", "direcao", "velocidade_rms",
+                  "aceleracao_rms", "deslocamento_pp", "fator_crista", "parametros", "parametro", "numero_mancal", "rotacao_rpm", "data_hora")
+        self._analise_preditiva = None
+        if not self._preparar_classificacao(campos, kwargs.get("update_fields")):
+            return super().save(*args, **kwargs)
+        if self.subtipo != SubtipoVibracao.MEC_DINAMICO:
+            self.zona_iso = ""
+            self.criticidade = ""
+            self.classificacao_status = "PENDENTE"
+            self.diagnostico_sugerido = "Coleta registrada. Critério específico da modalidade ainda não validado."
+            self.criterio_aplicado = {"modalidade": self.subtipo, "motivo": "criterio_nao_validado"}
+            self._campos_classificacao(kwargs)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"].add("zona_iso")
+            return super().save(*args, **kwargs)
+        from apps.cadastros.criterios import criterio_vigente, faixas_vigentes, resumo_criterio
 
         from apps.cadastros.criterios import aviso_de_base, suporte_do_equipamento
 
         eq = self.equipamento
         suporte = suporte_do_equipamento(eq)
+        data_criterio = self.inspecao.data
+        cliente_id = eq.setor.area.cliente_id if eq.setor_id else None
+        criterio = criterio_vigente(eq.classe_iso, data=data_criterio, cliente_id=cliente_id, suporte=suporte)
+        from .analise_preditiva import numero_finito
+        velocidade = numero_finito(self.velocidade_rms)
+        if velocidade is None or velocidade < 0 or criterio is None or (eq.classe_iso in ("G1", "G2") and not suporte) or criterio.origem == "LEGADO":
+            self.zona_iso = ""
+            self.criticidade = ""
+            self.classificacao_status = "PENDENTE"
+            self.criterio_aplicado = {"modalidade": self.subtipo, "motivo": "criterio_ou_aplicabilidade_nao_confirmados"}
+            self.diagnostico_sugerido = (
+                "Coleta registrada. Informe a classe/base aplicável e um critério vigente com origem "
+                "documentada para classificar a vibração; não foi aplicada uma classe genérica."
+            )
+            self._campos_classificacao(kwargs)
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"].add("zona_iso")
+            return super().save(*args, **kwargs)
+        faixas = faixas_vigentes(eq.classe_iso, data=data_criterio, cliente_id=cliente_id,
+                                suporte=suporte)
+        historico = self._historico_vrms(criterio.evolucao_janela)
+        evolucao_aplicavel = (
+            criterio.evolucao_habilitada and criterio.evolucao_validacao == "VALIDADO"
+            and bool(criterio.evolucao_fonte.strip()) and criterio.evolucao_fator > 1
+            and len(historico) == criterio.evolucao_janela
+        )
         resultado = rules.classificar_vibracao(
             classe_iso=eq.classe_iso,
             velocidade_rms=self.velocidade_rms,
-            fator_crista=self.fator_crista,
-            historico_vrms=self._historico_vrms(),
-            faixas=faixas_vigentes(eq.classe_iso, cliente_id=eq.setor.area.cliente_id if eq.setor_id else None,
-                                   suporte=suporte),
+            # Fator de crista permanece como leitura. O limiar heurístico 5 não
+            # possui critério específico homologado no cadastro desta coleta.
+            fator_crista=None,
+            historico_vrms=historico,
+            fator_evolucao=criterio.evolucao_fator if evolucao_aplicavel else None,
+            faixas=faixas,
             # O deslocamento desta medição é pico-a-pico; os limites da norma são RMS —
             # não se comparam sem saber a forma de onda, então só a velocidade classifica.
             avisos=aviso_de_base(eq.classe_iso, suporte),
@@ -227,15 +358,36 @@ class MedicaoVibracao(TimeStampedModel):
         self.zona_iso = resultado.zona_iso
         self.criticidade = resultado.criticidade
         self.diagnostico_sugerido = resultado.diagnostico
+        self.classificacao_status = "CLASSIFICADA" if resultado.criticidade else "PENDENTE"
+        self.criterio_aplicado = json.loads(json.dumps({
+            "motor": "vibracao_v2", "classe_iso": eq.classe_iso, "suporte": suporte,
+            "faixas": faixas or rules.FAIXAS_ISO_VRMS.get(eq.classe_iso, rules.FAIXAS_ISO_VRMS["II"]),
+            "origem": "cadastro_vigente" if faixas else "reserva_legada",
+            "fator_crista_avaliado": False,
+            "fator_evolucao": criterio.evolucao_fator,
+            "evolucao_aplicavel": bool(evolucao_aplicavel),
+            "evolucao_origem": "Procedimento configurável; não é limite normativo",
+            "evolucao_fonte": criterio.evolucao_fonte,
+            "evolucao_validacao": criterio.evolucao_validacao,
+            "evolucao_janela": criterio.evolucao_janela,
+            "avisos": aviso_de_base(eq.classe_iso, suporte),
+            "historico_vrms": historico,
+            "data_criterio": data_criterio,
+            "cadastro": {**resumo_criterio(criterio), "vigencia_inicio": criterio.vigencia_inicio,
+                         "vigencia_fim": criterio.vigencia_fim},
+        }, cls=DjangoJSONEncoder))
+        self._campos_classificacao(kwargs)
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"].add("zona_iso")
         super().save(*args, **kwargs)
 
 
-class MedicaoTermografia(TimeStampedModel):
+class MedicaoTermografia(ClassificacaoHistorica):
     """
     Medição de termografia infravermelha — Anexo I 2.3.2.2.
 
-    `delta_t`, `criticidade` e `diagnostico_sugerido` são calculados automaticamente
-    pelo motor de regras (ΔT — NBR 15572 / NETA) em `save()`.
+    O diferencial térmico é calculado sem classificar todos os sistemas por um
+    mesmo limite. A condição aguarda validação do critério e da aplicabilidade.
     """
 
     inspecao = models.ForeignKey(Inspecao, on_delete=models.CASCADE, related_name="medicoes_termografia")
@@ -273,7 +425,7 @@ class MedicaoTermografia(TimeStampedModel):
     )
     diagnostico_sugerido = models.TextField("Diagnóstico sugerido", blank=True, editable=False)
 
-    data_hora = models.DateTimeField("Data/hora da medição", auto_now_add=True)
+    data_hora = models.DateTimeField("Data/hora da medição", default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Medição de termografia"
@@ -283,18 +435,27 @@ class MedicaoTermografia(TimeStampedModel):
     def __str__(self):
         return f"{self.equipamento.tag} — {self.ponto_medicao}: ΔT {self.delta_t}°C"
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
-        resultado = rules.classificar_termografia(
-            temperatura_ponto=self.temperatura_ponto,
-            temperatura_referencia=self.temperatura_referencia,
+        campos = ("equipamento_id", "componente_id", "instrumento_id", "ponto_medicao", "sistema", "temperatura_ponto", "temperatura_referencia",
+                  "temperatura_ambiente", "emissividade", "carga_percentual", "data_hora")
+        if not self._preparar_classificacao(campos, kwargs.get("update_fields")):
+            return super().save(*args, **kwargs)
+        self.delta_t = self.temperatura_ponto - self.temperatura_referencia
+        self.criticidade = ""
+        self.classificacao_status = "PENDENTE"
+        self.criterio_aplicado = {"motor": "termografia_delta_v2", "modalidade": self.sistema, "motivo": "criterio_nao_validado"}
+        self.diagnostico_sugerido = (
+            f"ΔT = {self.delta_t:.1f} °C. Critério específico do sistema ainda não validado; "
+            "o diferencial térmico não determina sozinho a condição do equipamento."
         )
-        self.delta_t = resultado.delta_t
-        self.criticidade = resultado.criticidade
-        self.diagnostico_sugerido = resultado.diagnostico
+        self._campos_classificacao(kwargs)
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"].add("delta_t")
         super().save(*args, **kwargs)
 
 
-class MedicaoTecnica(TimeStampedModel):
+class MedicaoTecnica(ClassificacaoHistorica):
     """
     Medição técnica genérica — Anexo I 2.3.2.3 a 2.3.2.10 (fluidos, ensaios elétricos,
     ultrassom, espessura, qualidade de energia, sensitiva, corretiva).
@@ -313,9 +474,10 @@ class MedicaoTecnica(TimeStampedModel):
     )
 
     tipo = models.CharField("Tipo de análise", max_length=20, choices=TipoAnalise.choices)
+    subtipo = models.CharField("Modalidade contratada", max_length=30, blank=True)
     ponto_medicao = models.CharField("Ponto de medição", max_length=80)
     grandeza = models.CharField("Grandeza medida", max_length=80, help_text="Ex.: Resistência de isolação")
-    valor = models.DecimalField("Valor", max_digits=14, decimal_places=4)
+    valor = models.DecimalField("Valor", max_digits=14, decimal_places=4, null=True, blank=True)
     unidade = models.CharField("Unidade", max_length=20, blank=True)
     valor_referencia = models.DecimalField(
         "Valor de referência", max_digits=14, decimal_places=4, null=True, blank=True
@@ -326,7 +488,7 @@ class MedicaoTecnica(TimeStampedModel):
     criticidade = models.CharField(max_length=8, choices=Criticidade.choices, blank=True, editable=False)
     diagnostico_sugerido = models.TextField("Diagnóstico sugerido", blank=True, editable=False)
 
-    data_hora = models.DateTimeField("Data/hora da medição", auto_now_add=True)
+    data_hora = models.DateTimeField("Data/hora da medição", default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Medição técnica"
@@ -334,15 +496,28 @@ class MedicaoTecnica(TimeStampedModel):
         ordering = ["-data_hora"]
 
     def __str__(self):
-        return f"{self.equipamento.tag} — {self.get_tipo_display()} {self.grandeza}: {self.valor} {self.unidade}"
+        leitura = f"{self.valor} {self.unidade}".strip() if self.valor is not None else "parecer qualitativo"
+        return f"{self.equipamento.tag} — {self.get_tipo_display()} {self.grandeza}: {leitura}"
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
+        campos = ("equipamento_id", "componente_id", "instrumento_id", "ponto_medicao", "tipo", "subtipo", "grandeza", "valor", "unidade",
+                  "valor_referencia", "parametros", "data_hora")
+        if not self._preparar_classificacao(campos, kwargs.get("update_fields")):
+            return super().save(*args, **kwargs)
         resultado = rules_tecnicas.classificar_tecnica(
             tipo=self.tipo, grandeza=self.grandeza, valor=self.valor,
             valor_referencia=self.valor_referencia, parametros=self.parametros,
         )
         self.criticidade = resultado.criticidade
         self.diagnostico_sugerido = resultado.diagnostico
+        self.classificacao_status = "CLASSIFICADA" if resultado.criticidade else "PENDENTE"
+        self.criterio_aplicado = {
+            "motor": "sensitiva_manual_v2" if resultado.criticidade else "tecnica_pendente_v2",
+            "modalidade": self.subtipo,
+            "origem": "avaliacao_tecnico" if resultado.criticidade else "criterio_nao_validado",
+        }
+        self._campos_classificacao(kwargs)
         super().save(*args, **kwargs)
 
 

@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { Activity, ClipboardCheck, Flame, Gauge, Waves } from "lucide-react";
 import {
+  Alert,
   Badge,
   Card,
   CardHeader,
@@ -27,7 +28,14 @@ import {
 } from "@/components/ds";
 import { useRecurso } from "@/lib/recurso";
 import { data as fmtData, numero, numeroUnidade, texto } from "@/lib/format";
-import type { Inspecao } from "@/lib/types";
+import type { ClassificacaoMedicao, Inspecao } from "@/lib/types";
+
+function ResultadoColeta({ medicao }: { medicao: ClassificacaoMedicao & { criticidade: string } }) {
+  if (medicao.classificacao_status === "LEGADO") return <span className="inline-flex flex-wrap gap-1">{medicao.criticidade && <EstadoBadge grau={grauDe(medicao.criticidade)} tamanho="sm" />}<Badge>Classificação histórica</Badge></span>;
+  if (medicao.classificacao_status === "PENDENTE" || !medicao.criticidade)
+    return <Badge tone="warning">Pendente de avaliação</Badge>;
+  return <EstadoBadge grau={grauDe(medicao.criticidade)} tamanho="sm" />;
+}
 
 /**
  * Portal do Cliente — uma inspeção, ponto a ponto.
@@ -55,6 +63,7 @@ export default function PortalInspecaoPage() {
   const total = vib.length + termo.length + tec.length;
   const criticas = [...vib, ...termo, ...tec].filter((m) => m.criticidade === "CRITICO").length;
   const alertas = [...vib, ...termo, ...tec].filter((m) => m.criticidade === "ALERTA").length;
+  const pendentes = [...vib, ...termo, ...tec].filter((m) => m.classificacao_status === "PENDENTE" || !m.criticidade).length;
 
   return (
     <PageBody>
@@ -71,7 +80,7 @@ export default function PortalInspecaoPage() {
         <MetricCard
           label="Pontos críticos"
           value={criticas}
-          tone={criticas > 0 ? "danger" : "success"}
+          tone={criticas > 0 ? "danger" : "neutral"}
           contexto={criticas > 0 ? "exigem intervenção imediata" : "nenhum"}
         />
         <MetricCard
@@ -81,6 +90,8 @@ export default function PortalInspecaoPage() {
           contexto={alertas > 0 ? "acima do aceitável" : "nenhum"}
         />
       </MetricGrid>
+
+      {pendentes > 0 && <Alert tone="warning" title="Avaliação técnica pendente">{pendentes} leitura(s) aguardam critério ou avaliação aplicável. A ausência de pontos classificados como críticos não confirma uma condição normal.</Alert>}
 
       <Card>
         <CardHeader title="Dados da inspeção" />
@@ -93,7 +104,7 @@ export default function PortalInspecaoPage() {
             { label: "Situação", value: insp.status_display },
             {
               label: "Pior resultado",
-              value: <EstadoBadge grau={grauDe(insp.criticidade_maxima)} mostrarSignificado />,
+              value: insp.criticidade_maxima ? <EstadoBadge grau={grauDe(insp.criticidade_maxima)} /> : <Badge tone="warning">Pendente de avaliação</Badge>,
             },
             {
               label: "Observações do técnico",
@@ -121,7 +132,7 @@ export default function PortalInspecaoPage() {
               <CardHeader
                 title="Análise de vibração"
                 icon={Waves}
-                description="Velocidade global comparada ao limite da classe ISO 10816 do equipamento."
+                description="Leituras de vibração e classificação quando houver critério aplicável registrado."
               />
               <Table>
                 <THead>
@@ -154,7 +165,7 @@ export default function PortalInspecaoPage() {
                       </TD>
                       <TD>{m.zona_iso ? <Badge tone="neutral">{m.zona_iso}</Badge> : <SemDado />}</TD>
                       <TD>
-                        <EstadoBadge grau={grauDe(m.criticidade)} tamanho="sm" />
+                        <ResultadoColeta medicao={m} />
                       </TD>
                     </TR>
                   ))}
@@ -203,7 +214,7 @@ export default function PortalInspecaoPage() {
                         {numeroUnidade(m.delta_t, "°C", 1)}
                       </TD>
                       <TD>
-                        <EstadoBadge grau={grauDe(m.criticidade)} tamanho="sm" />
+                        <ResultadoColeta medicao={m} />
                       </TD>
                     </TR>
                   ))}
@@ -237,13 +248,13 @@ export default function PortalInspecaoPage() {
                       <TD>{m.tipo_display}</TD>
                       <TD>{texto(m.grandeza)}</TD>
                       <TD className="text-right" tecnico>
-                        {numero(m.valor)} {m.unidade}
+                        {m.valor == null ? "Avaliação qualitativa" : `${numero(m.valor)} ${m.unidade}`}
                       </TD>
                       <TD className="text-right" tecnico>
-                        {m.valor_referencia ? `${numero(m.valor_referencia)} ${m.unidade}` : <SemDado />}
+                        {m.valor_referencia != null ? `${numero(m.valor_referencia)} ${m.unidade}` : <SemDado />}
                       </TD>
                       <TD>
-                        <EstadoBadge grau={grauDe(m.criticidade)} tamanho="sm" />
+                        <ResultadoColeta medicao={m} />
                       </TD>
                     </TR>
                   ))}

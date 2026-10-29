@@ -136,8 +136,9 @@ class ClienteNaoTocaNoDiagnostico(BaseOSP):
         api = APIClient()
         api.force_authenticate(self.tecnico)
         r = api.patch(f"/api/osps/{self.osp.pk}/status/",
-                      {"status": "FINALIZADA"}, format="json")
+                      {"status": "EM_ANALISE"}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
+        # Finalizar é aprovar a execução: não é do técnico (ver test_fluxo.py).
 
 
 class RetornoNaoVazaEntreInquilinos(BaseOSP):

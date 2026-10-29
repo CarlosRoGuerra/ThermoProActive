@@ -4,22 +4,22 @@ from django.dispatch import receiver
 
 from apps.coletas.models import MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
 
-from .services import gerar_osp_de_medicao
+from apps.notificacoes.preditivos import processar_medicao
 
 
 @receiver(post_save, sender=MedicaoVibracao)
 def osp_por_vibracao(sender, instance, created, **kwargs):
-    if created:
-        gerar_osp_de_medicao(instance, tipo_label="Vibração")
+    if not kwargs.get("raw"):
+        processar_medicao(instance)
 
 
 @receiver(post_save, sender=MedicaoTermografia)
 def osp_por_termografia(sender, instance, created, **kwargs):
-    if created:
-        gerar_osp_de_medicao(instance, tipo_label="Termografia")
+    if not kwargs.get("raw"):
+        processar_medicao(instance)
 
 
 @receiver(post_save, sender=MedicaoTecnica)
 def osp_por_tecnica(sender, instance, created, **kwargs):
-    if created:
-        gerar_osp_de_medicao(instance, tipo_label=instance.get_tipo_display())
+    if not kwargs.get("raw"):
+        processar_medicao(instance)

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck, Eye } from "lucide-react";
 import {
+  Alert,
   Badge,
   DataTable,
   EmptyState,
@@ -35,7 +36,7 @@ import type { Inspecao } from "@/lib/types";
 export default function PortalInspecoesPage() {
   const router = useRouter();
   const [busca, setBusca] = useState("");
-  const { itens, carregando, falha, recarregar } = useLista<Inspecao>(
+  const { itens, carregando, falha, recarregar, temMaisPaginas } = useLista<Inspecao>(
     "/inspecoes/?ordering=-data&page_size=200",
     "inspeções do portal"
   );
@@ -89,6 +90,13 @@ export default function PortalInspecoesPage() {
         description="Todas as coletas realizadas no seu parque, da mais recente para a mais antiga. Abra uma inspeção para ver os pontos medidos e o resultado de cada um."
         trilha={[{ label: "Inspeções" }]}
       />
+
+      {temMaisPaginas && (
+        <Alert tone="info" title="Mostrando os 200 registros mais recentes">
+          Há mais registros do que esta tela carrega de uma vez; as contagens acima consideram só os
+          exibidos. Use os Relatórios para o histórico completo.
+        </Alert>
+      )}
 
       <Toolbar
         busca={

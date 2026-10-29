@@ -94,7 +94,7 @@ def comparar_com_meta(escalas, meta):
 
 # ------------------------------ Referências ------------------------------
 def classificar(*, tipo, valor=None, texto="", estado="MEDIDO", valor_base=None, limite_alerta=None,
-                limite_critico=None, referencia_texto="", escalas=None):
+                limite_critico=None, referencia_texto="", escalas=None, limite_deteccao=None):
     """
     Classifica um resultado pela referência cadastrada. Devolve
     {"status": ROTINA|ALERTA|CRITICA|None, "variacao_pct": Decimal|None, "excesso": int|None}.
@@ -104,6 +104,15 @@ def classificar(*, tipo, valor=None, texto="", estado="MEDIDO", valor_base=None,
     """
     saida = {"status": None, "variacao_pct": None, "excesso": None}
     alerta, critico, v = _d(limite_alerta), _d(limite_critico), _d(valor)
+    if estado != "MEDIDO":
+        # Um resultado censurado não prova conformidade quando seu LD/LQ é maior
+        # que o limite técnico, nem quando o laboratório não informou o LD/LQ.
+        ld = _d(limite_deteccao)
+        limites = [l for l in (alerta, critico) if l is not None]
+        if (tipo == "MAXIMO" and estado in ("ABAIXO_LD", "ABAIXO_LQ", "NAO_DETECTADO")
+                and ld is not None and ld > 0 and limites and ld <= min(limites)):
+            saida["status"] = ROTINA
+        return saida
 
     if tipo == "CODIGO_ISO":
         excesso = comparar_com_meta(escalas, ler_codigo(referencia_texto))
@@ -128,9 +137,6 @@ def classificar(*, tipo, valor=None, texto="", estado="MEDIDO", valor_base=None,
         return saida
 
     if v is None:
-        # Abaixo do limite de detecção/quantificação: atende a um máximo.
-        if tipo == "MAXIMO" and estado in ("ABAIXO_LD", "ABAIXO_LQ", "NAO_DETECTADO") and (alerta or critico):
-            saida["status"] = ROTINA
         return saida
 
     if tipo == "MAXIMO":

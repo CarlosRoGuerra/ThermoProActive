@@ -1,4 +1,6 @@
 from django.utils import timezone
+from decimal import Decimal, InvalidOperation
+import unicodedata
 from rest_framework import serializers
 
 from apps.cadastros.models import Condicao
@@ -13,10 +15,73 @@ from .models import (
     MedicaoTermografia,
     MedicaoVibracao,
     Relatorio,
+    SUBTIPOS_TECNICOS,
+    TipoAnalise,
 )
 
 
-class MedicaoVibracaoSerializer(serializers.ModelSerializer):
+class ValidacaoMedicaoMixin:
+    """Coerência do evento, do ativo e do contexto também em PATCH parcial."""
+
+    tipo_medicao = None
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            validated_data["coletado_por"] = request.user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        instance._autor_edicao = request.user.pk if request and request.user.is_authenticated else None
+        return super().update(instance, validated_data)
+
+    def valor(self, attrs, campo, padrao=None):
+        return attrs.get(campo, getattr(self.instance, campo, padrao))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        inspecao = self.valor(attrs, "inspecao")
+        equipamento = self.valor(attrs, "equipamento")
+        componente = self.valor(attrs, "componente")
+        tipo = self.tipo_medicao or self.valor(attrs, "tipo")
+        erros = {}
+        if self.instance and inspecao and inspecao.pk != self.instance.inspecao_id:
+            erros["inspecao"] = "Preserve o evento original da coleta. Registre uma nova medição na outra inspeção."
+        if inspecao and tipo != inspecao.tipo_analise:
+            erros["inspecao"] = "O tipo da inspeção não corresponde à modalidade da medição."
+        if inspecao and equipamento and equipamento.setor.area.cliente_id != inspecao.cliente_id:
+            erros["equipamento"] = "O equipamento deve pertencer ao cliente da inspeção."
+        if componente and equipamento and componente.equipamento_id != equipamento.pk:
+            erros["componente"] = "O componente deve pertencer ao equipamento selecionado."
+        for campo in ("velocidade_rms", "aceleracao_rms", "deslocamento_pp", "fator_crista", "rotacao_rpm"):
+            valor = self.valor(attrs, campo)
+            if valor is not None and valor < 0:
+                erros[campo] = "Informe um valor maior ou igual a zero."
+        parametros = self.valor(attrs, "parametros", {})
+        if not isinstance(parametros, dict):
+            erros["parametros"] = "Informe um objeto com os parâmetros da modalidade."
+        else:
+            for campo in ("frequencia_hz", "fase_graus"):
+                if parametros.get(campo) in (None, ""):
+                    continue
+                try:
+                    if isinstance(parametros[campo], bool):
+                        raise ValueError
+                    valor = Decimal(str(parametros[campo]))
+                    if not valor.is_finite() or valor < 0 or (campo == "fase_graus" and valor >= 360):
+                        raise ValueError
+                except (InvalidOperation, ValueError, TypeError):
+                    erros["parametros"] = f"{campo}: informe número finito não negativo" + (
+                        " e menor que 360 graus." if campo == "fase_graus" else "."
+                    )
+        if erros:
+            raise serializers.ValidationError(erros)
+        return attrs
+
+
+class MedicaoVibracaoSerializer(ValidacaoMedicaoMixin, serializers.ModelSerializer):
+    tipo_medicao = TipoAnalise.VIBRACAO
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     componente_nome = serializers.CharField(source="componente.nome", read_only=True, default=None)
     direcao_display = serializers.CharField(source="get_direcao_display", read_only=True)
@@ -33,14 +98,27 @@ class MedicaoVibracaoSerializer(serializers.ModelSerializer):
             "parametro", "parametro_display", "codigo_ponto", "direcao",
             "direcao_display", "rotacao_rpm", "velocidade_rms", "aceleracao_rms",
             "deslocamento_pp", "fator_crista", "temperatura",
+            "subtipo", "parametros", "classificacao_status", "criterio_aplicado", "historico_classificacao", "coletado_por",
             # calculados (somente leitura):
             "zona_iso", "criticidade", "criticidade_display", "diagnostico_sugerido",
             "data_hora",
         ]
         read_only_fields = ["zona_iso", "criticidade", "diagnostico_sugerido", "data_hora"]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        subtipo = self.valor(attrs, "subtipo", "MEC_DINAMICO")
+        velocidade = self.valor(attrs, "velocidade_rms")
+        if subtipo == "MEC_DINAMICO" and velocidade is None:
+            raise serializers.ValidationError({"velocidade_rms": "Informe a velocidade RMS medida para sistemas dinâmicos."})
+        if all(self.valor(attrs, campo) is None for campo in ("velocidade_rms", "aceleracao_rms", "deslocamento_pp")):
+            raise serializers.ValidationError({"velocidade_rms": "Informe ao menos uma amplitude medida: velocidade, aceleração ou deslocamento."})
+        return attrs
 
-class MedicaoTermografiaSerializer(serializers.ModelSerializer):
+
+class MedicaoTermografiaSerializer(ValidacaoMedicaoMixin, serializers.ModelSerializer):
+    tipo_medicao = TipoAnalise.TERMOGRAFIA
+    emissividade = serializers.DecimalField(max_digits=4, decimal_places=2, required=True)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     componente_nome = serializers.CharField(source="componente.nome", read_only=True, default=None)
     sistema_display = serializers.CharField(source="get_sistema_display", read_only=True)
@@ -53,14 +131,25 @@ class MedicaoTermografiaSerializer(serializers.ModelSerializer):
             "componente_nome", "instrumento", "ponto_medicao", "sistema",
             "sistema_display", "temperatura_ponto", "temperatura_referencia",
             "temperatura_ambiente", "emissividade", "carga_percentual",
+            "classificacao_status", "criterio_aplicado", "historico_classificacao", "coletado_por",
             # calculados (somente leitura):
             "delta_t", "criticidade", "criticidade_display", "diagnostico_sugerido",
             "data_hora",
         ]
         read_only_fields = ["delta_t", "criticidade", "diagnostico_sugerido", "data_hora"]
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        emissividade = self.valor(attrs, "emissividade", Decimal("0.95"))
+        if emissividade is not None and not (0 < emissividade <= 1):
+            raise serializers.ValidationError({"emissividade": "A emissividade deve ser maior que zero e no máximo 1."})
+        carga = self.valor(attrs, "carga_percentual")
+        if carga is not None and carga < 0:
+            raise serializers.ValidationError({"carga_percentual": "Informe uma carga maior ou igual a zero."})
+        return attrs
 
-class MedicaoTecnicaSerializer(serializers.ModelSerializer):
+
+class MedicaoTecnicaSerializer(ValidacaoMedicaoMixin, serializers.ModelSerializer):
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     componente_nome = serializers.CharField(source="componente.nome", read_only=True, default=None)
     tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
@@ -72,16 +161,71 @@ class MedicaoTecnicaSerializer(serializers.ModelSerializer):
             "id", "inspecao", "equipamento", "equipamento_tag", "componente",
             "componente_nome", "instrumento", "tipo", "tipo_display", "ponto_medicao",
             "grandeza", "valor", "unidade", "valor_referencia", "parametros",
+            "subtipo", "classificacao_status", "criterio_aplicado", "historico_classificacao", "coletado_por",
             # calculados (somente leitura):
             "criticidade", "criticidade_display", "diagnostico_sugerido", "data_hora",
         ]
         read_only_fields = ["criticidade", "diagnostico_sugerido", "data_hora"]
+        extra_kwargs = {"tipo": {"required": False}}
 
     def validate(self, attrs):
         # O tipo da medição segue o tipo da inspeção, garantindo coerência.
-        inspecao = attrs.get("inspecao")
-        if inspecao and not attrs.get("tipo"):
+        inspecao = self.valor(attrs, "inspecao")
+        if inspecao and not attrs.get("tipo") and self.instance is None:
             attrs["tipo"] = inspecao.tipo_analise
+        attrs = super().validate(attrs)
+        tipo = self.valor(attrs, "tipo")
+        subtipo = self.valor(attrs, "subtipo", "")
+        if tipo not in SUBTIPOS_TECNICOS:
+            raise serializers.ValidationError({"tipo": "Use o formulário específico de vibração ou termografia."})
+        if not subtipo and self.instance is None:
+            raise serializers.ValidationError({"subtipo": "Selecione a modalidade da coleta."})
+        if subtipo and subtipo not in SUBTIPOS_TECNICOS[tipo]:
+            raise serializers.ValidationError({"subtipo": "A modalidade selecionada não pertence a este tipo de análise."})
+        valor = self.valor(attrs, "valor")
+        if valor is None and tipo != TipoAnalise.SENSITIVA:
+            raise serializers.ValidationError({"valor": "Informe a leitura medida para esta modalidade."})
+        if tipo == TipoAnalise.ESPESSURA or subtipo in ("TRANSFORMADOR_RI", "TRANSFORMADOR_RO", "MOTOR_RI"):
+            if valor is not None and valor < 0:
+                raise serializers.ValidationError({"valor": "A espessura ou resistência medida não pode ser negativa."})
+        parametros = self.valor(attrs, "parametros", {})
+        if tipo == TipoAnalise.SENSITIVA:
+            criticidade = parametros.get("criticidade")
+            if criticidade and criticidade not in ("NORMAL", "ALERTA", "CRITICO"):
+                raise serializers.ValidationError({"parametros": "Criticidade sensitiva inválida: use NORMAL, ALERTA ou CRITICO."})
+        if tipo == TipoAnalise.FLUIDOS and "ensaio" in parametros:
+            ensaio = parametros["ensaio"]
+            permitidos = ("FQ", "CR", "PCB", "2FAL") if subtipo == "MINERAL_ISOLANTE" else ("FQ", "CR", "CP")
+            if ensaio not in permitidos:
+                raise serializers.ValidationError({"parametros": "O ensaio não pertence à modalidade de fluido selecionada."})
+        # Validação dimensional, sem atribuir norma ou faixa de severidade. Em
+        # legado, metadados continuam editáveis sem reescrever a unidade antiga.
+        if self.instance is None or {"valor", "unidade", "subtipo", "tipo", "grandeza", "parametros"}.intersection(attrs):
+            unidade = (self.valor(attrs, "unidade", "") or "").strip().replace("Ω", "Ω")
+            grandeza = unicodedata.normalize("NFKD", self.valor(attrs, "grandeza", "")).encode("ascii", "ignore").decode().lower()
+            unidades = None
+            if subtipo in ("TRANSFORMADOR_RI", "MOTOR_RI"):
+                unidades = ("Ω", "kΩ", "MΩ", "GΩ")
+            elif subtipo == "TRANSFORMADOR_RO":
+                unidades = ("Ω", "mΩ", "µΩ", "μΩ")
+            elif subtipo == "TRANSFORMADOR_TTR":
+                unidades = ("%",) if "desvio" in grandeza or "erro" in grandeza else ("", "1", ":1", "relação", "adimensional")
+                if valor is not None and valor < 0 and "%" not in unidades:
+                    raise serializers.ValidationError({"valor": "A relação de transformação não pode ser negativa."})
+            elif tipo == TipoAnalise.ESPESSURA:
+                unidades = ("mm",)
+            elif tipo == TipoAnalise.ULTRASSOM:
+                unidades = ("dB", "dBµV", "dBμV")
+            elif tipo == TipoAnalise.FLUIDOS:
+                if parametros.get("ensaio") in ("PCB", "2FAL"):
+                    unidades = ("mg/kg", "ppm")
+                elif parametros.get("ensaio") == "CP":
+                    unidades = ("part./mL", "partículas/mL", "part/mL")
+                if (parametros.get("ensaio") in ("PCB", "2FAL", "CP") or unidade in ("mg/kg", "ppm")) and valor is not None and valor < 0:
+                    raise serializers.ValidationError({"valor": "A concentração ou contagem não pode ser negativa."})
+            if unidades is not None and unidade not in unidades:
+                exibidas = [u or "adimensional" for u in unidades]
+                raise serializers.ValidationError({"unidade": f"Unidade incompatível com a grandeza. Use: {', '.join(exibidas)}."})
         return attrs
 
 
@@ -107,6 +251,24 @@ class InspecaoSerializer(serializers.ModelSerializer):
         ]
         # O técnico é opcional no POST: assume o usuário autenticado (ver create()).
         extra_kwargs = {"tecnico": {"required": False}}
+
+    def validate(self, attrs):
+        latitude = attrs.get("latitude", getattr(self.instance, "latitude", None))
+        longitude = attrs.get("longitude", getattr(self.instance, "longitude", None))
+        erros = {}
+        if latitude is not None and not (-90 <= latitude <= 90):
+            erros["latitude"] = "Informe uma latitude entre -90 e 90 graus."
+        if longitude is not None and not (-180 <= longitude <= 180):
+            erros["longitude"] = "Informe uma longitude entre -180 e 180 graus."
+        if self.instance and "tipo_analise" in attrs and attrs["tipo_analise"] != self.instance.tipo_analise:
+            if self.instance.total_medicoes:
+                erros["tipo_analise"] = "Esta inspeção já possui medições. Crie outra inspeção para mudar a modalidade."
+        if self.instance and "cliente" in attrs and attrs["cliente"].pk != self.instance.cliente_id:
+            if self.instance.total_medicoes:
+                erros["cliente"] = "Esta inspeção já possui medições. Preserve o cliente do histórico."
+        if erros:
+            raise serializers.ValidationError(erros)
+        return attrs
 
     def create(self, validated_data):
         # O técnico responsável padrão é o usuário autenticado (perfil interno).

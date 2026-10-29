@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import InternoEditaClienteVisualiza
+from apps.accounts.permissions import InternoEditaClienteVisualiza, IsInterno
 
 from .models import (
     Achado,
@@ -144,6 +144,11 @@ class InspecaoViewSet(viewsets.ModelViewSet):
         impedir_cross_tenant(self.request.user, serializer.validated_data, "cliente")
         serializer.save()
 
+    def perform_destroy(self, instance):
+        if instance.total_medicoes or instance.laudos.exists() or instance.osps.exists():
+            raise ValidationError({"detail": "A inspeção possui registros técnicos relacionados. Preserve o histórico; a política de retenção e cancelamento precisa ser definida."})
+        instance.delete()
+
 
 class _MedicaoViewSetBase(viewsets.ModelViewSet):
     """
@@ -153,6 +158,21 @@ class _MedicaoViewSetBase(viewsets.ModelViewSet):
     equipamento alheio numa Inspeção legítima do cliente).
     """
 
+    @action(detail=True, methods=["get"], url_path="analise-preditiva")
+    def analise_preditiva(self, request, pk=None):
+        """Consulta a evidência congelada; GET nunca reclassifica ou gera alertas."""
+        medicao = self.get_object()
+        snapshot = medicao.criterio_aplicado
+        from .analise_preditiva import MOTORES_REPLAY, replay_medicao
+        resultado = {
+            "medicao_id": medicao.pk, "status": medicao.classificacao_status,
+            "snapshot": snapshot,
+            "replay_disponivel": snapshot.get("motor") in MOTORES_REPLAY and bool(snapshot.get("entradas")),
+        }
+        if resultado["replay_disponivel"]:
+            resultado["replay"] = replay_medicao(snapshot)
+        return Response(resultado)
+
     def perform_create(self, serializer):
         self._impedir_cross_tenant(serializer.validated_data)
         serializer.save()
@@ -160,6 +180,9 @@ class _MedicaoViewSetBase(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._impedir_cross_tenant(serializer.validated_data)
         serializer.save()
+
+    def perform_destroy(self, instance):
+        raise ValidationError({"detail": "Medições técnicas não podem ser excluídas enquanto a política de retenção e cancelamento não estiver definida. Preserve o histórico e registre a correção."})
 
     def _impedir_cross_tenant(self, validated_data):
         user = self.request.user
@@ -170,7 +193,7 @@ class _MedicaoViewSetBase(viewsets.ModelViewSet):
 class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoVibracaoSerializer
     permission_classes = [InternoEditaClienteVisualiza]
-    filterset_fields = ["inspecao", "equipamento", "criticidade", "zona_iso", "direcao"]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "zona_iso", "direcao", "subtipo", "classificacao_status"]
     ordering_fields = ["data_hora", "velocidade_rms"]
 
     def get_queryset(self):
@@ -183,7 +206,7 @@ class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
 class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTermografiaSerializer
     permission_classes = [InternoEditaClienteVisualiza]
-    filterset_fields = ["inspecao", "equipamento", "criticidade", "sistema"]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "sistema", "classificacao_status"]
     ordering_fields = ["data_hora", "delta_t"]
 
     def get_queryset(self):
@@ -196,7 +219,7 @@ class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
 class MedicaoTecnicaViewSet(_MedicaoViewSetBase):
     serializer_class = MedicaoTecnicaSerializer
     permission_classes = [InternoEditaClienteVisualiza]
-    filterset_fields = ["inspecao", "equipamento", "criticidade", "tipo"]
+    filterset_fields = ["inspecao", "equipamento", "criticidade", "tipo", "subtipo", "classificacao_status"]
     ordering_fields = ["data_hora"]
 
     def get_queryset(self):
@@ -517,175 +540,53 @@ class AchadoImagemViewSet(viewsets.ModelViewSet):
         )
 
 
-def _conta_criticidade(queryset) -> dict:
-    return {
-        item["criticidade"]: item["total"]
-        for item in queryset.values("criticidade").annotate(total=Count("id"))
-    }
+def _painel(request, calcular):
+    """
+    Lê e valida os filtros (400 se malformados) e calcula o painel. As fórmulas
+    vivem em `apps.relatorios.indicadores` — a mesma fonte da exportação.
+    """
+    from apps.relatorios.filtros import FiltroInvalido, ler_filtros
+
+    try:
+        f = ler_filtros(request.query_params)
+    except FiltroInvalido as erro:
+        return Response(erro.erros, status=status.HTTP_400_BAD_REQUEST)
+    return Response(calcular(request.user, f))
 
 
 class DashboardView(APIView):
     """
-    Indicadores operacionais — Anexo I 2.8.1.1 (vibração + termografia).
+    Indicadores operacionais — Anexo I 2.8.1.1.
 
-    Aceita `?cliente=<id>`: com um cliente ativado na barra lateral, o painel
-    mostra só a operação dele; sem nenhum, mostra o todo (ver `recorte_cliente`).
+    Filtros (todos no servidor): `?cliente=`, `?data_inicio=`/`?data_fim=`
+    (AAAA-MM-DD), `?area=`, `?setor=`, `?equipamento=`. O escopo do usuário vem
+    antes de qualquer filtro (ver `apps.relatorios.filtros`).
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        inspecoes = recorte_cliente(Inspecao.objects.ativos(), request)
-        vib = recorte_cliente(
-            MedicaoVibracao.objects.all(), request, campo_cliente="inspecao__cliente"
-        )
-        termo = recorte_cliente(
-            MedicaoTermografia.objects.all(), request, campo_cliente="inspecao__cliente"
-        )
-        tec = recorte_cliente(
-            MedicaoTecnica.objects.all(), request, campo_cliente="inspecao__cliente"
-        )
+        from apps.relatorios.indicadores import operacional
 
-        c_vib, c_termo, c_tec = _conta_criticidade(vib), _conta_criticidade(termo), _conta_criticidade(tec)
-        por_criticidade = {
-            nivel: c_vib.get(nivel, 0) + c_termo.get(nivel, 0) + c_tec.get(nivel, 0)
-            for nivel in ("NORMAL", "ALERTA", "CRITICO")
-        }
-
-        # Equipamentos críticos consolidando todos os tipos de medição.
-        criticos: dict = {}
-        for qs in (vib, termo, tec):
-            for row in (
-                qs.filter(criticidade="CRITICO")
-                .values("equipamento__tag", "equipamento__nome")
-                .annotate(ocorrencias=Count("id"))
-            ):
-                chave = row["equipamento__tag"]
-                if chave not in criticos:
-                    criticos[chave] = {**row}
-                else:
-                    criticos[chave]["ocorrencias"] += row["ocorrencias"]
-        equipamentos_criticos = sorted(
-            criticos.values(), key=lambda r: r["ocorrencias"], reverse=True
-        )[:10]
-
-        # Import tardio evita dependência circular coletas <-> osp.
-        from apps.osp.models import STATUS_ABERTOS, OrdemServico
-
-        osps = recorte_cliente(OrdemServico.objects.all(), request)
-
-        return Response({
-            "total_inspecoes": inspecoes.count(),
-            "inspecoes_abertas": inspecoes.filter(status="ABERTA").count(),
-            "total_medicoes": vib.count() + termo.count() + tec.count(),
-            "medicoes_por_criticidade": por_criticidade,
-            "equipamentos_criticos": equipamentos_criticos,
-            "osps_abertas": osps.filter(status__in=STATUS_ABERTOS).count(),
-            "osps_total": osps.count(),
-        })
-
-
-def _ultimos_meses(n=6):
-    hoje = timezone.now()
-    ano, mes = hoje.year, hoje.month
-    saida = []
-    for _ in range(n):
-        saida.append((ano, mes))
-        mes -= 1
-        if mes == 0:
-            mes, ano = 12, ano - 1
-    return list(reversed(saida))
+        return _painel(request, operacional)
 
 
 class DashboardExecutivoView(APIView):
     """
     Dashboard executivo — Anexo I 2.8.1.2 (KPIs, custos, MTBF, MTTR, evolução).
+    Mesmos filtros do operacional; fórmulas em `apps.relatorios.indicadores`.
 
-    Aceita `?cliente=<id>` igual ao painel operacional: com cliente ativado, os
-    KPIs e a "performance por unidade" falam só dele; sem nenhum, falam do todo.
+    Só equipe interna: traz custos e a comparação entre unidades — mesma regra
+    do Relatório Financeiro e da exportação deste painel (ver docs/16, pendência
+    "cliente vê custos?").
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsInterno]
 
     def get(self, request):
-        from apps.cadastros.models import Cliente
-        from apps.osp.models import OrdemServico
+        from apps.relatorios.indicadores import executivo
 
-        osps = recorte_cliente(OrdemServico.objects.all(), request)
-        vib = recorte_cliente(MedicaoVibracao.objects.all(), request, "inspecao__cliente")
-        termo = recorte_cliente(MedicaoTermografia.objects.all(), request, "inspecao__cliente")
-        tec = recorte_cliente(MedicaoTecnica.objects.all(), request, "inspecao__cliente")
-
-        total_osp = osps.count()
-        finalizadas = osps.filter(status="FINALIZADA", finalizada_em__isnull=False)
-
-        # MTTR — tempo médio de reparo (horas) — item 2.8.1.2.4
-        duracoes = [
-            (o.finalizada_em - o.criado_em).total_seconds() / 3600
-            for o in finalizadas.only("finalizada_em", "criado_em")
-        ]
-        mttr = round(sum(duracoes) / len(duracoes), 1) if duracoes else None
-
-        # MTBF — tempo médio entre falhas (dias) — item 2.8.1.2.3
-        por_equip = defaultdict(list)
-        for o in osps.order_by("criado_em").values("equipamento_id", "criado_em"):
-            por_equip[o["equipamento_id"]].append(o["criado_em"])
-        gaps = [
-            (ts[i] - ts[i - 1]).total_seconds() / 86400
-            for ts in por_equip.values()
-            for i in range(1, len(ts))
-        ]
-        mtbf = round(sum(gaps) / len(gaps), 1) if gaps else None
-
-        # Custos de manutenção — item 2.8.1.2.2
-        custos = osps.aggregate(real=Sum("custo_real"), estimado=Sum("custo_estimado"))
-
-        # Evolução histórica (6 meses) — item 2.8.1.2.6
-        evolucao = []
-        for ano, mes in _ultimos_meses(6):
-            criticas = sum(
-                q.filter(data_hora__year=ano, data_hora__month=mes, criticidade="CRITICO").count()
-                for q in (vib, termo, tec)
-            )
-            evolucao.append({
-                "mes": f"{mes:02d}/{ano}",
-                "criticas": criticas,
-                "osps": osps.filter(criado_em__year=ano, criado_em__month=mes).count(),
-            })
-
-        # Performance por unidade — item 2.8.1.2.5
-        # Com cliente ativado a tabela fica com uma linha só (a dele); sem
-        # nenhum, compara todas as unidades.
-        performance = []
-        for c in recorte_cliente(Cliente.objects.ativos(), request, "id"):
-            cosps = osps.filter(cliente=c)
-            criticas = sum(
-                q.filter(inspecao__cliente=c, criticidade="CRITICO").count()
-                for q in (vib, termo, tec)
-            )
-            performance.append({
-                "cliente": c.nome,
-                "osps": cosps.count(),
-                "finalizadas": cosps.filter(status="FINALIZADA").count(),
-                "criticas": criticas,
-                "custo_real": float(cosps.aggregate(s=Sum("custo_real"))["s"] or 0),
-            })
-
-        return Response({
-            "kpis": {
-                "osps_total": total_osp,
-                "osps_finalizadas": finalizadas.count(),
-                "taxa_conclusao": round(finalizadas.count() / total_osp * 100) if total_osp else 0,
-                "mttr_horas": mttr,
-                "mtbf_dias": mtbf,
-            },
-            "custos": {
-                "real": float(custos["real"] or 0),
-                "estimado": float(custos["estimado"] or 0),
-            },
-            "evolucao": evolucao,
-            "performance": performance,
-        })
+        return _painel(request, executivo)
 
 
 class PortalVisaoGeralView(APIView):
@@ -702,7 +603,7 @@ class PortalVisaoGeralView(APIView):
 
     def get(self, request):
         from apps.cadastros.models import Cliente, Equipamento
-        from apps.laudos.models import Laudo, StatusLaudo
+        from apps.laudos.models import StatusLaudo
         from apps.osp.models import STATUS_ABERTOS, OrdemServico
 
         user = request.user
@@ -721,27 +622,18 @@ class PortalVisaoGeralView(APIView):
         termo = escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente")
         tec = escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente")
         osps = escopo_cliente(OrdemServico.objects.all(), user)
-        laudos = escopo_cliente(
-            Laudo.objects.filter(status=StatusLaudo.EMITIDO).select_related("inspecao__cliente"),
-            user, "inspecao__cliente",
-        )
+        # Mesma regra do LaudoViewSet: inclui os laudos do fluxo novo
+        # (`relatorio_origem`) e o cliente documental, só os emitidos.
+        from apps.relatorios import filtros as F
+        from apps.relatorios.indicadores import disponibilidade, equipamentos_com_critica
+
+        sem_filtro = F.Filtros()
+        laudos = F.laudos(user, sem_filtro, data=None).filter(status=StatusLaudo.EMITIDO)
 
         # --- Equipamentos que requerem atenção (com medição crítica) ---
-        atencao: dict = {}
-        for qs in (vib, termo, tec):
-            for row in (
-                qs.filter(criticidade="CRITICO")
-                .values("equipamento__tag", "equipamento__nome")
-                .annotate(ocorrencias=Count("id"))
-            ):
-                chave = row["equipamento__tag"]
-                if chave not in atencao:
-                    atencao[chave] = {**row}
-                else:
-                    atencao[chave]["ocorrencias"] += row["ocorrencias"]
-        equipamentos_atencao = sorted(
-            atencao.values(), key=lambda r: r["ocorrencias"], reverse=True
-        )
+        # Agregado por equipamento (id) e só entre os ATIVOS — a mesma conta
+        # do painel operacional (`indicadores.equipamentos_com_critica`).
+        equipamentos_atencao = equipamentos_com_critica(user, sem_filtro)
 
         # --- Estado atual por equipamento (para a lista do Portal) ---
         # O Portal precisa dizer COMO está cada máquina, não só quais estão
@@ -750,7 +642,7 @@ class PortalVisaoGeralView(APIView):
         # Uma agregação por (tag, criticidade) nas três origens de medição, e a
         # pior criticidade é resolvida em Python — `Max` num CharField ordenaria
         # alfabeticamente e "NORMAL" venceria "CRITICO".
-        RANK = {"CRITICO": 3, "ALERTA": 2, "NORMAL": 1, "": 0}
+        RANK = {"CRITICO": 3, "ALERTA": 2, "": 1, "NORMAL": 0}
         estado_por_tag: dict = {}
         for qs in (vib, termo, tec):
             for row in (
@@ -759,10 +651,12 @@ class PortalVisaoGeralView(APIView):
             ):
                 tag = row["equipamento__tag"]
                 atual = estado_por_tag.setdefault(
-                    tag, {"criticidade": "", "medicoes": 0, "ultima_medicao": None}
+                    tag, {"criticidade": None, "medicoes": 0, "pendentes": 0, "ultima_medicao": None}
                 )
                 atual["medicoes"] += row["total"]
-                if RANK.get(row["criticidade"], 0) > RANK.get(atual["criticidade"], 0):
+                if not row["criticidade"]:
+                    atual["pendentes"] += row["total"]
+                if RANK.get(row["criticidade"], -1) > RANK.get(atual["criticidade"], -1):
                     atual["criticidade"] = row["criticidade"]
                 if row["ultima"] and (
                     atual["ultima_medicao"] is None or row["ultima"] > atual["ultima_medicao"]
@@ -771,10 +665,9 @@ class PortalVisaoGeralView(APIView):
 
         total_equip = equipamentos.count()
         em_atencao = len(equipamentos_atencao)
-        # Índice de disponibilidade (item 2.8.1.1.6): % do parque sem ocorrência crítica.
-        disponibilidade = (
-            round((total_equip - em_atencao) / total_equip * 100, 1) if total_equip else 100.0
-        )
+        # Índice de disponibilidade (2.8.1.1.6) — PROXY, ver indicadores.disponibilidade.
+        # Sem equipamento ativo não há índice (None), e não "100%".
+        indice = disponibilidade(user, sem_filtro)["percentual"]
 
         # --- Histórico de serviços (item 2.7.1.1.5) — consolidado e ordenado ---
         historico: list = []
@@ -798,7 +691,7 @@ class PortalVisaoGeralView(APIView):
                 "criticidade": "",
                 "url": f"/inspecoes/{insp.id}",
             })
-        for osp in osps.select_related("equipamento").order_by("-criado_em")[:10]:
+        for osp in osps.validas().select_related("equipamento").order_by("-criado_em")[:10]:
             historico.append({
                 "tipo": "osp",
                 "titulo": f"OSP {osp.numero}",
@@ -829,10 +722,13 @@ class PortalVisaoGeralView(APIView):
             "indicadores": {
                 "equipamentos_monitorados": total_equip,
                 "equipamentos_atencao": em_atencao,
-                "indice_disponibilidade": disponibilidade,
+                "indice_disponibilidade": indice,
                 "inspecoes": inspecoes.count(),
                 "osps_abertas": osps.filter(status__in=STATUS_ABERTOS).count(),
+                "osps_sla_vencido": osps.com_sla_vencido().count(),
                 "laudos_disponiveis": laudos.count(),
+                "medicoes_pendentes": sum(e["pendentes"] for e in estado_por_tag.values()),
+                "equipamentos_pendentes": sum(1 for e in estado_por_tag.values() if e["pendentes"]),
             },
             "equipamentos_atencao": equipamentos_atencao[:8],
             # Mapa TAG → estado atual, consumido pela lista de equipamentos do

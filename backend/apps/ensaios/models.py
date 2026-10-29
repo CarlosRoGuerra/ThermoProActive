@@ -23,6 +23,7 @@ zero: "não coletado", "abaixo do LD" e "indisponível" têm estado próprio.
 """
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -255,6 +256,10 @@ class ResultadoEnsaio(BaseModel):
     laboratorio = models.CharField("Laboratório", max_length=120, blank=True)
     origem = models.CharField("Origem do dado", max_length=10, choices=OrigemResultado.choices,
                               default=OrigemResultado.MANUAL)
+    contexto_tecnico = models.JSONField(
+        "Critérios registrados no lançamento", default=dict, blank=True, editable=False,
+        help_text="Parâmetros, referências e base do óleo novo usados neste lançamento. Vazio nos dados legados.",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "Resultado de ensaio"
@@ -263,6 +268,18 @@ class ResultadoEnsaio(BaseModel):
 
     def __str__(self):
         return f"{self.ensaio.sigla} — {self.item.equipamento.tag} ({self.get_situacao_display()})"
+
+
+class RevisaoResultadoEnsaio(TimeStampedModel):
+    """Estado anterior à edição do resultado pela API, incluindo valores e critérios."""
+
+    resultado = models.ForeignKey(ResultadoEnsaio, on_delete=models.PROTECT, related_name="revisoes")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                              related_name="revisoes_ensaio")
+    dados = models.JSONField("Dados anteriores", default=dict)
+
+    class Meta:
+        ordering = ["-criado_em", "-pk"]
 
 
 class EstadoValor(models.TextChoices):

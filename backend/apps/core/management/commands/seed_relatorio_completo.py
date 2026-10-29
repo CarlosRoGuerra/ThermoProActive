@@ -60,7 +60,7 @@ from apps.coletas.models import (
     Relatorio,
     StatusCarregamento,
 )
-from apps.osp.models import OrdemServico, PRAZO_GR_DIAS
+from apps.osp.models import HistoricoOSP, OrdemServico, PRAZO_GR_DIAS
 from apps.servicos.models import (
     BalanceamentoPlano,
     BalanceamentoPonto,
@@ -72,6 +72,18 @@ User = get_user_model()
 
 CNPJ_DEMO = "99.888.777/0001-66"
 HOJE = date.today()
+
+
+def obter_ou_criar(classe, /, defaults=None, **busca):
+    """
+    `get_or_create` que tolera duplicatas já existentes no catálogo (o banco local
+    é cópia da produção, onde há nomes repetidos): reaproveita o registro mais
+    antigo em vez de quebrar — e nunca cria um terceiro.
+    """
+    existente = classe.objects.filter(**busca).order_by("id").first()
+    if existente is not None:
+        return existente, False
+    return classe.objects.create(**busca, **(defaults or {})), True
 
 
 # --------------------------------------------------------------------------
@@ -181,6 +193,8 @@ class Command(BaseCommand):
             # precisa sair antes, senão a exclusão do cliente falha.
             User.objects.filter(cliente=antigo).delete()
             ServicoCampo.objects.filter(cliente=antigo).delete()
+            # O histórico da OSP é protegido: dado de DEMONSTRAÇÃO, apagado de propósito.
+            HistoricoOSP.objects.filter(osp__cliente=antigo).delete()
             OrdemServico.objects.filter(cliente=antigo).delete()
             Carregamento.objects.filter(cliente=antigo).delete()
             Relatorio.objects.filter(cliente=antigo).delete()
@@ -247,25 +261,30 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         # 3. Catálogos — alimentam os seletores e a Seção B
         # ------------------------------------------------------------------
-        vibracao, _ = TecnologiaAnalise.objects.get_or_create(
+        vibracao, _ = obter_ou_criar(TecnologiaAnalise, 
             nome="Análise de Vibração",
             defaults={
                 "sigla": "VIB", "modulo_tecnico": "VIBRACAO",
                 "descricao": "Medição de vibração global e espectral (ISO 10816/20816).",
             },
         )
-        balanceamento, _ = TecnologiaAnalise.objects.get_or_create(
+        balanceamento, _ = obter_ou_criar(TecnologiaAnalise, 
             nome="Balanceamento Dinâmico em Campo",
             defaults={
-                "sigla": "BALDC",
+                "sigla": "BALDC", "modulo_tecnico": "BALANCEAMENTO",
                 "tipo_corretiva": "BALANCEAMENTO",
                 "descricao": "Correção de desbalanceamento de rotores no próprio equipamento.",
             },
         )
         # Garante o vínculo corretivo mesmo se a tecnologia já existia sem ele.
-        if not balanceamento.tipo_corretiva:
-            balanceamento.tipo_corretiva = "BALANCEAMENTO"
-            balanceamento.save(update_fields=["tipo_corretiva"])
+        # O mesmo para o módulo do relatório: sem ele o relatório responde 409
+        # (não há módulo padrão desde 01/10/2026). Só preenche o que está vazio.
+        vazios = {campo: "BALANCEAMENTO" for campo in ("tipo_corretiva", "modulo_tecnico")
+                  if not getattr(balanceamento, campo)}
+        if vazios:
+            for campo, valor in vazios.items():
+                setattr(balanceamento, campo, valor)
+            balanceamento.save(update_fields=list(vazios))
 
         # Graus de risco — a sigla precisa normalizar para GR1..GR4 (regra da OSP).
         GRAUS = [
@@ -277,7 +296,7 @@ class Command(BaseCommand):
         ]
         condicoes = {}
         for sigla, nome, nivel, cor, gera in GRAUS:
-            c, _ = Condicao.objects.get_or_create(
+            c, _ = obter_ou_criar(Condicao, 
                 sigla=sigla, defaults={"nome": nome, "nivel": nivel, "cor": cor, "gera_acao": gera}
             )
             condicoes[sigla] = c
@@ -285,7 +304,7 @@ class Command(BaseCommand):
         def catalogo(modelo, nomes, tecnologia=None):
             saida = {}
             for n in nomes:
-                o, _ = modelo.objects.get_or_create(nome=n)
+                o, _ = obter_ou_criar(modelo, nome=n)
                 o.tecnologias.add(tecnologia or vibracao)
                 saida[n] = o
             return saida
@@ -305,18 +324,18 @@ class Command(BaseCommand):
             "Manter acompanhamento periódico do equipamento.",
         ])
 
-        norma, _ = Norma.objects.get_or_create(
+        norma, _ = obter_ou_criar(Norma, 
             codigo="ISO 10816-3",
             defaults={"nome": "Vibração mecânica — avaliação em máquinas não rotativas", "orgao": "ISO"},
         )
         norma.tecnologias.add(vibracao)
-        norma2, _ = Norma.objects.get_or_create(
+        norma2, _ = obter_ou_criar(Norma, 
             codigo="ISO 21940-11",
             defaults={"nome": "Vibração mecânica — qualidade de balanceamento de rotores rígidos", "orgao": "ISO"},
         )
         norma2.tecnologias.add(balanceamento)
 
-        instrumento, _ = Instrumento.objects.get_or_create(
+        instrumento, _ = obter_ou_criar(Instrumento, 
             numero_serie="SKF-MIC-2291",
             defaults={
                 "tipo": "Coletor e analisador de vibração",
@@ -332,7 +351,7 @@ class Command(BaseCommand):
 
         # --- Terceira tecnologia: Termografia — dado de sistema novo, cadastrado
         # do mesmo jeito que Vibração/Balanceamento (nada de atalho paralelo). ---
-        termografia, _ = TecnologiaAnalise.objects.get_or_create(
+        termografia, _ = obter_ou_criar(TecnologiaAnalise, 
             nome="Termografia Infravermelha",
             defaults={
                 "sigla": "TERMO", "modulo_tecnico": "TERMOGRAFIA",
@@ -353,13 +372,13 @@ class Command(BaseCommand):
         # A recomendação de acompanhamento é comum às três tecnologias.
         recomendacoes["Manter acompanhamento periódico do equipamento."].tecnologias.add(termografia)
 
-        norma3, _ = Norma.objects.get_or_create(
+        norma3, _ = obter_ou_criar(Norma, 
             codigo="NBR 15572",
             defaults={"nome": "Ensaios não destrutivos — Termografia", "orgao": "ABNT"},
         )
         norma3.tecnologias.add(termografia)
 
-        instrumento_termo, _ = Instrumento.objects.get_or_create(
+        instrumento_termo, _ = obter_ou_criar(Instrumento, 
             numero_serie="FLIR-E76-58821",
             defaults={
                 "tipo": "Câmera termográfica",
@@ -423,19 +442,19 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         # 5. Hierarquia e equipamentos, com dados de placa completos
         # ------------------------------------------------------------------
-        tipo_bomba, _ = TipoEquipamento.objects.get_or_create(nome="Bomba centrífuga")
-        tipo_exaustor, _ = TipoEquipamento.objects.get_or_create(nome="Exaustor")
-        tipo_motor, _ = TipoEquipamento.objects.get_or_create(nome="Motor elétrico")
+        tipo_bomba, _ = obter_ou_criar(TipoEquipamento, nome="Bomba centrífuga")
+        tipo_exaustor, _ = obter_ou_criar(TipoEquipamento, nome="Exaustor")
+        tipo_motor, _ = obter_ou_criar(TipoEquipamento, nome="Motor elétrico")
 
         # Categoria técnica explícita no tipo — é ela que decide qual datasheet
         # (Motor/Transformador) o equipamento ganha, sem inferir pelo nome.
-        tipo_transformador, criado_tt = TipoEquipamento.objects.get_or_create(
+        tipo_transformador, criado_tt = obter_ou_criar(TipoEquipamento, 
             nome="Transformador de distribuição", defaults={"categoria_tecnica": "TRANSFORMADOR"}
         )
         if not criado_tt and not tipo_transformador.categoria_tecnica:
             tipo_transformador.categoria_tecnica = "TRANSFORMADOR"
             tipo_transformador.save(update_fields=["categoria_tecnica"])
-        tipo_quadro, _ = TipoEquipamento.objects.get_or_create(nome="Quadro elétrico")
+        tipo_quadro, _ = obter_ou_criar(TipoEquipamento, nome="Quadro elétrico")
 
         area = Area.objects.create(cliente=cliente, codigo="A-02", nome="Máquina de Papel")
         s_bombas = Setor.objects.create(area=area, codigo="6110", nome="Casa de Bombas")

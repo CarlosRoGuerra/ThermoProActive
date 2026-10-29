@@ -165,13 +165,21 @@ class ReferenciaParametroSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Informe o limite de alerta, o crítico ou os dois.")
             if tipo in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA) and not base and not valor("base_oleo_novo"):
                 raise serializers.ValidationError({"valor_base": "Informe o valor de base ou marque a base pelo óleo novo."})
+            if tipo in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA) and base is not None and base <= 0:
+                raise serializers.ValidationError({"valor_base": "A base de uma variação percentual deve ser positiva."})
+            if tipo in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA, TipoReferencia.AUMENTO):
+                for campo, limite in (("limite_alerta", alerta), ("limite_critico", critico)):
+                    if limite is not None and limite < 0:
+                        raise serializers.ValidationError({campo: "Informe a magnitude da variação, maior ou igual a zero."})
             if valor("base_oleo_novo") and tipo not in (TipoReferencia.VARIACAO, TipoReferencia.QUEDA,
                                                         TipoReferencia.AUMENTO):
                 raise serializers.ValidationError({
                     "base_oleo_novo": "A base pelo óleo novo vale nos tipos Variação, Queda e Aumento.",
                 })
             if alerta is not None and critico is not None:
-                fora_de_ordem = critico < alerta if tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO) else critico > alerta
+                maior_pior = tipo in (TipoReferencia.MAXIMO, TipoReferencia.VARIACAO,
+                                      TipoReferencia.QUEDA, TipoReferencia.AUMENTO)
+                fora_de_ordem = critico < alerta if maior_pior else critico > alerta
                 if fora_de_ordem:
                     raise serializers.ValidationError({"limite_critico": "O limite crítico precisa ser mais severo que o de alerta."})
         inicio, fim = valor("vigencia_inicio"), valor("vigencia_fim")
@@ -330,7 +338,23 @@ class ValorParametroSerializer(serializers.ModelSerializer):
     class Meta:
         model = ValorParametro
         fields = ["id", "parametro", "parametro_codigo", "serie", "posicao", "valor", "valor_texto", "estado",
-                  "limite_deteccao"]
+                  "limite_deteccao", "metodo"]
+
+    def validate(self, attrs):
+        estado = attrs.get("estado", "MEDIDO")
+        numero = attrs.get("valor")
+        texto = (attrs.get("valor_texto") or "").strip()
+        if estado == "MEDIDO" and numero is None and not texto:
+            raise serializers.ValidationError({"valor": "Informe o valor medido ou o resultado qualitativo."})
+        if estado != "MEDIDO" and numero is not None:
+            raise serializers.ValidationError({"valor": "Neste estado, deixe o valor numérico vazio e registre o texto recebido."})
+        limite = attrs.get("limite_deteccao")
+        if limite is not None and limite <= 0:
+            raise serializers.ValidationError({"limite_deteccao": "O limite de detecção/quantificação deve ser positivo."})
+        posicao = attrs.get("posicao")
+        if posicao is not None and posicao < 0:
+            raise serializers.ValidationError({"posicao": "O tempo/posição não pode ser negativo."})
+        return attrs
 
 
 class ResultadoEnsaioSerializer(serializers.ModelSerializer):
@@ -345,10 +369,16 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
     ensaio_sigla = serializers.CharField(source="ensaio.sigla", read_only=True)
     situacao_display = serializers.CharField(source="get_situacao_display", read_only=True)
     avaliacao = serializers.SerializerMethodField()
+    revisoes = serializers.SerializerMethodField()
 
     class Meta:
         model = ResultadoEnsaio
         exclude = ["ativo"]
+        read_only_fields = ["contexto_tecnico"]
+
+    def get_revisoes(self, obj):
+        return [{"id": r.pk, "autor": r.autor_id, "criado_em": r.criado_em, "dados": r.dados}
+                for r in obj.revisoes.all()]
 
     def get_avaliacao(self, obj) -> dict:
         if obj.ensaio.modulo == FLUIDO:
@@ -358,29 +388,58 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         item = attrs.get("item") or getattr(self.instance, "item", None)
         ensaio = attrs.get("ensaio") or getattr(self.instance, "ensaio", None)
+        if self.instance:
+            for campo in ("item", "ensaio"):
+                if campo in attrs and attrs[campo].pk != getattr(self.instance, f"{campo}_id"):
+                    raise serializers.ValidationError({campo: "Crie outro resultado para mudar o equipamento ou o ensaio; preserve o histórico deste registro."})
         _checar_modulo(item, ensaio.modulo)
+        chaves = set()
         for v in attrs.get("valores", []):
             parametro = v["parametro"]
             if parametro.ensaio_id != ensaio.id:
                 raise serializers.ValidationError({"valores": f"{parametro.codigo} não é parâmetro do ensaio {ensaio.sigla}."})
             if parametro.calculado:
                 raise serializers.ValidationError({"valores": f"{parametro.codigo} é calculado pelo sistema."})
-        if attrs.get("data_analise") and attrs.get("data_proxima") and attrs["data_proxima"] < attrs["data_analise"]:
+            chave = (parametro.pk, v.get("serie", ""), v.get("posicao"))
+            if chave in chaves:
+                raise serializers.ValidationError({"valores": f"{parametro.codigo}: parâmetro, série e posição repetidos."})
+            chaves.add(chave)
+        data_analise = attrs.get("data_analise", getattr(self.instance, "data_analise", None))
+        data_proxima = attrs.get("data_proxima", getattr(self.instance, "data_proxima", None))
+        if data_analise and data_proxima and data_proxima < data_analise:
             raise serializers.ValidationError({"data_proxima": "A próxima data não pode ser anterior à análise."})
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
+        from .contexto import registrar_contexto
+
         valores = validated_data.pop("valores", None)
         resultado = super().create(validated_data)
         self._gravar_valores(resultado, valores)
+        autor = getattr(self.context.get("request"), "user", None)
+        registrar_contexto(resultado, autor=autor)
         return resultado
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        from .contexto import registrar_contexto, registrar_revisao
+
+        instance = ResultadoEnsaio.objects.select_for_update().get(pk=instance.pk)
+        self.instance = instance
+        self.validate(validated_data)
+        # Mesmo correções de texto ficam rastreáveis. Critérios só mudam quando
+        # valores/situação são reapresentados, nunca por alteração do catálogo.
+        autor = getattr(self.context.get("request"), "user", None)
+        if autor is not None and not autor.is_authenticated:
+            autor = None
+        registrar_revisao(instance, autor)
+        tecnico_alterado = "valores" in validated_data or "situacao" in validated_data
         valores = validated_data.pop("valores", None)
         resultado = super().update(instance, validated_data)
         self._gravar_valores(resultado, valores)
+        if tecnico_alterado:
+            registrar_contexto(resultado, autor=autor)
         return resultado
 
     @staticmethod

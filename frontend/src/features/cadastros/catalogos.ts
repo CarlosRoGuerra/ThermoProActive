@@ -369,7 +369,7 @@ export const CATALOGOS_SISTEMA: CatalogDef[] = [
     fields: [
       { key: "nome", label: "Produto", required: true, maxLength: 250 },
       { key: "fabricante", label: "Fabricante", maxLength: 80 },
-      { key: "aplicacao", label: "Aplicação", type: "escolha", escolhas: APLICACOES_FLUIDO },
+      { key: "aplicacao", label: "Aplicação (hidráulico: unidades hidráulicas e compressores; lubrificante: redutores e engrenagens)", type: "escolha", escolhas: APLICACOES_FLUIDO },
       { key: "grau_viscosidade", label: "Grau / classificação (ex.: ISO VG 46, SAE 40) — só informativo", maxLength: 20 },
       { key: "viscosidade_40c_cst", label: "Viscosidade cinemática a 40 °C do óleo novo — cSt (mm²/s) · ASTM D445 · base dos ±20%", type: "number" },
       { key: "densidade_g_cm3", label: "Densidade do óleo novo — g/cm³", type: "number" },

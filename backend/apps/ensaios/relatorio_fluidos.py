@@ -23,6 +23,7 @@ from apps.cadastros.models import Equipamento, ModuloTecnico
 
 from . import calculos_fluidos as cf
 from . import grau_risco_fluidos as gr
+from .contexto import ReferenciasRegistradas, parametros_registrados
 from .carta import CONSIDERACOES_FLUIDO, CONTEUDO_FLUIDO, GLOSSARIO_FLUIDO
 from .models import (
     AplicacaoFluido,
@@ -181,10 +182,59 @@ def resumo_referencia(r, casas=2, unidade="", valor_oleo_novo=None):
 
 
 # --------------------------------- Fichas ------------------------------------
+def contexto_comparacao_fluido(campanha):
+    """Contexto conservador da amostra; não homologa equivalência metrológica."""
+    coleta = campanha.coleta_fluido
+    if coleta is None:
+        return {}
+    campos = ("produto_id", "fluido_informado", "aplicacao", "ponto_coleta_id", "condicao_operacional",
+              "data_ultima_troca", "complemento_recente", "troca_filtro_recente", "intervencao_recente")
+    return {**{campo: getattr(coleta, campo) for campo in campos},
+            "equipamento_id": campanha.resultado.item.equipamento_id,
+            "ensaio_id": campanha.resultado.ensaio_id, "instrumento_id": campanha.resultado.instrumento_id,
+            "laboratorio": campanha.resultado.laboratorio}
+
+
+def tendencia_contextual(campanhas, parametro, atual):
+    """Mantém as colunas históricas, mas calcula tendência só com entradas comparáveis."""
+    from apps.coletas.analise_preditiva import numero_finito
+    saida = {"versao": "comparacao_fluido_v1", "status": "INCONCLUSIVA", "tendencia": None,
+             "resultado_ids": [], "excluidos": [], "motivo": "contexto_historico_nao_registrado"}
+    contexto = (atual.resultado.contexto_tecnico or {}).get("comparacao_fluido") if atual else None
+    if not contexto:
+        return saida
+    if not (contexto.get("instrumento_id") and contexto.get("ponto_coleta_id")
+            and contexto.get("condicao_operacional") and (contexto.get("produto_id") or contexto.get("fluido_informado"))):
+        saida["motivo"] = "instrumento_ou_contexto_operacional_ausente"
+        return saida
+    atual_valor = atual.primeiro(parametro.codigo)
+    if atual_valor is None or atual_valor.estado != "MEDIDO" or numero_finito(atual_valor.valor) is None:
+        saida["motivo"] = "leitura_atual_ausente_ou_invalida"
+        return saida
+    metodo = atual_valor.metodo or parametro.norma
+    valores = []
+    for c in campanhas:
+        v = c.primeiro(parametro.codigo)
+        outro = (c.resultado.contexto_tecnico or {}).get("comparacao_fluido")
+        compativel = (outro == contexto and (c is atual or c.data < atual.data)
+                      and v is not None and v.estado == "MEDIDO" and numero_finito(v.valor) is not None
+                      and v.parametro.unidade == parametro.unidade and (v.metodo or v.parametro.norma) == metodo)
+        if compativel:
+            valores.append(v.valor)
+            saida["resultado_ids"].append(c.resultado.pk)
+        else:
+            saida["excluidos"].append(c.resultado.pk)
+    tendencia = cf.tendencia(valores)
+    saida.update(tendencia=tendencia, status="COMPARAVEL" if tendencia else "INCONCLUSIVA",
+                 motivo="estatistica_descritiva_sem_diagnostico" if tendencia else "sem_historico_comparavel")
+    return saida
+
+
 def _celula(v):
     if v is None:
-        return {"valor": None, "texto": "", "estado": "", "metodo": ""}
-    return {"valor": v.valor, "texto": v.valor_texto, "estado": v.estado, "metodo": v.metodo}
+        return {"valor": None, "texto": "", "estado": "", "metodo": "", "limite_deteccao": None}
+    return {"valor": v.valor, "texto": v.valor_texto, "estado": v.estado, "metodo": v.metodo,
+            "limite_deteccao": v.limite_deteccao}
 
 
 def _rotulo_oleo_novo(codigo, valor, produto) -> str:
@@ -199,6 +249,9 @@ def _rotulo_oleo_novo(codigo, valor, produto) -> str:
 
 
 def _oleo_novo_rotulos(campanha) -> dict:
+    contexto = campanha.resultado.contexto_tecnico if campanha else {}
+    if "oleo_novo_rotulos" in contexto:
+        return contexto["oleo_novo_rotulos"]
     coleta = campanha.coleta_fluido if campanha else None
     if coleta is None or not coleta.produto_id:
         return {}
@@ -211,6 +264,10 @@ def _oleo_novo(campanha) -> dict:
     ficha técnica (viscosidade, densidade, IV, TBN) e os do boletim do óleo novo
     (elementos da espectrometria etc.). O boletim prevalece quando os dois existem.
     """
+    contexto = campanha.resultado.contexto_tecnico if campanha else {}
+    if "oleo_novo" in contexto:
+        from decimal import Decimal
+        return {codigo: Decimal(valor) for codigo, valor in contexto["oleo_novo"].items()}
     coleta = campanha.coleta_fluido if campanha else None
     if coleta is None or not coleta.produto_id:
         return {}
@@ -284,6 +341,10 @@ def observacoes_geradas(linhas, corpo) -> list:
 
 def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento, resolvedor, solicitado) -> dict:
     """Ficha de um ensaio (FQ, EF ou CP) de uma amostra, com o histórico das coletas."""
+    params = parametros_registrados(resultado, params)
+    contexto = getattr(resultado, "contexto_tecnico", {}) or {}
+    if "referencias" in contexto:
+        resolvedor = ReferenciasRegistradas(contexto["referencias"])
     escopo = _contexto_referencia(atual, equipamento)
     oleo_novo = _oleo_novo(atual)
     rotulos_oleo_novo = _oleo_novo_rotulos(atual)
@@ -304,8 +365,10 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
                 valor_base=base_da_referencia(ref, oleo_novo.get(p.codigo)), limite_alerta=ref.limite_alerta,
                 limite_critico=ref.limite_critico,
                 referencia_texto=ref.referencia_texto,
+                limite_deteccao=cel["limite_deteccao"],
             )
         tem_valor = cel is not None and (cel["valor"] is not None or cel["texto"])
+        comparacao = tendencia_contextual(campanhas, p, atual)
         statuses.append(avaliacao["status"])
         linhas.append({
             "codigo": p.codigo, "nome": p.nome, "simbolo": p.simbolo, "grupo": p.grupo, "unidade": p.unidade,
@@ -316,7 +379,7 @@ def montar_ficha_fluido(ensaio, params, resultado, atual, campanhas, equipamento
             "oleo_novo": oleo_novo.get(p.codigo), "oleo_novo_texto": rotulos_oleo_novo.get(p.codigo, ""),
             "status": avaliacao["status"], "variacao_pct": avaliacao["variacao_pct"],
             "sem_referencia": bool(tem_valor and ref is None and p.codigo not in avaliado_pelo_codigo),
-            "tendencia": cf.tendencia([v["valor"] for v in valores]),
+            "tendencia": comparacao["tendencia"], "comparacao": comparacao,
         })
 
     corpo = {"tipo": "PARAMETROS"}
@@ -382,6 +445,10 @@ CAMPOS_AVALIACAO = ("observacoes_geradas", "tipo", "status", "status_rotulo", "a
 
 def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
     """Pior estado de um ensaio numa coleta (referências da época). None sem referência para avaliar."""
+    params = parametros_registrados(campanha.resultado, params)
+    contexto = campanha.resultado.contexto_tecnico or {}
+    if "referencias" in contexto:
+        resolvedor = ReferenciasRegistradas(contexto["referencias"])
     escopo = _contexto_referencia(campanha, equipamento)
     oleo_novo = _oleo_novo(campanha)
     statuses = []
@@ -395,6 +462,7 @@ def _status_campanha(ensaio, params, campanha, equipamento, resolvedor):
             valor_base=base_da_referencia(ref, oleo_novo.get(p.codigo)), limite_alerta=ref.limite_alerta,
             limite_critico=ref.limite_critico,
             referencia_texto=ref.referencia_texto,
+            limite_deteccao=v.limite_deteccao,
         )["status"])
     if ensaio.sigla == SIGLA_CP:
         p_iso = next((p for p in params if p.codigo == CODIGO_ISO4406), None)

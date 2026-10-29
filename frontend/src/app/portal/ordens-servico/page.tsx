@@ -92,7 +92,7 @@ export default function PortalOrdensServicoPage() {
   const podeResponder = pode("osp:responder");
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("abertas");
-  const { itens, carregando, falha, recarregar } = useLista<OrdemServico>(
+  const { itens, carregando, falha, recarregar, temMaisPaginas } = useLista<OrdemServico>(
     "/osps/?ordering=-criado_em&page_size=300",
     "ordens de serviço do portal"
   );
@@ -174,6 +174,13 @@ export default function PortalOrdensServicoPage() {
         description="As intervenções recomendadas a partir das medições do seu parque, com a urgência e o prazo de cada uma. Quando a corretiva for executada, informe aqui o que foi feito — é esse retorno que fecha o ciclo e alimenta o retorno do investimento no relatório."
         trilha={[{ label: "Ordens de serviço" }]}
       />
+
+      {temMaisPaginas && (
+        <Alert tone="info" title="Mostrando os 300 registros mais recentes">
+          Há mais registros do que esta tela carrega de uma vez; as contagens acima consideram só os
+          exibidos. Use os Relatórios para o histórico completo.
+        </Alert>
+      )}
 
       {vencidas.length > 0 && (
         <Alert

@@ -9,6 +9,8 @@ import {
   ChartColumn,
   ClipboardList,
   Clock,
+  Download,
+  Repeat,
   Gauge,
   OctagonAlert,
   ScrollText,
@@ -25,6 +27,8 @@ import {
   EmptyState,
   ErrorCard,
   EstadoBadge,
+  Field,
+  Input,
   LegendaEstados,
   LoadingState,
   MetricCard,
@@ -41,8 +45,9 @@ import {
   THead,
   TR,
   cn,
+  useToast,
 } from "@/components/ds";
-import { qs } from "@/lib/api";
+import { downloadFile, qs } from "@/lib/api";
 import { useRecurso } from "@/lib/recurso";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { inteiro, moeda, percentual, plural } from "@/lib/format";
@@ -62,10 +67,29 @@ import type { Dashboard, DashboardExecutivo } from "@/lib/types";
    ========================================================================== */
 
 type Aba = "operacional" | "executivo";
+type Periodo = { data_inicio: string; data_fim: string };
 
 export default function DashboardPage() {
   const [aba, setAba] = useState<Aba>("operacional");
   const { clienteAtivo } = useClienteAtivo();
+  // Período e cliente vão ao SERVIDOR; a exportação usa os mesmos parâmetros,
+  // então o arquivo traz exatamente os números da tela.
+  const [periodo, setPeriodo] = useState<Periodo>({ data_inicio: "", data_fim: "" });
+  const [baixando, setBaixando] = useState<string | null>(null);
+  const toast = useToast();
+  const parametros = { cliente: clienteAtivo?.id, ...periodo };
+
+  async function exportar(formato: "xlsx" | "pdf" | "csv") {
+    setBaixando(formato);
+    try {
+      const chave = aba === "operacional" ? "painel-operacional" : "painel-executivo";
+      await downloadFile(`/relatorios/${chave}/${qs({ ...parametros, formato })}`, `${chave}.${formato}`);
+    } catch (e) {
+      toast.erro("Não foi possível exportar", { descricao: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBaixando(null);
+    }
+  }
 
   return (
     <PageBody>
@@ -98,20 +122,50 @@ export default function DashboardPage() {
         }
       />
 
-      {aba === "operacional" ? <Operacional /> : <Executivo />}
+      <Card>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="De" htmlFor="painel-de">
+            <Input id="painel-de" type="date" value={periodo.data_inicio}
+              onChange={(e) => setPeriodo((p) => ({ ...p, data_inicio: e.target.value }))} />
+          </Field>
+          <Field label="Até" htmlFor="painel-ate">
+            <Input id="painel-ate" type="date" value={periodo.data_fim}
+              onChange={(e) => setPeriodo((p) => ({ ...p, data_fim: e.target.value }))} />
+          </Field>
+          {(periodo.data_inicio || periodo.data_fim) && (
+            <Button variant="ghost" size="sm" onClick={() => setPeriodo({ data_inicio: "", data_fim: "" })}>
+              Todo o histórico
+            </Button>
+          )}
+          <div className="ml-auto flex flex-wrap gap-2">
+            {(["xlsx", "pdf", "csv"] as const).map((f) => (
+              <Button key={f} variant="secondary" size="sm" icon={Download} loading={baixando === f}
+                onClick={() => void exportar(f)}>
+                {f === "xlsx" ? "Excel" : f.toUpperCase()}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-fg-muted">
+          O período vale para volumes (inspeções, medições, ordens, custos, MTTR/MTBF). Ordens em aberto e
+          SLA vencido são sempre a situação de hoje.
+        </p>
+      </Card>
+
+      {aba === "operacional" ? <Operacional periodo={periodo} /> : <Executivo periodo={periodo} />}
     </PageBody>
   );
 }
 
 /* ============================ Operacional ============================ */
 
-function Operacional() {
+function Operacional({ periodo }: { periodo: Periodo }) {
   // Com um cliente ativado na barra lateral, o painel entra no ambiente dele;
   // sem nenhum, mostra a operação inteira. O recorte é feito no servidor — ver
   // `recorte_cliente` em apps/coletas/views.py.
   const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<Dashboard>(
-    `/dashboard/${qs({ cliente: clienteAtivo?.id })}`,
+    `/dashboard/${qs({ cliente: clienteAtivo?.id, ...periodo })}`,
     "painel operacional"
   );
 
@@ -121,12 +175,19 @@ function Operacional() {
 
   const c = dados.medicoes_por_criticidade;
   const total = dados.total_medicoes;
+  const pendentes = dados.medicoes_pendentes ?? c.PENDENTE ?? 0;
   const foraDoLimite = (c.ALERTA ?? 0) + (c.CRITICO ?? 0);
-  const conformidade = total > 0 ? ((c.NORMAL ?? 0) / total) * 100 : 100;
+  const conformidade = total > 0 ? ((c.NORMAL ?? 0) / total) * 100 : null;
   const criticos = dados.equipamentos_criticos;
+  const sla = dados.sla_atendimento;
+  const disp = dados.disponibilidade;
+  const recorrentes = dados.falhas_recorrentes;
 
   return (
     <>
+      {pendentes > 0 && <Alert tone="warning" title="Classificações pendentes">
+        {inteiro(pendentes)} medições aguardam avaliação ou critério técnico aplicável. Valide o critério antes de concluir a condição dos equipamentos.
+      </Alert>}
       {criticos.length > 0 && (
         <Alert
           tone="danger"
@@ -139,8 +200,8 @@ function Operacional() {
             </Link>
           }
         >
-          Cada um deles já tem ordem de serviço aberta automaticamente. O risco cresce enquanto o
-          equipamento seguir operando nessa condição.
+          Medição crítica abre ordem de serviço automaticamente; confira na lista se a ordem de cada um
+          segue aberta. O risco cresce enquanto o equipamento seguir operando nessa condição.
         </Alert>
       )}
 
@@ -151,7 +212,7 @@ function Operacional() {
           tone={(c.CRITICO ?? 0) > 0 ? "danger" : "success"}
           icon={OctagonAlert}
           contexto={total > 0 ? `de ${inteiro(total)} medições registradas` : "nenhuma medição ainda"}
-          dica="Medição acima do limite da norma aplicável. Gera ordem de serviço automaticamente."
+          dica="Medição classificada como crítica pelo critério registrado ou pela avaliação técnica. Gera ordem de serviço automaticamente."
         />
         <MetricCard
           label="Equipamentos a intervir"
@@ -159,15 +220,15 @@ function Operacional() {
           tone={criticos.length > 0 ? "danger" : "success"}
           icon={Activity}
           contexto={
-            criticos.length > 0 ? "com pelo menos uma medição crítica" : "parque dentro dos limites"
+            criticos.length > 0 ? "com pelo menos uma medição crítica" : "sem ocorrência crítica identificada"
           }
         />
         <MetricCard
           label="Conformidade das medições"
-          value={percentual(conformidade)}
-          tone={conformidade >= 95 ? "success" : conformidade >= 80 ? "warning" : "danger"}
+          value={conformidade === null ? "—" : percentual(conformidade)}
+          tone={conformidade === null ? "neutral" : pendentes > 0 ? "warning" : conformidade >= 95 ? "success" : conformidade >= 80 ? "warning" : "danger"}
           icon={Gauge}
-          contexto={`${inteiro(foraDoLimite)} fora do limite aceitável`}
+          contexto={`${inteiro(foraDoLimite)} em alerta/críticas · ${inteiro(pendentes)} pendentes`}
           dica="Percentual de medições classificadas como Normal sobre o total registrado."
         />
         <MetricCard
@@ -175,9 +236,46 @@ function Operacional() {
           value={inteiro(dados.osps_abertas)}
           tone={dados.osps_abertas > 0 ? "warning" : "neutral"}
           icon={Wrench}
-          contexto={`de ${inteiro(dados.osps_total)} no histórico`}
+          contexto={`${inteiro(dados.osps_sla_vencido)} com SLA vencido · ${inteiro(dados.osps_total)} no período`}
           href="/osps"
           hrefLabel="Acompanhar"
+        />
+      </MetricGrid>
+
+      <MetricGrid colunas={4}>
+        <MetricCard
+          label="SLA de atendimento"
+          value={percentual(sla.percentual, 0)}
+          tone={sla.percentual === null ? "neutral" : sla.percentual >= 90 ? "success" : sla.percentual >= 70 ? "warning" : "danger"}
+          icon={Clock}
+          contexto={
+            sla.finalizadas_com_prazo > 0
+              ? `${inteiro(sla.no_prazo)} de ${inteiro(sla.finalizadas_com_prazo)} finalizadas no prazo`
+              : "nenhuma ordem finalizada no período"
+          }
+          dica="Ordens não canceladas, abertas no período e finalizadas até a data do SLA, sobre as finalizadas que tinham prazo."
+        />
+        <MetricCard
+          label="Disponibilidade (indicativa)"
+          value={percentual(disp.percentual)}
+          tone={disp.percentual === null ? "neutral" : disp.percentual >= 95 ? "success" : disp.percentual >= 80 ? "warning" : "danger"}
+          icon={Gauge}
+          contexto={`${inteiro(disp.equipamentos_com_critica)} de ${inteiro(disp.equipamentos_ativos)} equipamentos ativos com medição crítica`}
+          dica="Indicador provisório: equipamentos ativos sem medição crítica no período, sobre o total de ativos. Não mede horas de parada — a definição de disponibilidade ainda depende do cliente."
+        />
+        <MetricCard
+          label="Falhas recorrentes"
+          value={inteiro(recorrentes.total_equipamentos)}
+          tone={recorrentes.total_equipamentos > 0 ? "warning" : "neutral"}
+          icon={Repeat}
+          contexto={`equipamentos com 2+ ordens · ${inteiro(recorrentes.osps_reincidentes)} reincidentes`}
+          dica="Indicador provisório: equipamentos com duas ou mais ordens não canceladas no período. Reincidente = marcado assim na reavaliação."
+        />
+        <MetricCard
+          label="Inspeções no período"
+          value={inteiro(dados.total_inspecoes)}
+          icon={ClipboardList}
+          contexto={`${inteiro(dados.inspecoes_abertas)} em aberto hoje`}
         />
       </MetricGrid>
 
@@ -201,13 +299,13 @@ function Operacional() {
                 compacto
                 icon={Gauge}
                 title="Nenhum equipamento em condição crítica"
-                description="Todas as medições registradas estão dentro dos limites das normas aplicáveis."
+                description={pendentes > 0 ? "Há medições aguardando avaliação técnica; a condição do parque ainda não está concluída." : "Consulte as medições e seus critérios para avaliar a condição de cada equipamento."}
               />
             ) : (
               <ul className="divide-y divide-border">
                 {criticos.map((e) => (
                   <li
-                    key={e.equipamento__tag}
+                    key={e.equipamento_id}
                     className="flex items-center justify-between gap-3 py-2.5"
                   >
                     <div className="min-w-0">
@@ -231,8 +329,8 @@ function Operacional() {
             <Card>
               <CardHeader
                 title="Distribuição das medições"
-                description={`${inteiro(total)} medições classificadas pelas regras de cada tecnologia.`}
-                dica="A classificação é automática: cada tecnologia tem a sua norma e o seu limite."
+                description={`${inteiro(total)} medições registradas, incluindo ${inteiro(pendentes)} pendentes.`}
+                dica="Classificações seguem o critério registrado ou a avaliação técnica. Sem critério aplicável, a leitura fica pendente."
               />
               {total === 0 ? (
                 <EmptyState
@@ -249,6 +347,7 @@ function Operacional() {
                       { label: "Normal", valor: c.NORMAL ?? 0, tom: "success" },
                       { label: "Alerta", valor: c.ALERTA ?? 0, tom: "warning" },
                       { label: "Crítico", valor: c.CRITICO ?? 0, tom: "danger" },
+                      { label: "Pendente", valor: pendentes, tom: "neutral" },
                     ]}
                   />
                   <div className="mt-4 border-t border-border pt-3">
@@ -262,9 +361,9 @@ function Operacional() {
               <CardHeader title="Volume de trabalho" icon={ClipboardList} />
               <dl className="space-y-3 text-sm">
                 {[
-                  ["Inspeções registradas", inteiro(dados.total_inspecoes)],
-                  ["Inspeções em aberto", inteiro(dados.inspecoes_abertas)],
-                  ["Medições lançadas", inteiro(dados.total_medicoes)],
+                  ["Inspeções no período", inteiro(dados.total_inspecoes)],
+                  ["Inspeções em aberto (hoje)", inteiro(dados.inspecoes_abertas)],
+                  ["Medições no período", inteiro(dados.total_medicoes)],
                 ].map(([rotulo, valor]) => (
                   <div key={rotulo} className="flex items-baseline justify-between gap-3">
                     <dt className="text-fg-muted">{rotulo}</dt>
@@ -282,10 +381,10 @@ function Operacional() {
 
 /* ============================ Executivo ============================ */
 
-function Executivo() {
+function Executivo({ periodo }: { periodo: Periodo }) {
   const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<DashboardExecutivo>(
-    `/dashboard/executivo/${qs({ cliente: clienteAtivo?.id })}`,
+    `/dashboard/executivo/${qs({ cliente: clienteAtivo?.id, ...periodo })}`,
     "painel executivo"
   );
 
@@ -294,7 +393,8 @@ function Executivo() {
   if (!dados) return null;
 
   const k = dados.kpis;
-  const economia = Math.max(0, dados.custos.estimado - dados.custos.real);
+  const custos = dados.custos;
+  const semCusto = custos.real === null && custos.estimado === null;
   const maxEvolucao = Math.max(1, ...dados.evolucao.map((m) => Math.max(m.criticas, m.osps)));
 
   return (
@@ -303,7 +403,7 @@ function Executivo() {
         <MetricCard
           label="Ordens concluídas"
           value={percentual(k.taxa_conclusao, 0)}
-          tone={k.taxa_conclusao >= 80 ? "success" : k.taxa_conclusao >= 50 ? "warning" : "danger"}
+          tone={k.taxa_conclusao === null ? "neutral" : k.taxa_conclusao >= 80 ? "success" : k.taxa_conclusao >= 50 ? "warning" : "danger"}
           icon={TrendingUp}
           contexto={`${inteiro(k.osps_finalizadas)} de ${inteiro(k.osps_total)} ordens`}
         />
@@ -320,19 +420,20 @@ function Executivo() {
           value={k.mtbf_dias != null ? inteiro(k.mtbf_dias) : "—"}
           unidade={k.mtbf_dias != null ? "dias" : undefined}
           icon={Clock}
-          contexto="intervalo médio entre ocorrências críticas"
-          dica="MTBF — Mean Time Between Failures. Quanto maior, mais confiável o parque."
+          contexto="intervalo médio entre ordens do mesmo equipamento"
+          dica="MTBF (indicativo): média dos dias entre ordens consecutivas, não canceladas, do mesmo equipamento no período. Equipamento com uma só ordem não entra na conta."
         />
         <MetricCard
-          label="Economia da preditiva"
-          value={moeda(economia, true)}
-          tone={economia > 0 ? "success" : "neutral"}
+          label="Retorno da preditiva"
+          value={moeda(custos.retorno_investimento, true)}
+          tone={custos.retorno_investimento === null ? "neutral" : custos.retorno_investimento > 0 ? "success" : "warning"}
           icon={ScrollText}
-          contexto={`custo real ${moeda(dados.custos.real, true)} contra ${moeda(
-            dados.custos.estimado,
-            true
-          )} estimados`}
-          dica="Diferença entre o custo estimado das intervenções e o custo real executado."
+          contexto={
+            custos.osps_com_avaliacao > 0
+              ? `em ${plural(custos.osps_com_avaliacao, "ordem", "ordens")} com Avaliação de Resultados`
+              : "nenhuma Avaliação de Resultados lançada"
+          }
+          dica="Soma de (custo emergencial − custo da manutenção orientada pela preditiva), conforme a Avaliação de Resultados de cada ordem."
         />
       </MetricGrid>
 
@@ -382,22 +483,25 @@ function Executivo() {
           <Card>
             <CardHeader
               title="Custo estimado × realizado"
-              description="A diferença é o que a preditiva evitou em intervenção emergencial."
+              description="Somente o que foi informado nas ordens; ordem sem valor fica fora da soma (não vale zero)."
             />
-            <BarMeter
-              formatarValor={(v) => moeda(v, true)}
-              total={Math.max(dados.custos.estimado, dados.custos.real, 1)}
-              itens={[
-                { label: "Estimado", valor: dados.custos.estimado, tom: "neutral" },
-                { label: "Realizado", valor: dados.custos.real, tom: "primary" },
-              ]}
-            />
-            <div className="mt-4 rounded-lg bg-success-subtle px-3 py-2.5">
-              <p className="text-xs text-success-fg">
-                Economia acumulada:{" "}
-                <span className="data font-semibold">{moeda(economia)}</span>
-              </p>
-            </div>
+            {semCusto ? (
+              <EmptyState compacto icon={ScrollText} title="Nenhum custo informado no período"
+                description="Os valores aparecem quando as ordens recebem custo estimado ou real." />
+            ) : (
+              <BarMeter
+                formatarValor={(v) => moeda(v, true)}
+                total={Math.max(custos.estimado ?? 0, custos.real ?? 0, 1)}
+                itens={[
+                  { label: "Estimado", valor: custos.estimado ?? 0, tom: "neutral" },
+                  { label: "Realizado", valor: custos.real ?? 0, tom: "primary" },
+                ]}
+              />
+            )}
+            <p className="mt-4 text-xs text-fg-muted">
+              {inteiro(custos.osps_com_custo_real)} ordens com custo real · {inteiro(custos.osps_sem_custo_real)} sem
+              valor informado.
+            </p>
           </Card>
         }
       />
@@ -427,7 +531,7 @@ function Executivo() {
             </THead>
             <TBody>
               {dados.performance.map((p) => {
-                const taxa = p.osps > 0 ? (p.finalizadas / p.osps) * 100 : 0;
+                const taxa = p.osps > 0 ? (p.finalizadas / p.osps) * 100 : null;
                 return (
                   <TR key={p.cliente}>
                     <TD className="font-medium text-fg">{p.cliente}</TD>
@@ -441,7 +545,7 @@ function Executivo() {
                       <span
                         className={cn(
                           "font-medium",
-                          taxa >= 80 ? "text-success-fg" : taxa >= 50 ? "text-warning-fg" : "text-danger-fg"
+                          taxa === null ? "text-fg-muted" : taxa >= 80 ? "text-success-fg" : taxa >= 50 ? "text-warning-fg" : "text-danger-fg"
                         )}
                       >
                         {percentual(taxa, 0)}

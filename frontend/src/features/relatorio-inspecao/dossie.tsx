@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Printer, Save } from "lucide-react";
+import { ArrowLeft, FileText, Printer, Save } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
 import { mensagemErroDossie, moduloDoRelatorio, temModulo } from "./modulos";
 import { RelatorioCorpo } from "./shell/documento";
 import type { DossieShell } from "./tipos";
+import type { Laudo } from "@/lib/types";
+import { usePermissoes } from "@/lib/permissions";
 
 /* ============================================================================
    Tela do relatório técnico (equipe interna): impressão + finalização.
@@ -18,12 +21,15 @@ import type { DossieShell } from "./tipos";
    ========================================================================== */
 
 export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
+  const router = useRouter();
+  const { interno } = usePermissoes();
   const [d, setD] = useState<DossieShell | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [dataFim, setDataFim] = useState("");
   const [consideracoes, setConsideracoes] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [gerandoLaudo, setGerandoLaudo] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -52,6 +58,15 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
     } finally {
       setSalvando(false);
     }
+  }
+
+  async function gerarLaudo() {
+    setGerandoLaudo(true); setErro(null);
+    try {
+      const laudo = await api<Laudo>("/laudos/gerar/", { method: "POST", body: { relatorio_origem: relatorioId } });
+      router.push(`/laudos/${laudo.id}`);
+    } catch (e) { setErro(e instanceof Error ? e.message : "Não foi possível gerar o rascunho do laudo."); }
+    finally { setGerandoLaudo(false); }
   }
 
   if (loading) return <Card><Spinner label="Montando relatório…" /></Card>;
@@ -101,7 +116,8 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       `}</style>
 
       <div className="no-print flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {interno && <Button icon={FileText} loading={gerandoLaudo} onClick={gerarLaudo}>Gerar laudo para emissão</Button>}
           <Link href="/relatorios-inspecao" className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted transition-colors hover:text-fg">
             <ArrowLeft className="h-3.5 w-3.5" /> Voltar para Relatórios
           </Link>
@@ -116,6 +132,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
           </Link>
         </div>
       </div>
+      {erro && <p role="alert" className="no-print text-sm text-danger-fg">{erro}</p>}
 
       {Painel && (
         <Card className="no-print">

@@ -133,9 +133,9 @@ class CalculosDoRelatorioDeReferenciaTest(SimpleTestCase):
         self.assertFalse(avaliar("FAIXA", D("0.74"), D("-0.5"), D("0.5")))
         self.assertTrue(avaliar("QUALITATIVO", texto="límpido", ref="Límpido"))
         self.assertFalse(avaliar("QUALITATIVO", texto="Turvo", ref="Límpido"))
-        # Abaixo do LD: dentro de um máximo, fora de um mínimo; indisponível e informativo não se avaliam.
-        self.assertTrue(avaliar("MAXIMO", None, D("50"), estado="ABAIXO_LD"))
-        self.assertFalse(avaliar("MINIMO", None, D("800"), estado="ABAIXO_LQ"))
+        # Sem LD/LQ numérico não há evidência para concluir conformidade.
+        self.assertIsNone(avaliar("MAXIMO", None, D("50"), estado="ABAIXO_LD"))
+        self.assertIsNone(avaliar("MINIMO", None, D("800"), estado="ABAIXO_LQ"))
         self.assertIsNone(avaliar("MAXIMO", D("99"), D("50"), estado="INDISPONIVEL"))
         self.assertIsNone(avaliar("INFORMATIVO", D("1")))
         self.assertIsNone(avaliar("MAXIMO", None, D("50")))

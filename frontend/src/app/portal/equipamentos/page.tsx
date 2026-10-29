@@ -62,7 +62,8 @@ export default function PortalEquipamentosPage() {
         const estado: EstadoEquipamento | undefined = estados[e.tag];
         const grau: GrauMonitoramento =
           !estado || estado.medicoes === 0 ? "SEM_DADOS" : grauDe(estado.criticidade);
-        return { equipamento: e, estado, grau };
+        const pendente = !!estado && estado.medicoes > 0 && !estado.criticidade;
+        return { equipamento: e, estado, grau, pendente };
       }),
     [lista.itens, estados]
   );
@@ -70,9 +71,9 @@ export default function PortalEquipamentosPage() {
   const filtrados = useMemo(() => {
     const base =
       filtro === "atencao"
-        ? comEstado.filter((l) => l.grau === "CRITICO" || l.grau === "ALERTA")
+        ? comEstado.filter((l) => l.grau === "CRITICO" || l.grau === "ALERTA" || l.pendente)
         : filtro === "sem-medicao"
-        ? comEstado.filter((l) => l.grau === "SEM_DADOS")
+        ? comEstado.filter((l) => !l.estado || l.estado.medicoes === 0)
         : comEstado;
     // Gravidade primeiro; dentro do mesmo grau, ordem natural da TAG.
     return [...base].sort(
@@ -88,7 +89,7 @@ export default function PortalEquipamentosPage() {
       total: comEstado.length,
       intervencao: conta(["CRITICO"]),
       atencao: conta(["ALERTA"]),
-      semMedicao: conta(["SEM_DADOS"]),
+      semMedicao: comEstado.filter((l) => !l.estado || l.estado.medicoes === 0).length,
     };
   }, [comEstado]);
 
@@ -118,7 +119,9 @@ export default function PortalEquipamentosPage() {
       header: "Estado",
       mobile: "meta",
       valor: (l) => pesoGravidade(l.grau),
-      celula: (l) => <EstadoBadge grau={l.grau} mostrarSignificado />,
+      celula: (l) => l.pendente
+        ? <Badge tone="warning">Pendente de avaliação</Badge>
+        : <EstadoBadge grau={l.grau} mostrarSignificado />,
     },
     {
       chave: "nome",

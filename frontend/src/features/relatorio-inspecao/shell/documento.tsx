@@ -56,6 +56,13 @@ export function RelatorioCorpo({ d }: { d: DossieShell }) {
 
       {/* ========================= CONCLUSÕES ========================= */}
       {Conclusoes && <Conclusoes d={d} />}
+      {d.evidencias_laudo?.map((e) => <PaginaInterna key={`evidencia-${e.id}`} cab={cab} evitarQuebra>
+        <figure>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={e.data_uri || e.url} alt={e.legenda || e.nome} style={{ maxWidth: "100%", maxHeight: "220mm", objectFit: "contain", margin: "0 auto" }} />
+          <figcaption style={{ marginTop: "3mm", fontSize: "9pt" }}>{e.legenda || e.nome}</figcaption>
+        </figure>
+      </PaginaInterna>)}
     </div>
   );
 }

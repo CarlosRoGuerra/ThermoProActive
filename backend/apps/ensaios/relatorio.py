@@ -20,6 +20,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from apps.cadastros.models import Equipamento, ModuloTecnico
 
 from . import calculos
+from .contexto import parametros_registrados, restaurar
 from .carta import (
     CONSIDERACOES_ELETRICO,
     CONSIDERACOES_OLEO,
@@ -94,10 +95,11 @@ def _parametro(p):
     }
 
 
-def _avaliar(p, valor, texto="", estado="MEDIDO"):
+def _avaliar(p, valor, texto="", estado="MEDIDO", limite_deteccao=None):
     return calculos.avaliar(
         valor=valor, texto=texto, estado=estado, tipo_limite=p.tipo_limite, limite=p.limite,
         limite_superior=p.limite_superior, referencia_texto=p.referencia_texto,
+        limite_deteccao=limite_deteccao,
     )
 
 
@@ -120,6 +122,10 @@ class _Campanha:
         item = resultado.item
         self.coleta = _um(item, "coleta_oleo")
         self.registro = _um(item, "registro_eletrico")
+        contexto = resultado.contexto_tecnico or {}
+        if "registro_eletrico" in contexto:
+            self.registro = (restaurar(RegistroEnsaioEletrico, contexto["registro_eletrico"])
+                             if contexto["registro_eletrico"] else None)
         self.coleta_fluido = _um(item, "coleta_fluido")
         if self.coleta:
             base = self.coleta.data_coleta
@@ -130,9 +136,18 @@ class _Campanha:
         else:
             base = None
         self.data = base or item.carregamento.data_coleta
+        if contexto.get("data_campanha"):
+            from datetime import date
+            self.data = date.fromisoformat(contexto["data_campanha"])
 
     def valores(self, codigo=None):
-        return [v for v in self.resultado.valores.all() if codigo is None or v.parametro.codigo == codigo]
+        if not hasattr(self, "_valores"):
+            self._valores = list(self.resultado.valores.all())
+            registrados = {p.pk: p for p in parametros_registrados(self.resultado, [])}
+            for v in self._valores:
+                if v.parametro_id in registrados:
+                    v.parametro = registrados[v.parametro_id]
+        return [v for v in self._valores if codigo is None or v.parametro.codigo == codigo]
 
     def primeiro(self, codigo):
         encontrados = self.valores(codigo)
@@ -145,7 +160,7 @@ def _celula(p, v):
         return {"valor": None, "texto": "", "estado": "", "conforme": None, "calculado": False}
     return {
         "valor": v.valor, "texto": v.valor_texto, "estado": v.estado,
-        "conforme": _avaliar(p, v.valor, v.valor_texto, v.estado), "calculado": False,
+        "conforme": _avaliar(p, v.valor, v.valor_texto, v.estado, v.limite_deteccao), "calculado": False,
     }
 
 
@@ -154,11 +169,12 @@ def _ficha_tabela(ensaio, params, campanhas, atual):
     tabela = [p for p in params if not p.calculado]
     linhas = []
     for c in campanhas:
-        valores = {p.codigo: _celula(p, c.primeiro(p.codigo)) for p in tabela}
+        registrados = {p.codigo: p for p in parametros_registrados(c.resultado, tabela)}
+        valores = {p.codigo: _celula(registrados.get(p.codigo, p), c.primeiro(p.codigo)) for p in tabela}
         # 2-FAL: sem GP do laboratório, estima pelo 2-Furfural (De Pablo, nota 3 da ficha).
         gp, fal = valores.get("GP"), valores.get("2FAL")
         if gp is not None and gp["valor"] is None and fal and fal["valor"] is not None:
-            p_gp = next(p for p in tabela if p.codigo == "GP")
+            p_gp = registrados.get("GP") or next(p for p in tabela if p.codigo == "GP")
             estimado = calculos.grau_polimerizacao_de_pablo(fal["valor"])
             valores["GP"] = {"valor": estimado, "texto": "", "estado": "MEDIDO",
                              "conforme": _avaliar(p_gp, estimado), "calculado": True}
@@ -189,17 +205,25 @@ def _ficha_rxt(params, campanhas, atual, trafo):
     p = {x.codigo: x for x in params}
     linhas, conformes = [], []
     for c in campanhas:
+        registrados = {x.codigo: x for x in parametros_registrados(c.resultado, params)}
+        contexto = c.resultado.contexto_tecnico or {}
+        trafo_campanha = trafo
+        if "dados_transformador" in contexto:
+            from apps.cadastros.models import DadosTecnicosTransformador
+            trafo_campanha = (restaurar(DadosTecnicosTransformador, contexto["dados_transformador"])
+                              if contexto["dados_transformador"] else None)
         entrado = c.primeiro("NOMINAL")
         nominal = entrado.valor if entrado and entrado.valor is not None else None
         calculada = nominal is None
-        if calculada and c.registro and trafo:
+        if calculada and c.registro and trafo_campanha:
             nominal = calculos.relacao_nominal(
-                c.registro.tensao_tap_v, trafo.tensao_secundaria_v, trafo.tensao_secundaria_fase_v, trafo.grupo_ligacao,
+                c.registro.tensao_tap_v, trafo_campanha.tensao_secundaria_v,
+                trafo_campanha.tensao_secundaria_fase_v, trafo_campanha.grupo_ligacao,
             )
         fases = []
         for v in sorted(c.valores("MEDIDA"), key=lambda v: v.serie):
             erro = calculos.erro_relacao_pct(v.valor, nominal)
-            conforme = _avaliar(p["ERRO"], erro)
+            conforme = _avaliar(registrados["ERRO"], erro)
             fases.append({"serie": v.serie, "medido": v.valor, "erro": erro, "conforme": conforme})
             if c is atual:
                 conformes.append(conforme)
@@ -237,11 +261,14 @@ def _ficha_rxi(params, atual):
 
 
 def _ficha_rxo(params, campanhas, atual, trafo):
-    grupo = (trafo.grupo_ligacao if trafo else "") or ""
-    at_triangulo, bt_triangulo = grupo[:1] in ("D", "d"), grupo[1:2] in ("D", "d")
     unidades = {p.codigo: p.unidade for p in params}
     linhas = []
     for c in campanhas:
+        contexto = c.resultado.contexto_tecnico or {}
+        placa = contexto.get("dados_transformador")
+        grupo = ((placa.get("grupo_ligacao") if placa else "") if "dados_transformador" in contexto
+                 else (trafo.grupo_ligacao if trafo else "")) or ""
+        at_triangulo, bt_triangulo = grupo[:1] in ("D", "d"), grupo[1:2] in ("D", "d")
         temperatura = c.registro.temperatura_oleo_c if c.registro else None
         medidos = {v.parametro.codigo: v.valor for v in c.valores() if v.valor is not None}
         calculados, corrigidos = {}, {}
@@ -270,6 +297,12 @@ def _ficha_rxo(params, campanhas, atual, trafo):
 
 def montar_ficha(ensaio, params, resultado, atual, campanhas, trafo, solicitado) -> dict:
     """Ficha de um ensaio: textos do laudo, avaliação e o corpo do tipo (tabela, R×T, R×I, R×O)."""
+    params = parametros_registrados(resultado, params)
+    contexto = getattr(resultado, "contexto_tecnico", {}) or {}
+    if "dados_transformador" in contexto:
+        from apps.cadastros.models import DadosTecnicosTransformador
+        trafo = (restaurar(DadosTecnicosTransformador, contexto["dados_transformador"])
+                 if contexto["dados_transformador"] else None)
     tipo = TIPO_FICHA.get(ensaio.sigla)
     if tipo == "RXT":
         corpo = _ficha_rxt(params, campanhas, atual, trafo)

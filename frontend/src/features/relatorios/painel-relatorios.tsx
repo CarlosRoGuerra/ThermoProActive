@@ -63,6 +63,7 @@ const ICONE_CATEGORIA: Record<string, LucideIcon> = {
   Financeiro: CircleDollarSign,
   Produtividade: Users,
   Histórico: History,
+  Painel: ChartColumn,
 };
 
 export function PainelRelatorios({ ehCliente }: { ehCliente: boolean }) {
@@ -91,14 +92,15 @@ export function PainelRelatorios({ ehCliente }: { ehCliente: boolean }) {
     [filtros]
   );
 
+  // A prévia é paginada no servidor (100 por página); o arquivo leva tudo.
   const gerarPrevia = useCallback(
-    async (def: ReportDef) => {
+    async (def: ReportDef, pagina = 1) => {
       setCarregandoPrevia(true);
       setFalhaPrevia(null);
       try {
         const extra = query();
         const dados = await api<ReportData>(
-          `/relatorios/${def.key}/?formato=json${extra ? `&${extra}` : ""}`
+          `/relatorios/${def.key}/?formato=json&page=${pagina}${extra ? `&${extra}` : ""}`
         );
         setPrevia(dados);
       } catch (e) {
@@ -316,8 +318,22 @@ export function PainelRelatorios({ ehCliente }: { ehCliente: boolean }) {
                     {previa.titulo}{" "}
                     <span className="font-normal text-fg-subtle">
                       · {inteiro(previa.total_linhas)} linha{previa.total_linhas === 1 ? "" : "s"}
+                      {previa.paginas > 1 && ` · página ${previa.pagina} de ${previa.paginas}`}
                     </span>
                   </p>
+                  {previa.paginas > 1 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="secondary" disabled={previa.pagina <= 1 || carregandoPrevia}
+                        onClick={() => selecionado && void gerarPrevia(selecionado, previa.pagina - 1)}>
+                        Anterior
+                      </Button>
+                      <Button size="sm" variant="secondary" disabled={previa.pagina >= previa.paginas || carregandoPrevia}
+                        onClick={() => selecionado && void gerarPrevia(selecionado, previa.pagina + 1)}>
+                        Próxima
+                      </Button>
+                      <span className="text-xs text-fg-muted">A exportação inclui todas as linhas, não só esta página.</span>
+                    </div>
+                  )}
                   <Table>
                     <THead>
                       {previa.colunas.map((c) => (

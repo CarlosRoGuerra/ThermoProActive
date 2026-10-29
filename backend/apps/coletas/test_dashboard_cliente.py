@@ -71,9 +71,11 @@ class RecorteDoPainel(TestCase):
         self.assertEqual(r.data["kpis"]["osps_total"], 3)
 
     def test_parametro_invalido_nao_derruba_o_painel(self):
-        for valor in ("", "abc", "-1", "99999"):
+        # Vazio ou cliente inexistente: painel vazio/normal. Malformado: 400 com
+        # o motivo — filtro ignorado em silêncio mostraria número de outro recorte.
+        for valor, esperado in (("", 200), ("99999", 200), ("abc", 400), ("-1", 400)):
             with self.subTest(cliente=valor):
-                self.assertEqual(self.api.get(f"/api/dashboard/?cliente={valor}").status_code, 200)
+                self.assertEqual(self.api.get(f"/api/dashboard/?cliente={valor}").status_code, esperado)
 
 
 class PortalNaoAmpliaComOParametro(TestCase):

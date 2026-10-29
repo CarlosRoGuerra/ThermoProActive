@@ -115,3 +115,16 @@ class ResultadoEnsaioAdmin(admin.ModelAdmin):
     list_display = ["item", "ensaio", "situacao", "numero_laudo", "criticidade", "data_analise"]
     list_filter = ["ensaio", "situacao", "criticidade"]
     inlines = [ValorInline]
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            from .contexto import registrar_revisao
+            registrar_revisao(ResultadoEnsaio.objects.get(pk=obj.pk), request.user)
+        super().save_model(request, obj, form, change)
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        valores_alterados = any(f.has_changed() for fs in formsets for f in fs.forms)
+        if not change or valores_alterados or "situacao" in form.changed_data:
+            from .contexto import registrar_contexto
+            registrar_contexto(form.instance, autor=request.user, origem="ADMIN")

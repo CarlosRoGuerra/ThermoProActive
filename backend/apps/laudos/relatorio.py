@@ -25,35 +25,12 @@ GLOSSARIO = [
     ("GR-4", "Risco baixo — intervenção em parada programada, prazo máximo de 30 dias."),
     ("MP", "Monitoramento Prejudicado: existe obstrução parcial aos equipamentos a serem monitorados."),
     ("NM", "Não Monitorado: existe obstrução total aos equipamentos e/ou risco à integridade física dos trabalhadores."),
-    ("OK", "Normalidade Operacional: carga ≥ 70,0%. Os circuitos carregados não apresentam anomalias térmicas."),
+    ("OK", "Normalidade operacional somente quando sustentada pela avaliação técnica e pelo critério registrado; ausência de OSP não comprova normalidade."),
     ("PDM", "Parado Devido Manutenção: equipamento parado por intervenção da equipe de manutenção."),
     ("PDP", "Parado Devido Processo: equipamento parado por anormalidade do processo produtivo."),
     ("LA", "Lado Acoplado."),
     ("LOA", "Lado Oposto ao Acoplamento."),
 ]
-
-#: Tabela ISO 10816-1 — limites de severidade por classe de máquina.
-#: Espelha exatamente FAIXAS_ISO_VRMS do motor de regras (apps/coletas/rules.py).
-TABELA_ISO_10816 = {
-    "titulo": "ISO 10816-1 — Limites de faixa de velocidade e classes de máquina",
-    "colunas": [
-        "Classe I (< 15 kW)",
-        "Classe II (15 a 75 kW)",
-        "Classe III (> 75 kW, base rígida)",
-        "Classe IV (> 75 kW, base flexível)",
-    ],
-    "faixas": [
-        {"zona": "A", "rotulo": "Bom", "cor": "#22c55e",
-         "limites": ["≤ 0,71", "≤ 1,12", "≤ 1,80", "≤ 2,80"]},
-        {"zona": "B", "rotulo": "Satisfatório", "cor": "#3b82f6",
-         "limites": ["≤ 1,80", "≤ 2,80", "≤ 4,50", "≤ 7,10"]},
-        {"zona": "C", "rotulo": "Alerta", "cor": "#eab308",
-         "limites": ["≤ 4,50", "≤ 7,10", "≤ 11,20", "≤ 18,00"]},
-        {"zona": "D", "rotulo": "Perigo", "cor": "#ef4444",
-         "limites": ["> 4,50", "> 7,10", "> 11,20", "> 18,00"]},
-    ],
-    "unidade": "Velocidade RMS (mm/s)",
-}
 
 #: Texto fixo da seção "Definição da Técnica" (§7), por tecnologia.
 DEFINICAO_TECNICA = {
@@ -131,15 +108,25 @@ def _equipamentos_da_inspecao(inspecao):
     return ordem
 
 
-def montar_relatorio_tecnico(laudo, request=None) -> dict:
+def montar_relatorio_tecnico(laudo, request=None, usar_snapshot=True) -> dict:
     """Monta o payload completo do relatório técnico a partir do laudo."""
+    if usar_snapshot and laudo.snapshot_emissao:
+        from copy import deepcopy
+        from rest_framework.exceptions import ValidationError
+        from .snapshots import hash_snapshot
+        if hash_snapshot(laudo.snapshot_emissao) != laudo.snapshot_hash:
+            raise ValidationError("A integridade do snapshot não confere. Acione o responsável pelo acervo.")
+        return deepcopy(laudo.snapshot_emissao["relatorio"])
+    if laudo.relatorio_origem_id:
+        from apps.coletas.relatorio_tecnico import montar_dossie
+        return montar_dossie(laudo.relatorio_origem, request)
     inspecao = laudo.inspecao
     cliente = inspecao.cliente
     empresa = Empresa.objects.ativos().first()
     tipo = inspecao.tipo_analise
 
     osps = list(
-        OrdemServico.objects.filter(inspecao=inspecao)
+        OrdemServico.objects.validas().filter(inspecao=inspecao)
         .select_related("equipamento__setor__area", "responsavel")
         .order_by("grau_risco", "numero")
     )
@@ -156,8 +143,7 @@ def montar_relatorio_tecnico(laudo, request=None) -> dict:
             {
                 "tag": eq.tag,
                 "equipamento": eq.nome,
-                # Sem OSP aberta, o equipamento está em normalidade operacional.
-                "condicao": condicao_por_equipamento.get(eq.id, "OK").replace("GR", "GR-"),
+                "condicao": condicao_por_equipamento.get(eq.id, "AVALIAÇÃO PENDENTE").replace("GR", "GR-"),
             }
         )
     secao_c = [
@@ -177,10 +163,19 @@ def montar_relatorio_tecnico(laudo, request=None) -> dict:
         instrumento_ids.update(
             getattr(inspecao, rel).exclude(instrumento=None).values_list("instrumento_id", flat=True)
         )
-    instrumentos = Instrumento.objects.filter(id__in=instrumento_ids) or Instrumento.objects.ativos()[:1]
+    instrumentos = Instrumento.objects.filter(id__in=instrumento_ids)
 
     # --- Normas da tecnologia analisada -------------------------------------
-    normas = Norma.objects.ativos().prefetch_related("tecnologias")
+    codigos_normas = set()
+    criterios_registrados = []
+    for rel in ("medicoes_vibracao", "medicoes_termografia", "medicoes_tecnicas"):
+        for medicao in getattr(inspecao, rel).all():
+            criterio = medicao.criterio_aplicado or {}
+            cadastro = criterio.get("cadastro") or {}
+            if cadastro.get("norma"):
+                codigos_normas.add(cadastro["norma"])
+                criterios_registrados.append(cadastro)
+    normas = Norma.objects.ativos().filter(codigo__in=codigos_normas)
 
     return {
         "laudo": {
@@ -241,7 +236,8 @@ def montar_relatorio_tecnico(laudo, request=None) -> dict:
             {"codigo": n.codigo, "titulo": n.nome, "orgao": n.orgao}
             for n in normas
         ],
-        "tabela_iso": TABELA_ISO_10816 if tipo == "VIBRACAO" else None,
+        "tabela_iso": None,
+        "criterios_registrados": criterios_registrados,
         "definicao_tecnica": DEFINICAO_TECNICA.get(tipo, ""),
         "fluxo_trabalho": FLUXO_TRABALHO,
         "glossario": [{"sigla": s, "descricao": d} for s, d in GLOSSARIO],

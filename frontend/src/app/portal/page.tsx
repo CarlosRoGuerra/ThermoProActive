@@ -112,8 +112,9 @@ export default function PortalInicioPage() {
 function Conteudo({ dados }: { dados: PortalVisaoGeral }) {
   const ind = dados.indicadores;
   const saudaveis = Math.max(0, ind.equipamentos_monitorados - ind.equipamentos_atencao);
+  const indice = ind.indice_disponibilidade;
   const tomDisponibilidade =
-    ind.indice_disponibilidade >= 95 ? "success" : ind.indice_disponibilidade >= 80 ? "warning" : "danger";
+    indice === null ? "neutral" : indice >= 95 ? "success" : indice >= 80 ? "warning" : "danger";
 
   return (
     <>
@@ -121,12 +122,12 @@ function Conteudo({ dados }: { dados: PortalVisaoGeral }) {
       <MetricGrid colunas={4}>
         <MetricCard
           label="Disponibilidade do parque"
-          value={ind.indice_disponibilidade.toLocaleString("pt-BR")}
-          unidade="%"
+          value={indice === null ? "—" : indice.toLocaleString("pt-BR")}
+          unidade={indice === null ? undefined : "%"}
           tone={tomDisponibilidade}
           icon={Gauge}
-          contexto={`${plural(saudaveis, "equipamento")} sem ocorrência crítica`}
-          dica="Percentual do seu parque sem nenhuma medição crítica na última coleta. Não é disponibilidade de produção — é condição mecânica."
+          contexto={indice === null ? "nenhum equipamento ativo cadastrado" : `${plural(saudaveis, "equipamento")} sem ocorrência crítica`}
+          dica="Percentual dos seus equipamentos ativos sem nenhuma medição classificada como crítica no histórico registrado. Não é disponibilidade de produção (horas de parada) — é um indicativo de condição."
         />
         <MetricCard
           label="Exigem intervenção"
@@ -136,7 +137,9 @@ function Conteudo({ dados }: { dados: PortalVisaoGeral }) {
           contexto={
             ind.equipamentos_atencao > 0
               ? `de ${plural(ind.equipamentos_monitorados, "equipamento")} monitorados`
-              : "Nenhuma pendência no momento"
+              : (ind.equipamentos_pendentes ?? 0) > 0
+                ? `${plural(ind.equipamentos_pendentes ?? 0, "equipamento")} aguardando avaliação`
+                : "Nenhuma ocorrência crítica identificada"
           }
           href={ind.equipamentos_atencao > 0 ? "/portal/equipamentos?estado=critico" : undefined}
           hrefLabel="Ver quais"

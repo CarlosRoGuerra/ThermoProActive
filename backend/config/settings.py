@@ -130,7 +130,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.PaginacaoPadrao",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_RATES": {
@@ -183,9 +183,30 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+# Sem timeout, um SMTP fora do ar prende o worker indefinidamente.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 
+# WhatsApp: gateway HTTP do provedor escolhido pela CONTRATANTE (POST JSON, 2xx = aceito).
 NOTIFICACOES_WHATSAPP_ENABLED = env.bool("NOTIFICACOES_WHATSAPP_ENABLED", default=False)
+WHATSAPP_WEBHOOK_URL = env("WHATSAPP_WEBHOOK_URL", default="")
+WHATSAPP_WEBHOOK_TOKEN = env("WHATSAPP_WEBHOOK_TOKEN", default="")
+WHATSAPP_TIMEOUT = env.int("WHATSAPP_TIMEOUT", default=10)
+# Push: não implementado (sem registro de dispositivos). A variável não liga nada.
 NOTIFICACOES_PUSH_ENABLED = env.bool("NOTIFICACOES_PUSH_ENABLED", default=False)
+
+# Entrega: tentativa logo após o commit + retentativas pelo `agendador`.
+NOTIFICACOES_ENVIO_IMEDIATO = env.bool("NOTIFICACOES_ENVIO_IMEDIATO", default=True)
+NOTIFICACOES_MAX_TENTATIVAS = env.int("NOTIFICACOES_MAX_TENTATIVAS", default=5)
+# Agendador (comando `agendador`): ciclo das entregas e do alerta de SLA.
+AGENDADOR_INTERVALO_SEGUNDOS = env.int("AGENDADOR_INTERVALO_SEGUNDOS", default=60)
+AGENDADOR_SLA_A_CADA_MINUTOS = env.int("AGENDADOR_SLA_A_CADA_MINUTOS", default=60)
+SLA_JANELA_VENCENDO_DIAS = env.int("SLA_JANELA_VENCENDO_DIAS", default=2)
+
+# --- OSP (Anexo I 2.6) -----------------------------------------------------------
+# Quem aprova a execução/finaliza a OSP ainda não foi confirmado pelo cliente
+# (docs/03). Padrão: só a gestão da CONTRATADA. true = PCM e gestores do cliente
+# também aprovam (apenas a OSP da própria empresa).
+OSP_APROVACAO_PELO_CLIENTE = env.bool("OSP_APROVACAO_PELO_CLIENTE", default=False)
 
 # --- Internacionalização ------------------------------------------------------
 LANGUAGE_CODE = "pt-br"
@@ -208,6 +229,15 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Obs.: se houver Nginx na frente, ajustar também `client_max_body_size`.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 MB
+
+# Emissão documental: Chromium imprime o frontend existente na rede local.
+LAUDOS_FRONTEND_URL = env("LAUDOS_FRONTEND_URL", default="http://127.0.0.1:3000")
+LAUDOS_NODE_BIN = env("LAUDOS_NODE_BIN", default="node")
+LAUDOS_RENDER_TIMEOUT_SEGUNDOS = env.int("LAUDOS_RENDER_TIMEOUT_SEGUNDOS", default=90)
+LAUDOS_MAX_IMAGEM_BYTES = env.int("LAUDOS_MAX_IMAGEM_BYTES", default=10 * 1024 * 1024)
+LAUDOS_MAX_IMAGENS_BYTES = env.int("LAUDOS_MAX_IMAGENS_BYTES", default=40 * 1024 * 1024)
+LAUDOS_MAX_PDF_BYTES = env.int("LAUDOS_MAX_PDF_BYTES", default=50 * 1024 * 1024)
+LAUDOS_MAX_PAGINAS = env.int("LAUDOS_MAX_PAGINAS", default=1000)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
