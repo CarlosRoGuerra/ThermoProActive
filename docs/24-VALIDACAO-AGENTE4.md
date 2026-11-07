@@ -6,6 +6,50 @@ Escopo: diff dos três agentes (175 arquivos, +13.795 / −147 linhas contra a b
 
 ---
 
+## 000. Teste no navegador (06/11/2026, stack local em PostgreSQL)
+
+Fluxos exercitados com Playwright contra `docker compose` (base local = cópia da produção):
+
+* **Funcionaram sem ajuste:**
+  * login;
+  * dashboards operacional, executivo e do portal, com legenda e tooltip dos gráficos;
+  * auditoria e risco por equipamento;
+  * upload de documento (PDF recusado quando o conteúdo é falso);
+  * cadastro de sensor;
+  * apontamento de horas;
+  * certificado A1 no perfil;
+  * restrição por setor, de ponta a ponta no portal;
+  * painel de tendência;
+  * aviso de push sem chaves VAPID.
+* **Assinatura PAdES:** validada fora do sistema com pyHanko (íntegra, válida, cobre o arquivo inteiro, `ETSI.CAdES.detached`).
+
+| ID | Defeito | Origem | Correção |
+|---|---|---|---|
+| V-10 | **Emissão de laudo falhava sempre na origem "inspeção".** O renderizador esperava ficar visível um marcador `<span hidden>`, e a espera estourava o tempo limite. Corrigida a espera, o PDF saía só com a capa, porque o AppShell corta o conteúdo na altura da tela. Saía também semitransparente e com página em branco no fim, porque era impresso no meio da animação de entrada da rota. Os testes unitários simulam `gerar_pdf`, e o teste real (`test_pdf_layout`) é opcional e nunca passou. | `143042f` | `render-layout.cjs` passa a esperar `state: 'attached'`. Regra de impressão no AppShell e em `.rota-transicao` (`globals.css`). |
+| V-11 | No layout modular (paged.js) o PDF terminava com uma página em branco. | anterior | `.pagedjs_page:last-child { break-after: auto }`. |
+| V-12 | Peça da OSP com vírgula decimal ("45,50") voltava 400. | rodada 02–03/11 | O front normaliza para ponto. |
+| V-13 | Foto de evidência da OSP com URL relativa dava 404 quando front e API estão em origens diferentes. | rodada 02–03/11 | URL absoluta no serializer, como o `FileField`. |
+| V-14 | O status (somente leitura) da OSP mostrava "Aberta" para Em análise, Em execução e Aguardando aprovação. | anterior | Opções completas no `select`. |
+| V-15 | Mensagens de erro do PDF sem acentuação ("pagina??o"). A causa do renderizador não ia para o log. | `143042f` | Texto corrigido; a causa vai para o stderr e para o `logger.warning`. |
+| V-16 | "Liberar cliente inteiro" só desmarcava na tela, mas o texto dava a ação como aplicada. | rodada 02–03/11 | Aviso de alteração não salva. |
+
+`test_pdf_layout` (Chromium real) passou nos dois layouts dentro do container. Comando:
+
+```
+LAUDOS_TEST_RENDER_URL=http://frontend:3000
+```
+
+Os pacotes `pypdf` e `pypdfium2` foram instalados só no container, porque não estão no `requirements`.
+
+**Recomendação:** rodar esse teste antes de cada deploy.
+
+**Pendências observadas, sem correção:**
+* Os dados pessoais da equipe (3.1.2) só existem na API, sem tela.
+* O link "admin" do breadcrumb aponta para `/admin`, que dá 404.
+* Quantidades e faixas aparecem com 3 casas e ponto ("2.000 un", "0.000 a 50.000").
+
+---
+
 ## 00. Fechamento (coordenação, 03/11/2026) — V-08 e V-09 corrigidos
 
 | ID | Correção | Evidência |

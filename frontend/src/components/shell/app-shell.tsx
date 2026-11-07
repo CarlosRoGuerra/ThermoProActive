@@ -128,14 +128,16 @@ export function AppShell({
   );
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-bg">
+    // app-shell*: ganchos da regra de impressão em globals.css. Na tela o conteúdo rola
+    // dentro do <main>; na impressão a altura fixa cortava tudo após a 1ª tela.
+    <div className="app-shell flex h-[100dvh] flex-col overflow-hidden bg-bg">
       {offline && <OfflineBanner />}
 
       <a href="#conteudo" className="skip-link">
         Ir para o conteúdo
       </a>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="app-shell-corpo flex min-h-0 flex-1">
         {/* ---------- Sidebar (desktop) ----------
             Trilho de ícones que expande sobre o conteúdo ao passar o mouse;
             fixada, ela empurra o conteúdo e não cobre nada. */}
@@ -221,7 +223,7 @@ export function AppShell({
         </AnimatePresence>
 
         {/* ---------- Coluna principal ---------- */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="app-shell-coluna flex min-w-0 flex-1 flex-col">
           <header
             className={cn(
               "no-print z-sticky flex h-topbar shrink-0 items-center gap-2 px-3 transition-colors duration-normal sm:px-4 lg:px-6",
@@ -269,11 +271,11 @@ export function AppShell({
           <main
             id="conteudo"
             onScroll={(e) => setRolou(e.currentTarget.scrollTop > 4)}
-            className="flex-1 overflow-y-auto focus-visible:outline-none"
+            className="app-shell-main flex-1 overflow-y-auto focus-visible:outline-none"
             tabIndex={-1}
           >
             <div className="page-shell">{children}</div>
-            <RodapeMarca />
+            <RodapeMarca className="no-print" />
           </main>
         </div>
       </div>

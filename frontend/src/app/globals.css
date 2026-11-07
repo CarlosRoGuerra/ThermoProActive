@@ -357,6 +357,31 @@
   body {
     background: #fff;
   }
+  /* O AppShell prende a página na altura da tela e rola dentro do <main>. Impresso,
+     isso cortava o documento na 1ª tela (o laudo saía só com a capa). Aqui o fluxo
+     volta a ser o da página inteira; nada do design do documento muda. */
+  .app-shell,
+  .app-shell-corpo,
+  .app-shell-coluna,
+  .app-shell-main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  /* Transição de entrada da rota (template.tsx): o renderizador do laudo imprime assim que
+     o conteúdo fica pronto, às vezes no meio da animação — saía deslocado (página em branco
+     no fim) e com opacidade parcial. No papel não há animação. */
+  .rota-transicao {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  /* A folha A4 (.doc) já traz as próprias margens: o recuo de tela não vai ao papel. */
+  .app-shell-main .page-shell:has(.doc) {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 /* ==========================================================================

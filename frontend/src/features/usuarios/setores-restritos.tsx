@@ -93,6 +93,11 @@ export function SetoresRestritos({
           ? "Sem setor marcado, o usuário vê o cliente inteiro."
           : `Restrito a ${marcados.size} setor(es): ele só vê equipamentos, medições e laudos desses setores.`}
       </p>
+      {mudou && (
+        <p className="text-xs font-medium text-warning-fg">
+          Alteração ainda não aplicada: clique em “Salvar setores”.
+        </p>
+      )}
       {setores.length === 0 ? (
         <Alert tone="info">Este cliente ainda não tem setores cadastrados.</Alert>
       ) : (

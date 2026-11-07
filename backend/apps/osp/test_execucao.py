@@ -274,7 +274,10 @@ class EvidenciasTests(OSPExecucaoBase):
     def test_cliente_ve_as_fotos_da_propria_osp_e_nao_envia(self):
         osp = self.nova_osp()
         ev = EvidenciaOSP.objects.create(osp=osp, fase="DEPOIS", arquivo=self.foto("depois.png"))
-        self.assertEqual(self.logar(self.pcm).get("/api/osp-evidencias/").data["count"], 1)
+        lista = self.logar(self.pcm).get("/api/osp-evidencias/").data
+        self.assertEqual(lista["count"], 1)
+        # URL absoluta: com front e API em origens diferentes, a relativa dava 404 no <img>.
+        self.assertTrue(lista["results"][0]["url"].startswith("http://testserver/api/media/"))
         self.assertEqual(self.logar(self.pcm_b).get("/api/osp-evidencias/").data["count"], 0)
         r = self.logar(self.pcm).post("/api/osp-evidencias/",
                                       {"osp": osp.pk, "fase": "ANTES", "arquivo": self.foto()}, format="multipart")

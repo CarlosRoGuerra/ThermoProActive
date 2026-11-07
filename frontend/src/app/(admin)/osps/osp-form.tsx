@@ -427,8 +427,11 @@ export function OspForm({ ospId }: { ospId?: number }) {
                 a permissão por perfil e o histórico. Aqui é somente leitura. */}
             <Select value={campos.status} disabled onChange={() => {}}>
               <option value="ABERTA">Aberta</option>
+              <option value="EM_ANALISE">Em análise</option>
               <option value="PLANEJADA">Planejada</option>
+              <option value="EM_EXECUCAO">Em execução</option>
               <option value="EXECUTADA">Executada</option>
+              <option value="AGUARDANDO_APROVACAO">Aguardando aprovação</option>
               <option value="FINALIZADA">Finalizada</option>
               <option value="CANCELADA">Cancelada</option>
             </Select>

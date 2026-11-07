@@ -30,6 +30,9 @@ const CHROME_CSS = `
     body { background: #fff; }
     .no-print { display: none !important; }
     .pagedjs_page { margin: 0; box-shadow: none; }
+    /* O paged.js quebra página depois de TODA folha, inclusive da última: o PDF
+       terminava com uma página em branco. */
+    .pagedjs_page:last-child { break-after: auto !important; page-break-after: auto !important; }
   }
 `;
 

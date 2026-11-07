@@ -269,7 +269,9 @@ function PecasSec({
     try {
       await api("/osp-pecas/", {
         method: "POST",
-        body: { osp: ospId, descricao, codigo, quantidade, unidade, custo_unitario: custoUnit },
+        // O campo aceita vírgula decimal ("45,50"); a API espera ponto.
+        body: { osp: ospId, descricao, codigo, unidade,
+          quantidade: quantidade.trim().replace(",", "."), custo_unitario: custoUnit.trim().replace(",", ".") },
       });
       setDescricao(""); setCodigo(""); setQuantidade("1"); setCustoUnit("0");
       await onMudou();

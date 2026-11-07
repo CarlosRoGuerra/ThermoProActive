@@ -42,7 +42,9 @@ async function render(input) {
       return route.abort('blockedbyclient');
     });
     await page.goto(origin + path, { waitUntil: 'domcontentloaded', timeout });
-    await page.locator('[data-pdf-pronto="true"]').waitFor({ timeout });
+    // 'attached', não 'visible': na rota do laudo de inspeção o marcador é um <span hidden>
+    // e nunca fica visível — esperar visibilidade fazia toda emissão estourar o timeout.
+    await page.locator('[data-pdf-pronto="true"]').waitFor({ state: 'attached', timeout });
     await page.evaluate(async () => {
       await document.fonts.ready;
       await Promise.all(Array.from(document.images).map(im => im.complete ? null : new Promise(resolve => { im.onload = im.onerror = resolve; })));
@@ -60,5 +62,10 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => { data += chunk; });
 process.stdin.on('end', () => {
-  render(JSON.parse(data)).catch(() => { process.stderr.write('Falha no renderer local do layout original.\n'); process.exitCode = 1; });
+  // A causa vai para o stderr (o backend registra no log do servidor); o usuário só vê a mensagem genérica.
+  render(JSON.parse(data)).catch((e) => {
+    const causa = String((e && e.message) || e).split('\n')[0].slice(0, 300);
+    process.stderr.write(`Falha no renderer local do layout original: ${causa}\n`);
+    process.exitCode = 1;
+  });
 });

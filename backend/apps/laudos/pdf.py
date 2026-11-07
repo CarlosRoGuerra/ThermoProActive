@@ -8,6 +8,7 @@ import binascii
 import hashlib
 import io
 import json
+import logging
 import subprocess
 import warnings
 from pathlib import Path
@@ -16,6 +17,8 @@ from urllib.parse import unquote, urlsplit
 from django.conf import settings
 from django.core.files.storage import default_storage
 from PIL import Image as PillowImage
+
+logger = logging.getLogger(__name__)
 
 
 class ErroGeracaoPDF(ValueError):
@@ -136,19 +139,19 @@ def congelar_imagens(snapshot):
 
 
 def gerar_pdf(snapshot):
-    """Chromium imprime as mesmas rotas/CSS usados atualmente pelo t?cnico.
+    """Chromium imprime as mesmas rotas/CSS usados atualmente pelo técnico.
 
-    Nenhum fallback troca o design. A indisponibilidade do renderer mant?m o
-    rascunho e n?o produz documento incompleto. Node/Chromium s?o depend?ncias
-    locais de implanta??o, sem servi?o pago ou envio de dados a terceiros.
+    Nenhum fallback troca o design. A indisponibilidade do renderer mantém o
+    rascunho e não produz documento incompleto. Node/Chromium são dependências
+    locais de implantação, sem serviço pago ou envio de dados a terceiros.
     """
     helper = Path(__file__).with_name("render-layout.cjs")
     if not helper.is_file():
-        raise ErroGeracaoPDF("Renderizador do layout original n?o est? instalado.")
+        raise ErroGeracaoPDF("Renderizador do layout original não está instalado.")
     origem = getattr(settings, "LAUDOS_FRONTEND_URL", "http://127.0.0.1:3000")
     url = urlsplit(origem)
     if url.scheme not in {"http", "https"} or url.hostname not in {"127.0.0.1", "localhost", "::1", "frontend"} or url.username or url.password or url.query or url.fragment or url.path not in {"", "/"}:
-        raise ErroGeracaoPDF("Configure LAUDOS_FRONTEND_URL com a origem local do frontend de impress?o.")
+        raise ErroGeracaoPDF("Configure LAUDOS_FRONTEND_URL com a origem local do frontend de impressão.")
     try:
         entrada = json.dumps({"snapshot": snapshot, "frontend": origem.rstrip("/"),
             "timeout": _limite("LAUDOS_RENDER_TIMEOUT_SEGUNDOS", 90) * 1000,
@@ -157,9 +160,12 @@ def gerar_pdf(snapshot):
             input=entrada, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=settings.BASE_DIR,
             timeout=_limite("LAUDOS_RENDER_TIMEOUT_SEGUNDOS", 90) + 10, check=False)
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
-        raise ErroGeracaoPDF("N?o foi poss?vel gerar o PDF com o layout original. Verifique o renderizador local.") from exc
+        logger.warning("Renderizador de laudo não executou: %s", exc)
+        raise ErroGeracaoPDF("Não foi possível gerar o PDF com o layout original. Verifique o renderizador local.") from exc
     if resultado.returncode or not resultado.stdout.startswith(b"%PDF-"):
-        raise ErroGeracaoPDF("Falha ao imprimir o layout original. Verifique frontend, Chromium, imagens e pagina??o; o rascunho foi preservado.")
+        logger.warning("Renderizador de laudo falhou (código %s): %s", resultado.returncode,
+                       resultado.stderr.decode("utf-8", errors="replace").strip()[-500:])
+        raise ErroGeracaoPDF("Falha ao imprimir o layout original. Verifique frontend, Chromium, imagens e paginação; o rascunho foi preservado.")
     if len(resultado.stdout) > _limite("LAUDOS_MAX_PDF_BYTES", 50 * 1024 * 1024):
-        raise ErroGeracaoPDF("PDF excede o limite de tamanho configurado para emiss?o.")
+        raise ErroGeracaoPDF("PDF excede o limite de tamanho configurado para emissão.")
     return resultado.stdout

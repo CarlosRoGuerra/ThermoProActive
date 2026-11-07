@@ -14,6 +14,16 @@ from .models import (
 )
 
 
+def _url_midia(context, arquivo):
+    """URL absoluta da mídia, como o FileField do DRF faz. A relativa (`/api/media/...`)
+    só funciona quando front e API estão na mesma origem (nginx); em dev, com portas
+    diferentes, o navegador pedia a imagem ao frontend e recebia 404."""
+    if not arquivo:
+        return None
+    request = context.get("request")
+    return request.build_absolute_uri(arquivo.url) if request else arquivo.url
+
+
 class OrdemServicoSerializer(serializers.ModelSerializer):
     """
     A OSP é o único recurso em que o Portal escreve — e só nos campos de
@@ -133,7 +143,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     def get_evidencias_osp(self, obj):
         return [
             {"id": e.id, "fase": e.fase, "fase_display": e.get_fase_display(), "legenda": e.legenda,
-             "arquivo": e.arquivo.url if e.arquivo else None, "criado_em": e.criado_em}
+             "arquivo": _url_midia(self.context, e.arquivo), "criado_em": e.criado_em}
             for e in obj.evidencias_osp.all()
         ]
 
@@ -155,7 +165,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             return []
         return [
             {"id": img.id, "tipo": img.tipo, "legenda": img.legenda,
-             "arquivo": img.arquivo.url if img.arquivo else None}
+             "arquivo": _url_midia(self.context, img.arquivo)}
             for img in obj.achado.imagens.all()
         ]
 
@@ -290,7 +300,7 @@ class EvidenciaOSPSerializer(serializers.ModelSerializer):
         fields = ["id", "osp", "fase", "fase_display", "arquivo", "url", "legenda", "criado_em"]
 
     def get_url(self, obj):
-        return obj.arquivo.url if obj.arquivo else None
+        return _url_midia(self.context, obj.arquivo)
 
     def validate_arquivo(self, arquivo):
         from .execucao import validar_foto

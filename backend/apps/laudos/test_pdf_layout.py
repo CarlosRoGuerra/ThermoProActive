@@ -75,9 +75,12 @@ class PDFLayoutRealTest(TestCase):
         self.assertTrue(conteudo.startswith(b"%PDF-"))
         leitor = PdfReader(io.BytesIO(conteudo))
         texto = "\n".join(p.extract_text() or "" for p in leitor.pages)
+        # A extração separa glifos ("Δ T") e quebra palavras na linha ("MARCADOR-FIM-\nDOCUMENTAL");
+        # o conteúdo é conferido sem espaços/quebras.
+        compacto = "".join(texto.split())
         for marcador in ("Cliente documental QA", "DOC-QA-01", "Ação técnica QA", "ΔT", "MΩ", "µm",
                          "MARCADOR-FIM-DOCUMENTAL", "Evidência fotográfica QA"):
-            self.assertIn(marcador, texto, f"Conteúdo ausente no PDF {nome}: {marcador}")
+            self.assertIn("".join(marcador.split()), compacto, f"Conteúdo ausente no PDF {nome}: {marcador}")
         self.assertGreaterEqual(len(leitor.pages), minimo_paginas)
         self.assertGreater(sum(len(p.images) for p in leitor.pages), 0, "Nenhuma imagem raster incorporada ao PDF.")
         pasta = Path(os.environ.get("LAUDOS_TEST_ARTIFACT_DIR", Path(settings.BASE_DIR) / "test-artifacts" / "laudos"))
