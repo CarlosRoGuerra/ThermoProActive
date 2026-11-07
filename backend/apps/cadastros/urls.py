@@ -14,6 +14,7 @@ from .views import (
     FalhaRecorrenteViewSet,
     GrupoAcessoViewSet,
     InstrumentoViewSet,
+    SensorViewSet,
     NormaViewSet,
     RotaViewSet,
     SetorViewSet,
@@ -37,6 +38,7 @@ router.register("dados-tecnicos-motor", DadosTecnicosMotorViewSet)
 router.register("dados-tecnicos-transformador", DadosTecnicosTransformadorViewSet)
 router.register("componentes", ComponenteViewSet)
 router.register("instrumentos", InstrumentoViewSet)
+router.register("sensores", SensorViewSet)
 router.register("rotas", RotaViewSet)
 # Catálogos / tabelas de referência
 router.register("normas", NormaViewSet)

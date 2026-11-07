@@ -221,7 +221,9 @@ def transicionar(osp_id, novo_status, ator, motivo="") -> tuple[OrdemServico, bo
     novo_status = StatusOSP(novo_status)
     motivo = (motivo or "").strip()
     with transaction.atomic():
-        osp = OrdemServico.objects.select_for_update().select_related(
+        # of=("self",): o PostgreSQL recusa FOR UPDATE no lado anulável de um
+        # LEFT JOIN (responsavel é opcional); trava só a OSP.
+        osp = OrdemServico.objects.select_for_update(of=("self",)).select_related(
             "cliente", "equipamento", "responsavel"
         ).get(pk=osp_id)
         de = StatusOSP(osp.status)
@@ -241,6 +243,16 @@ def transicionar(osp_id, novo_status, ator, motivo="") -> tuple[OrdemServico, bo
         tipo = tipo_da_transicao(de, novo_status)
         if tipo in MOTIVO_OBRIGATORIO_TIPOS and not motivo:
             raise ErroOSP("Informe o motivo.", codigo="motivo_obrigatorio", http=400)
+        if novo_status == StatusOSP.FINALIZADA:
+            # 2.6.2.2: checklist obrigatório (quando o modelo exige) antes de finalizar.
+            from .execucao import pendencias_checklist
+
+            pendentes = pendencias_checklist(osp)
+            if pendentes:
+                raise ErroOSP(
+                    f"Checklist obrigatório incompleto ({len(pendentes)} item(ns) sem resposta): {pendentes[0]}.",
+                    codigo="checklist_pendente", http=409,
+                )
 
         agora = timezone.now()
         antes = {}
@@ -285,6 +297,10 @@ def transicionar(osp_id, novo_status, ator, motivo="") -> tuple[OrdemServico, bo
                 "conclua ou cancele aquela antes de reabrir esta.",
                 codigo="conflito_ocorrencia", http=409,
             )
+        # 2.6.2.8: abre/fecha o intervalo de execução junto com a mudança de status.
+        from .execucao import registrar_transicao_execucao
+
+        registrar_transicao_execucao(osp, de, novo_status, ator, agora)
         historico = HistoricoOSP.objects.create(
             osp=osp, tipo=tipo, status_anterior=de.value, status_novo=novo_status.value,
             alteracoes=antes, motivo=motivo, **_ator_dados(ator),

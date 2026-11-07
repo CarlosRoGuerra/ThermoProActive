@@ -5,17 +5,19 @@ Stack: Django 5 + DRF + JWT + PostgreSQL (SQLite como fallback de dev).
 Nenhuma configuração amarra a solução a um fornecedor específico (Cláusula 12.4):
 o SGBD é escolhido por DATABASE_URL e todas as libs são open-source.
 """
+import os
+import warnings
 from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
+
+from .seguranca import problemas_de_configuracao
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
-    DEBUG=(bool, True),
-    SECRET_KEY=(str, "dev-insecure-change-me-em-producao"),
-    ALLOWED_HOSTS=(list, ["*"]),
     CORS_ALLOWED_ORIGINS=(list, ["http://localhost:3000", "http://127.0.0.1:3000"]),
     # Origens confiáveis para CSRF (necessário para o /admin sob HTTPS atrás de proxy,
     # e para qualquer POST/PATCH/DELETE autenticado por cookie — o login grava
@@ -30,9 +32,25 @@ env_file = BASE_DIR / ".env"
 if env_file.exists():
     environ.Env.read_env(str(env_file))
 
-SECRET_KEY = env("SECRET_KEY")
-DEBUG = env("DEBUG")
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+# DEBUG: se não vier explícito, só vale True no desenvolvimento local "puro"
+# (sem DATABASE_URL, ou seja, SQLite). Container/servidor configurado com banco e
+# SEM `DEBUG` no ambiente é tratado como produção (DEBUG=False) — esquecer a
+# variável não pode entregar stack trace e settings na tela. Os composes de
+# desenvolvimento definem DEBUG=True explicitamente.
+DEBUG = env.bool("DEBUG", default="DATABASE_URL" not in os.environ)
+
+# Chave de desenvolvimento: usada SÓ com DEBUG=True. Em produção a chave tem de vir
+# do ambiente e passa pela validação abaixo (achado A-07).
+_SECRET_KEY_DEV = "dev-insecure-change-me-em-producao"
+SECRET_KEY = env("SECRET_KEY", default=_SECRET_KEY_DEV if DEBUG else "")
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"] if DEBUG else [])
+
+_problemas = problemas_de_configuracao(debug=DEBUG, secret_key=SECRET_KEY, allowed_hosts=ALLOWED_HOSTS)
+if _problemas:
+    raise ImproperlyConfigured(
+        "Configuração insegura para DEBUG=False — o servidor não sobe: "
+        + "; ".join(_problemas)
+    )
 
 # --- Aplicações ---------------------------------------------------------------
 DJANGO_APPS = [
@@ -62,6 +80,7 @@ LOCAL_APPS = [
     "apps.laudos",
     "apps.notificacoes",
     "apps.relatorios",
+    "apps.preditiva",
 ]
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -73,6 +92,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.core.auditoria.ContextoAuditoriaMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -130,6 +150,12 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+    # A API navegável (HTML com formulários) só em desenvolvimento; em produção, JSON.
+    "DEFAULT_RENDERER_CLASSES": (
+        ("rest_framework.renderers.JSONRenderer", "rest_framework.renderers.BrowsableAPIRenderer")
+        if DEBUG
+        else ("rest_framework.renderers.JSONRenderer",)
+    ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.PaginacaoPadrao",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -138,7 +164,13 @@ REST_FRAMEWORK = {
         "auth_recovery": "5/hour",
         "auth_otp": "10/minute",
         "auth_registration": "3/hour",
+        "auth_sensivel": "10/minute",
     },
+    # Quantos proxies reversos (nginx) existem NA FRENTE do Django. O DRF só
+    # confia em X-Forwarded-For com isto definido; sem, o cabeçalho inteiro vira
+    # a "identidade" do cliente e basta variá-lo para escapar do throttle.
+    # 0 = usa só REMOTE_ADDR (dev, sem proxy). Produção atrás do nginx = 1.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0 if DEBUG else 1),
 }
 
 SIMPLE_JWT = {
@@ -147,6 +179,10 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
+
+# Chave que cifra os segredos TOTP do MFA. Vazia = deriva do SECRET_KEY (compatível com o
+# que já está gravado). Defina para desacoplar o MFA da rotação do SECRET_KEY (achado A-07).
+MFA_ENCRYPTION_KEY = env("MFA_ENCRYPTION_KEY", default="")
 
 AUTH_COOKIE_ACCESS = "tpa_access"
 AUTH_COOKIE_REFRESH = "tpa_refresh"
@@ -221,8 +257,13 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
-MEDIA_URL = "media/"
+# A mídia NÃO é pública: `MEDIA_URL` fica sob /api/ (escopo do cookie de sessão) e é
+# servida por `apps.core.midia.MidiaView`, que confere dono/cliente de cada arquivo
+# (achado A-03). Em produção o binário sai do nginx via X-Accel-Redirect para a
+# location `internal` abaixo; em DEBUG o próprio Django entrega o arquivo.
+MEDIA_URL = "/api/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ACCEL_PREFIX = env("MEDIA_ACCEL_PREFIX", default="" if DEBUG else "/protected-media/")
 
 # Uploads: o padrão do Django (2,5MB) recusa logomarcas/fotos em alta resolução.
 # Elevado para permitir subir imagens nítidas (capa/cabeçalho do relatório).
@@ -235,6 +276,8 @@ LAUDOS_FRONTEND_URL = env("LAUDOS_FRONTEND_URL", default="http://127.0.0.1:3000"
 LAUDOS_NODE_BIN = env("LAUDOS_NODE_BIN", default="node")
 LAUDOS_RENDER_TIMEOUT_SEGUNDOS = env.int("LAUDOS_RENDER_TIMEOUT_SEGUNDOS", default=90)
 LAUDOS_MAX_IMAGEM_BYTES = env.int("LAUDOS_MAX_IMAGEM_BYTES", default=10 * 1024 * 1024)
+# Anexo de documento (PDF/XLSX/DOCX/CSV, Anexo I 2.3.1.3): teto por arquivo.
+ANEXOS_MAX_BYTES = env.int("ANEXOS_MAX_BYTES", default=20 * 1024 * 1024)
 LAUDOS_MAX_IMAGENS_BYTES = env.int("LAUDOS_MAX_IMAGENS_BYTES", default=40 * 1024 * 1024)
 LAUDOS_MAX_PDF_BYTES = env.int("LAUDOS_MAX_PDF_BYTES", default=50 * 1024 * 1024)
 LAUDOS_MAX_PAGINAS = env.int("LAUDOS_MAX_PAGINAS", default=1000)
@@ -257,10 +300,66 @@ if not DEBUG:
         # confirmar que o certificado está funcionando para não se trancar fora.
         # Sem TLS o cabeçalho seria ignorado de qualquer forma — e mandá-lo num
         # deploy HTTP só atrapalha uma futura migração para HTTPS.
+        # Sem includeSubDomains/preload enquanto o domínio da contratante não for
+        # definido: outros subdomínios dela sem HTTPS ficariam inacessíveis por 1 ano.
         SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365
-        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-        SECURE_HSTS_PRELOAD = True
     # Cabeçalhos de proteção adicionais.
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
     SECURE_REFERRER_POLICY = "same-origin"
+
+# --- Admin técnico do Django --------------------------------------------------
+# /django-admin/ tem login próprio (sem MFA e sem o bloqueio por tentativas do
+# produto). S-26: o padrão é LIGADO só em desenvolvimento (DEBUG=True) e DESLIGADO
+# em produção. Para usar o admin em produção, defina DJANGO_ADMIN_ENABLED=True
+# explicitamente e restrinja por IP/VPN no nginx.
+DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
+
+# Item 3.1.22: retenção da trilha de auditoria (dias). Apagar só por `manage.py purgar_auditoria`.
+AUDITORIA_RETENCAO_DIAS = env.int("AUDITORIA_RETENCAO_DIAS", default=1825)
+
+# Item 2.5.1.3: arquivo PEM com as raízes de confiança (ex.: AC ICP-Brasil) para avaliar a cadeia
+# do certificado A1 na verificação. Vazio = a cadeia não é avaliada como confiável.
+ASSINATURA_RAIZES_PEM = env.str("ASSINATURA_RAIZES_PEM", default="")
+
+# E-mail "console" em produção grava no log do container os links de
+# redefinição de senha e de convite (quem lê o log assume a conta).
+if not DEBUG and EMAIL_BACKEND.endswith("console.EmailBackend"):
+    warnings.warn(
+        "EMAIL_BACKEND=console com DEBUG=False: links de redefinição de senha e convites "
+        "serão impressos no log. Configure SMTP (EMAIL_BACKEND/EMAIL_HOST...).",
+        RuntimeWarning,
+        stacklevel=1,
+    )
+
+# --- Logs ---------------------------------------------------------------------
+# Tudo em stdout (o Docker coleta/rotaciona). Mensagens de aplicação NUNCA devem
+# conter senha, token, código TOTP ou dados pessoais — registre IDs, não valores.
+# `django.request` fica em ERROR e o `django.security.*` em WARNING (host inválido,
+# CSRF, entrada suspeita); stack trace nunca vai para o cliente (DEBUG=False).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simples": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "stdout": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "simples"},
+    },
+    "root": {"handlers": ["stdout"], "level": env("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        "django.request": {"handlers": ["stdout"], "level": "ERROR", "propagate": False},
+        "django.security": {"handlers": ["stdout"], "level": "WARNING", "propagate": False},
+        # SQL e autoreload ruidosos em DEBUG: só se alguém pedir.
+        "django.db.backends": {"handlers": ["stdout"], "level": "WARNING", "propagate": False},
+    },
+}
+
+# Item 2.10.1.3 — Web Push (VAPID). Chaves geradas por `manage.py gerar_vapid_keys`.
+# Sem as duas chaves o canal PUSH responde NAO_CONFIGURADO (nunca "enviado").
+VAPID_PUBLIC_KEY = env.str("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env.str("VAPID_PRIVATE_KEY", default="").replace("\n", "\n")
+VAPID_CONTATO = env.str("VAPID_CONTATO", default="mailto:suporte@example.com")
+# V-01: serviços de push aceitos como destino (separados por vírgula). Vazio = padrão de
+# apps/notificacoes/seguranca_push.py (FCM, Mozilla, Apple, Windows). Só host público; IP literal é recusado.
+PUSH_HOSTS_PERMITIDOS = env.str("PUSH_HOSTS_PERMITIDOS", default="")

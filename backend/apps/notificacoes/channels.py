@@ -155,17 +155,95 @@ def enviar_whatsapp(user, titulo: str, mensagem: str, *, chave_envio: str = "") 
     return Resultado(StatusEntrega.ENVIADO, provedor_id=provedor_id)
 
 
-# --- Push -----------------------------------------------------------------------
+# --- Push (Web Push / VAPID) -----------------------------------------------------
+#
+# Biblioteca: pywebpush (MPL-2.0, usada SEM modificação; ver docs/22). Sem as chaves
+# VAPID configuradas o canal responde NAO_CONFIGURADO. ENVIADO só com 2xx do push service.
+
+#: Status HTTP do push service que confirmam o aceite (201 é o usual; 202 também é aceite).
+PUSH_ACEITOS = {200, 201, 202}
+#: Assinatura expirada/cancelada pelo navegador: deixa de ser usada.
+PUSH_ASSINATURA_MORTA = {404, 410}
+
 
 def push_configurado() -> tuple[bool, list[str]]:
-    return False, ["implementação de Web Push/FCM (assinaturas de dispositivo, chaves VAPID)"]
+    faltando = []
+    if not getattr(settings, "VAPID_PUBLIC_KEY", ""):
+        faltando.append("VAPID_PUBLIC_KEY")
+    if not getattr(settings, "VAPID_PRIVATE_KEY", ""):
+        faltando.append("VAPID_PRIVATE_KEY")
+    if not getattr(settings, "NOTIFICACOES_PUSH_ENABLED", False):
+        faltando.append("NOTIFICACOES_PUSH_ENABLED=True")
+    return (not faltando), faltando
 
 
 def enviar_push(user, titulo: str, mensagem: str, *, chave_envio: str = "") -> Resultado:
-    return Resultado(
-        StatusEntrega.NAO_CONFIGURADO,
-        "Push não implementado: o sistema não registra dispositivos/assinaturas de push.",
-    )
+    configurado, faltando = push_configurado()
+    if not configurado:
+        return Resultado(StatusEntrega.NAO_CONFIGURADO, "Faltando: " + ", ".join(faltando))
+    from .models import AssinaturaPush
+    assinaturas = list(AssinaturaPush.objects.filter(usuario=user, ativa=True))
+    if not assinaturas:
+        return Resultado(StatusEntrega.IGNORADO, "Usuário sem dispositivo com push ativado.")
+    try:
+        from pywebpush import WebPushException, webpush
+    except ImportError:  # pragma: no cover - dependência do requirements
+        return Resultado(StatusEntrega.NAO_CONFIGURADO, "Biblioteca pywebpush não instalada.")
+    import json as _json
+    from django.utils import timezone as _tz
+    from .seguranca_push import DnsIndisponivel, EndpointNaoPermitido, SessaoPushSegura, checar_dns, validar_endpoint
+    carga = _json.dumps({"titulo": titulo, "mensagem": mensagem, "id": chave_envio})
+    aceitos, temporarios, erros, recusados = 0, False, [], 0
+    for assinatura in assinaturas:
+        # V-01: o endpoint veio do navegador. Revalida forma, allowlist e DNS antes de cada envio.
+        try:
+            host = validar_endpoint(assinatura.endpoint)
+            checar_dns(host)
+        except EndpointNaoPermitido:
+            assinatura.ativa = False
+            assinatura.save(update_fields=["ativa", "atualizado_em"])
+            recusados += 1
+            continue
+        except DnsIndisponivel:
+            temporarios = True
+            erros.append("DNS")
+            continue
+        try:
+            with SessaoPushSegura() as sessao:
+                resposta = webpush(
+                    subscription_info={"endpoint": assinatura.endpoint,
+                                       "keys": {"p256dh": assinatura.p256dh, "auth": assinatura.auth}},
+                    data=carga,
+                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": settings.VAPID_CONTATO},
+                    timeout=getattr(settings, "EMAIL_TIMEOUT", 10),
+                    requests_session=sessao,
+                )
+        except WebPushException as erro:
+            codigo = getattr(getattr(erro, "response", None), "status_code", None)
+            if codigo in PUSH_ASSINATURA_MORTA:
+                assinatura.ativa = False
+                assinatura.save(update_fields=["ativa", "atualizado_em"])
+                continue
+            temporarios = temporarios or (codigo is None or codigo >= 500 or codigo == 429)
+            erros.append(f"HTTP {codigo}" if codigo else type(erro).__name__)
+            continue
+        except (OSError, ValueError) as erro:
+            temporarios = True
+            erros.append(type(erro).__name__)
+            continue
+        if getattr(resposta, "status_code", None) in PUSH_ACEITOS:
+            aceitos += 1
+            assinatura.ultimo_envio_em = _tz.now()
+            assinatura.save(update_fields=["ultimo_envio_em", "atualizado_em"])
+    if aceitos:
+        return Resultado(StatusEntrega.ENVIADO)
+    if recusados and not erros:
+        return Resultado(StatusEntrega.FALHOU, "Endpoint de push não permitido: dispositivo desativado.")
+    if not erros:
+        return Resultado(StatusEntrega.IGNORADO, "Dispositivos de push expirados foram desativados.")
+    return Resultado(StatusEntrega.FALHOU, "Push service recusou: " + ", ".join(sorted(set(erros))),
+                     temporario=temporarios)
 
 
 #: Nome da função por canal, resolvido na hora do envio (assim um teste pode substituí-la).

@@ -185,3 +185,22 @@ class EntregaNotificacao(TimeStampedModel):
 
     def __str__(self):
         return f"{self.notificacao_id}/{self.canal}: {self.status}"
+
+
+class AssinaturaPush(TimeStampedModel):
+    """
+    Item 2.10.1.3 / 2.7.1.1.8 — um dispositivo/navegador do usuário inscrito no Web Push
+    (assinatura do PushManager). Um usuário pode ter vários. Chave única = endpoint.
+    """
+
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assinaturas_push")
+    endpoint = models.CharField("Endpoint do push service", max_length=500, unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    user_agent = models.CharField(max_length=300, blank=True)
+    ativa = models.BooleanField(default=True, db_index=True)
+    ultimo_envio_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "assinatura de push"

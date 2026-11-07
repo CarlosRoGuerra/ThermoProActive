@@ -70,11 +70,16 @@ export function grandezasDaColeta(tipo: string, subtipo: string, ensaio: string)
       ? [{ label: "Resistência ôhmica", unidade: "Ω" }]
       : [{ label: "Resistência de isolação", unidade: "MΩ" }];
   }
-  if (tipo === "ULTRASSOM") return [{ label: "Nível de ultrassom", unidade: "dB" }];
+  // Elétrico e mecânico têm grandezas próprias: o critério de um não vale para o outro.
+  if (tipo === "ULTRASSOM") return [{
+    label: subtipo === "MECANICO" ? "Nível de ultrassom mecânico" : "Nível de ultrassom elétrico",
+    unidade: "dB",
+  }];
   if (tipo === "ESPESSURA") return [{ label: "Espessura", unidade: "mm" }];
   if (tipo === "CORRETIVA") return subtipo === "BALANCEAMENTO"
     ? [{ label: "Balanceamento residual", unidade: "g·mm" }]
-    : [{ label: "Desalinhamento", unidade: "mm/100mm" }];
+    // Alinhamento a laser: a grandeza é o desalinhamento angular (critério próprio, mm/100 mm).
+    : [{ label: "Desalinhamento angular", unidade: "mm/100mm" }];
   if (tipo === "SENSITIVA") return [{ label: "Inspeção sensorial", unidade: "" }];
   if (tipo === "QUALIDADE_ENERGIA") return [
     { label: "THD de tensão", unidade: "%" },

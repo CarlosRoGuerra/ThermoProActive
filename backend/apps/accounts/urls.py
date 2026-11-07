@@ -24,7 +24,7 @@ from .auth_views import (
     VerificarEmailView,
     ReenviarVerificacaoView,
 )
-from .views import MinhaEquipeViewSet, SolicitacaoAcessoViewSet, UserViewSet
+from .views import CertificadoA1View, DadosPessoaisSelfView, MinhaEquipeViewSet, SolicitacaoAcessoViewSet, UserViewSet
 
 router = DefaultRouter()
 router.register("usuarios", UserViewSet, basename="usuario")
@@ -53,4 +53,6 @@ urlpatterns = [
     path("auth/mfa/setup/", MFASetupView.as_view(), name="mfa-setup"),
     path("auth/mfa/confirm/", MFAConfirmView.as_view(), name="mfa-confirm"),
     path("auth/mfa/disable/", MFADisableView.as_view(), name="mfa-disable"),
+    path("auth/dados-pessoais/", DadosPessoaisSelfView.as_view(), name="dados-pessoais-self"),
+    path("auth/certificado-a1/", CertificadoA1View.as_view(), name="certificado-a1"),
 ] + router.urls

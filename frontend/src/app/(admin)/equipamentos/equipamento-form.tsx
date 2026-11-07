@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, Gauge, MapPin, Save, Settings, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
+import { AnexosDocumentos } from "@/features/inspecoes/anexos-documentos";
+import { SensoresDoEquipamento } from "@/features/cadastros/sensores-do-equipamento";
 import { useAreasSetores } from "@/lib/hierarquia";
 import type {
   CategoriaTecnica,
@@ -137,6 +140,7 @@ function CriterioAplicado({ criterio }: { criterio: CriterioVibracao }) {
 export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
   const router = useRouter();
   const editando = equipamentoId !== undefined;
+  const { user } = useAuth();
 
   const { clienteAtivo } = useClienteAtivo();
   const [form, setForm] = useState<Form>(FORM_VAZIO);
@@ -590,6 +594,17 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
         </Card>
       )}
 
+      {editando && equipamentoId !== undefined && cliente !== "" && (
+        <>
+          <AnexosDocumentos
+            cliente={Number(cliente)}
+            equipamento={equipamentoId}
+            titulo="Documentos do equipamento"
+            podeEditar={!!user?.is_interno}
+          />
+          <SensoresDoEquipamento equipamentoId={equipamentoId} />
+        </>
+      )}
       {msg && (
         <Alert tone="danger" title="Não foi possível salvar" onClose={() => setMsg(null)}>
           {msg}

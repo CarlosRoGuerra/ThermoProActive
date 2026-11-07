@@ -33,6 +33,7 @@ from apps.core.models import BaseModel, TimeStampedModel
 from apps.servicos.choices import TipoServico
 
 from . import rules, rules_tecnicas
+from .anexos import ArmazenamentoAnexo
 
 
 class TipoAnalise(models.TextChoices):
@@ -442,13 +443,34 @@ class MedicaoTermografia(ClassificacaoHistorica):
         if not self._preparar_classificacao(campos, kwargs.get("update_fields")):
             return super().save(*args, **kwargs)
         self.delta_t = self.temperatura_ponto - self.temperatura_referencia
-        self.criticidade = ""
-        self.classificacao_status = "PENDENTE"
-        self.criterio_aplicado = {"motor": "termografia_delta_v2", "modalidade": self.sistema, "motivo": "criterio_nao_validado"}
-        self.diagnostico_sugerido = (
-            f"ΔT = {self.delta_t:.1f} °C. Critério específico do sistema ainda não validado; "
-            "o diferencial térmico não determina sozinho a condição do equipamento."
+        # Critério de ΔT: LimiteAlarmeSerie VALIDADO do sistema (sentido superior). Sem ele, pendente.
+        from apps.preditiva.tendencia import limites_medicao
+
+        limite = limites_medicao(self)
+        valores = {x["nivel"]: x["valor"] for x in limite["limites"]}
+        superior = bool(limite["limites"]) and all(x["sentido"] == "SUPERIOR" for x in limite["limites"])
+        resultado = rules.classificar_termografia(
+            self.temperatura_ponto, self.temperatura_referencia,
+            valores if (limite["validado"] and superior) else None,
         )
+        self.criticidade = resultado.criticidade
+        self.classificacao_status = "CLASSIFICADA" if self.criticidade else "PENDENTE"
+        if self.criticidade:
+            criterio = limite["criterio"] or {}
+            self.criterio_aplicado = {
+                "motor": "termografia_criterio_v1", "modalidade": self.sistema, "motivo": "criterio_validado_aplicado",
+                "criterio_validado": {"id": criterio.get("id"), "origem": criterio.get("origem"),
+                                      "validacao": criterio.get("validacao"), "fonte": limite["fonte"]},
+                "limites_congelados": {nivel: str(valor) for nivel, valor in valores.items()},
+            }
+            self.diagnostico_sugerido = resultado.diagnostico
+        else:
+            self.criterio_aplicado = {"motor": "termografia_delta_v2", "modalidade": self.sistema,
+                                      "motivo": "criterio_nao_validado"}
+            self.diagnostico_sugerido = (
+                f"ΔT = {self.delta_t:.1f} °C. Critério específico do sistema ainda não validado; "
+                "o diferencial térmico não determina sozinho a condição do equipamento."
+            )
         self._campos_classificacao(kwargs)
         if kwargs.get("update_fields") is not None:
             kwargs["update_fields"].add("delta_t")
@@ -811,3 +833,53 @@ class AchadoImagem(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_tipo_display()} — Achado #{self.achado_id}"
+
+
+class CategoriaAnexo(models.TextChoices):
+    LAUDO_LABORATORIO = "LAUDO_LABORATORIO", "Laudo de laboratório"
+    PLANILHA = "PLANILHA", "Planilha / dados"
+    RELATORIO = "RELATORIO", "Relatório"
+    DOCUMENTO = "DOCUMENTO", "Documento"
+
+
+class AnexoDocumento(BaseModel):
+    """
+    Documento anexado à inspeção (Anexo I 2.3.1.3): PDF de laboratório, planilha, DOCX.
+
+    Vinculado a pelo menos um de inspeção, equipamento ou relatório, todos do MESMO
+    cliente (validado no serializer). Cliente só vê o que o interno marcou como
+    `visivel_cliente` (a regra de download fica em `apps.core.midia`).
+    """
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="anexos_documentos")
+    inspecao = models.ForeignKey(
+        Inspecao, on_delete=models.SET_NULL, null=True, blank=True, related_name="anexos_documentos",
+    )
+    equipamento = models.ForeignKey(
+        Equipamento, on_delete=models.SET_NULL, null=True, blank=True, related_name="anexos_documentos",
+    )
+    relatorio = models.ForeignKey(
+        Relatorio, on_delete=models.SET_NULL, null=True, blank=True, related_name="anexos_documentos",
+    )
+    categoria = models.CharField(
+        "Categoria", max_length=20, choices=CategoriaAnexo.choices, default=CategoriaAnexo.DOCUMENTO,
+    )
+    arquivo = models.FileField(
+        "Arquivo", upload_to="anexos/documentos/", storage=ArmazenamentoAnexo(), max_length=160,
+    )
+    nome_original = models.CharField("Nome original (sanitizado)", max_length=120)
+    tamanho_bytes = models.PositiveIntegerField("Tamanho (bytes)")
+    sha256 = models.CharField("SHA-256 do conteúdo", max_length=64)
+    descricao = models.CharField("Descrição", max_length=200, blank=True)
+    visivel_cliente = models.BooleanField("Visível para o cliente", default=False)
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="anexos_enviados", verbose_name="Enviado por",
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Anexo de documento"
+        verbose_name_plural = "Anexos de documento"
+
+    def __str__(self):
+        return f"{self.nome_original} — {self.cliente}"

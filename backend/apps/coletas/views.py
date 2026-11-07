@@ -11,10 +11,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import InternoEditaClienteVisualiza, IsInterno
+from apps.core.escopo import liberado_ao_cliente, restringe_setor, restringe_setor_por_filho, restringe_setor_por_filhos
 
 from .models import (
     Achado,
     AchadoImagem,
+    AnexoDocumento,
     Carregamento,
     Inspecao,
     ItemInspecao,
@@ -26,6 +28,7 @@ from .models import (
 )
 from .serializers import (
     AchadoImagemSerializer,
+    AnexoDocumentoSerializer,
     AchadoSerializer,
     CarregamentoListSerializer,
     CarregamentoSerializer,
@@ -129,6 +132,10 @@ class InspecaoViewSet(viewsets.ModelViewSet):
                 "medicoes_tecnicas__equipamento", "medicoes_tecnicas__componente",
             )
         )
+        # 2.1.1.6: inspeção aparece se alguma medição (de qualquer tipo) cai num setor permitido.
+        qs = restringe_setor_por_filhos(qs, self.request.user, [
+            (MedicaoVibracao, "inspecao"), (MedicaoTermografia, "inspecao"), (MedicaoTecnica, "inspecao"),
+        ])
         return escopo_cliente(qs, self.request.user)
 
     def get_serializer_class(self):
@@ -200,7 +207,7 @@ class MedicaoVibracaoViewSet(_MedicaoViewSetBase):
         qs = MedicaoVibracao.objects.select_related(
             "equipamento", "componente", "instrumento", "inspecao"
         )
-        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+        return restringe_setor(escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente"), self.request.user, "equipamento__setor")
 
 
 class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
@@ -213,7 +220,7 @@ class MedicaoTermografiaViewSet(_MedicaoViewSetBase):
         qs = MedicaoTermografia.objects.select_related(
             "equipamento", "componente", "instrumento", "inspecao"
         )
-        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+        return restringe_setor(escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente"), self.request.user, "equipamento__setor")
 
 
 class MedicaoTecnicaViewSet(_MedicaoViewSetBase):
@@ -226,7 +233,7 @@ class MedicaoTecnicaViewSet(_MedicaoViewSetBase):
         qs = MedicaoTecnica.objects.select_related(
             "equipamento", "componente", "instrumento", "inspecao"
         )
-        return escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente")
+        return restringe_setor(escopo_cliente(qs, self.request.user, campo_cliente="inspecao__cliente"), self.request.user, "equipamento__setor")
 
 
 # =============================================================================
@@ -374,7 +381,9 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
                     "itens", filter=Q(itens__condicao__isnull=True), distinct=True
                 ),
                 _qtd_achados=Count("itens__achados", distinct=True),
-            )
+            # `annotate` com agregação descarta o `Meta.ordering`: sem isto a página 2 podia
+            # repetir ou perder registros (paginação instável).
+            ).order_by("-criado_em", "-id")
         else:
             # No detalhe a folha de campo precisa da árvore inteira. Tipo do
             # equipamento e serviço corretivo entram aqui porque o
@@ -386,6 +395,10 @@ class CarregamentoViewSet(viewsets.ModelViewSet):
                 "itens__condicao", "itens__achados__imagens", "itens__servico_corretivo",
             )
 
+        # S-24: o cliente só vê rota transferida (rascunho de campo é interno).
+        qs = liberado_ao_cliente(qs, self.request.user, status=StatusCarregamento.TRANSFERIDA)
+        # 2.1.1.6: a rota aparece se tiver ao menos um item num setor permitido.
+        qs = restringe_setor_por_filho(qs, self.request.user, ItemInspecao, "carregamento")
         return escopo_cliente(qs, self.request.user)
 
     def get_serializer_class(self):
@@ -473,6 +486,9 @@ class ItemInspecaoViewSet(viewsets.ModelViewSet):
             )
             .prefetch_related("achados__imagens")
         )
+        # S-24: itens de rota ainda em campo não são do cliente.
+        qs = liberado_ao_cliente(qs, self.request.user, carregamento__status=StatusCarregamento.TRANSFERIDA)
+        qs = restringe_setor(qs, self.request.user, "equipamento__setor")
         return escopo_cliente(qs, self.request.user, campo_cliente="carregamento__cliente")
 
 
@@ -512,6 +528,9 @@ class AchadoViewSet(viewsets.ModelViewSet):
             )
             .prefetch_related("imagens")
         )
+        # S-24: achado não confirmado para o cliente (rascunho do escritório) fica fora.
+        qs = liberado_ao_cliente(qs, self.request.user, visivel_cliente=True)
+        qs = restringe_setor(qs, self.request.user, "item__equipamento__setor")
         return escopo_cliente(qs, self.request.user, campo_cliente="item__carregamento__cliente")
 
     def perform_destroy(self, instance):
@@ -535,9 +554,38 @@ class AchadoImagemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = AchadoImagem.objects.select_related("achado__item__carregamento")
+        # S-24: imagem de achado não liberado não aparece na API do cliente.
+        qs = liberado_ao_cliente(qs, self.request.user, achado__visivel_cliente=True)
+        qs = restringe_setor(qs, self.request.user, "achado__item__equipamento__setor")
         return escopo_cliente(
             qs, self.request.user, campo_cliente="achado__item__carregamento__cliente"
         )
+
+
+class AnexoDocumentoViewSet(viewsets.ModelViewSet):
+    """
+    Anexos de documento (Anexo I 2.3.1.3): laudo de laboratório, planilha, DOCX.
+    Interno envia e gerencia; cliente lê apenas os marcados como `visivel_cliente`
+    (o download é autenticado em /api/media, com a mesma regra).
+    """
+
+    serializer_class = AnexoDocumentoSerializer
+    permission_classes = [InternoEditaClienteVisualiza]
+    filterset_fields = ["cliente", "inspecao", "equipamento", "relatorio", "categoria"]
+
+    def get_queryset(self):
+        qs = AnexoDocumento.objects.select_related("cliente", "inspecao", "equipamento", "relatorio")
+        if self.request.user.is_cliente:
+            qs = qs.filter(visivel_cliente=True)
+        # 2.1.1.6: anexo de equipamento de setor fora da restrição some; anexo sem equipamento fica
+        # fechado para quem tem restrição (fail-closed, igual às fotos sem equipamento em midia.py).
+        return restringe_setor(escopo_cliente(qs, self.request.user, campo_cliente="cliente"), self.request.user, "equipamento__setor")
+
+    def perform_destroy(self, instance):
+        # O arquivo só sai do disco depois do commit: se a exclusão no banco falhar, o anexo continua íntegro.
+        armazenamento, nome = instance.arquivo.storage, instance.arquivo.name
+        super().perform_destroy(instance)
+        transaction.on_commit(lambda: armazenamento.delete(nome) if nome else None)
 
 
 def _painel(request, calcular):
@@ -616,12 +664,15 @@ class PortalVisaoGeralView(APIView):
         )
 
         # --- Escopos (cliente vê apenas o próprio parque) ---
-        equipamentos = escopo_cliente(Equipamento.objects.ativos(), user, "setor__area__cliente")
-        inspecoes = escopo_cliente(Inspecao.objects.ativos(), user)
-        vib = escopo_cliente(MedicaoVibracao.objects.all(), user, "inspecao__cliente")
-        termo = escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente")
-        tec = escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente")
-        osps = escopo_cliente(OrdemServico.objects.all(), user)
+        equipamentos = restringe_setor(escopo_cliente(Equipamento.objects.ativos(), user, "setor__area__cliente"), user, "setor")
+        # 2.1.1.6: com restrição de setor, a visão geral só conta o que está nesses setores.
+        inspecoes = restringe_setor_por_filhos(escopo_cliente(Inspecao.objects.ativos(), user), user, [
+            (MedicaoVibracao, "inspecao"), (MedicaoTermografia, "inspecao"), (MedicaoTecnica, "inspecao"),
+        ])
+        vib = restringe_setor(escopo_cliente(MedicaoVibracao.objects.all(), user, "inspecao__cliente"), user, "equipamento__setor")
+        termo = restringe_setor(escopo_cliente(MedicaoTermografia.objects.all(), user, "inspecao__cliente"), user, "equipamento__setor")
+        tec = restringe_setor(escopo_cliente(MedicaoTecnica.objects.all(), user, "inspecao__cliente"), user, "equipamento__setor")
+        osps = restringe_setor(escopo_cliente(OrdemServico.objects.all(), user), user, "equipamento__setor")
         # Mesma regra do LaudoViewSet: inclui os laudos do fluxo novo
         # (`relatorio_origem`) e o cliente documental, só os emitidos.
         from apps.relatorios import filtros as F

@@ -90,8 +90,8 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertEqual(r.status_code, 409)
 
     def test_modulo_planejado_avisa_que_nao_foi_implementado(self):
-        for modulo in (ModuloTecnico.ALINHAMENTO_EIXOS, ModuloTecnico.ENSAIO_ELETRICO_TC,
-                       ModuloTecnico.TERMOGRAFIA_MECANICA):
+        # Só módulos ainda sem relatório: alinhamento, termografia mecânica e RxI/QE já foram implementados.
+        for modulo in (ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_DJ):
             with self.subTest(modulo=modulo):
                 r = self.api.get(f"/api/relatorios-inspecao/{self.relatorio(modulo).pk}/dossie/")
                 self.assertEqual(r.status_code, 409)

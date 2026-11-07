@@ -1,5 +1,6 @@
 "use client";
 
+import { SetoresRestritos } from "@/features/usuarios/setores-restritos";
 import { useEffect, useState } from "react";
 import { Info, MailPlus } from "lucide-react";
 import {
@@ -358,6 +359,11 @@ export function FormularioUsuario({
           </FormGrid>
 
         </FormSection> : <Alert tone="info" icon={MailPlus}>O convite expira em 72 horas e só pode ser usado uma vez. A pessoa não consegue alterar o perfil ou o nível definidos aqui.</Alert>}
+        {editando && usuario?.is_cliente && (
+          <FormSection title="Setores permitidos" description="Restrinja o acesso a setores do cliente (opcional).">
+            <SetoresRestritos alvoId={usuario.id} clienteId={usuario.cliente} pelaEquipe={false} />
+          </FormSection>
+        )}
       </div>
     </Modal>
   );

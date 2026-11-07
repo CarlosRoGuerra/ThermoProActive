@@ -382,6 +382,7 @@ export function AnaliseFinal({ achadoId }: { achadoId: number }) {
           tecnologiaId={achado.tecnologia}
           camposTecnicosDesabilitados={!!achado.tipo_corretiva}
           ocultarVibracaoGlobal={achado.tipo_corretiva === "BALANCEAMENTO"}
+          achadoId={achado.id}
         />
       </Card>
 

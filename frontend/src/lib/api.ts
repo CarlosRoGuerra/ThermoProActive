@@ -22,6 +22,18 @@ async function ensureCsrf() {
   return csrfEmAndamento;
 }
 
+/**
+ * 403 por CSRF (cookie `csrftoken` apagado/expirado ou token rotacionado no
+ * servidor): o token em memória ficou velho. Descarta para buscar outro.
+ */
+async function csrfRecusado(res: Response): Promise<boolean> {
+  if (res.status !== 403) return false;
+  const texto = await res.clone().text().catch(() => "");
+  if (!/CSRF/i.test(texto)) return false;
+  csrfToken = "";
+  return true;
+}
+
 export class ApiError extends Error {
   status: number;
   data: unknown;
@@ -52,12 +64,16 @@ function tryRefresh(): Promise<boolean> {
 
   refreshEmAndamento = (async () => {
     try {
-      await ensureCsrf();
-      const res = await fetch(`${API_URL}/auth/session/refresh/`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "X-CSRFToken": csrfToken },
-      });
+      const renovar = async () => {
+        await ensureCsrf();
+        return fetch(`${API_URL}/auth/session/refresh/`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-CSRFToken": csrfToken },
+        });
+      };
+      let res = await renovar();
+      if (await csrfRecusado(res)) res = await renovar();
       if (!res.ok) {
         return false;
       }
@@ -115,6 +131,9 @@ export async function api<T = unknown>(path: string, opts: RequestOptions = {}):
   if (res.status === 401 && retry && (await tryRefresh())) {
     return api<T>(path, { ...opts, retry: false });
   }
+  if (retry && (await csrfRecusado(res))) {
+    return api<T>(path, { ...opts, retry: false });
+  }
 
   if (res.status === 204) return undefined as T;
 
@@ -162,14 +181,19 @@ export async function login(
   codigoMfa = ""
 ) {
   let res: Response;
-  try {
+  const enviar = async () => {
     await ensureCsrf();
-    res = await fetch(`${API_URL}/auth/${area}/login/`, {
+    return fetch(`${API_URL}/auth/${area}/login/`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
       body: JSON.stringify({ email, password, lembrar, codigo_mfa: codigoMfa }),
     });
+  };
+  try {
+    res = await enviar();
+    // O login exige CSRF: com o cookie sumido, uma nova tentativa com token novo.
+    if (await csrfRecusado(res)) res = await enviar();
   } catch {
     throw erroDeConexao();
   }

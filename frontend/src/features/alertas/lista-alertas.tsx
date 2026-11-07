@@ -28,6 +28,7 @@ import {
   useToast,
 } from "@/components/ds";
 import { api } from "@/lib/api";
+import { AvisoPush } from "@/features/push/aviso-push";
 import { useLista } from "@/lib/recurso";
 import { tempoRelativo, dataHora, plural } from "@/lib/format";
 import { destinoNoPortal } from "@/lib/permissions";
@@ -135,6 +136,7 @@ export function ListaAlertas({ ehCliente }: { ehCliente: boolean }) {
           ) : undefined
         }
       />
+      <AvisoPush />
 
       {itens.length > 0 && (
         <Toolbar

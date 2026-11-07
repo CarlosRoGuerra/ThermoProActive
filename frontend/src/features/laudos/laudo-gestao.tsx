@@ -13,6 +13,7 @@ import type { EventoLaudo, Laudo, Paginated, TemplateLaudo } from "@/lib/types";
 import { EditorRascunho } from "./editor-rascunho";
 import { LaudoDocumento } from "./laudo-documento";
 import { AnexosLaudo } from "./anexos-laudo";
+import { AssinaturaLaudo } from "./assinatura-laudo";
 
 function itens<T>(dados: T[] | Paginated<T> | null): T[] {
   return Array.isArray(dados) ? dados : dados?.results ?? [];
@@ -89,6 +90,7 @@ export function LaudoGestao({ laudoId }: { laudoId: string }) {
               <Badge tone={v.status === "EMITIDO" ? "success" : v.status === "CANCELADO" ? "danger" : "warning"}>{v.status_display}</Badge>
             </li>)}</ol>}
         </Card>
+        {laudo && <AssinaturaLaudo laudoId={laudo.id} numero={laudo.numero} emitido={laudo.status === "EMITIDO"} ehResponsavel={responsavel} />}
         <Card><h2 className="mb-3 font-semibold text-fg">Histórico de decisões</h2>
           {eventos.falha ? <Alert tone="warning" title="Histórico indisponível">{eventos.falha.descricao}<Button variant="link" onClick={eventos.recarregar}>Tentar novamente</Button></Alert> :
             <ol className="space-y-3">{itens(eventos.dados).map((e) => <li key={e.id} className="border-l-2 border-border pl-3">

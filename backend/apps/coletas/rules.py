@@ -185,14 +185,27 @@ class ResultadoTermografia:
 
 
 def classificar_termografia(
-    temperatura_ponto: Decimal, temperatura_referencia: Decimal
+    temperatura_ponto: Decimal, temperatura_referencia: Decimal, limites: dict | None = None,
 ) -> ResultadoTermografia:
-    """Registra o ΔT, mantendo a decisão técnica pendente de critério aplicável."""
+    """Classifica o ΔT pelo critério validado do sistema; sem critério, a decisão fica pendente.
+
+    `limites` = {"ALERTA": x, "CRITICO": y} do `LimiteAlarmeSerie` validado (sentido superior),
+    já resolvido por quem chama. Sem ele, criticidade vazia: nenhum limiar universal de ΔT.
+    """
+    from apps.coletas.ultrassom import classificar_superior
+
     from .analise_preditiva import numero_finito
     temperatura_ponto, temperatura_referencia = numero_finito(temperatura_ponto), numero_finito(temperatura_referencia)
     if temperatura_ponto is None or temperatura_referencia is None:
         return ResultadoTermografia(None, "", "Temperaturas ausentes ou inválidas; avaliação inconclusiva.")
     delta = temperatura_ponto - temperatura_referencia
+    if limites:
+        criticidade = classificar_superior(delta, limites)
+        return ResultadoTermografia(
+            delta_t=delta, criticidade=criticidade,
+            diagnostico=(f"ΔT = {delta:.1f}°C, classificada pelo critério validado do sistema: {criticidade}. "
+                         "O diferencial térmico, sozinho, não identifica a causa da condição."),
+        )
     diagnostico = (
         f"ΔT = {delta:.1f}°C (ponto {temperatura_ponto}°C / referência "
         f"{temperatura_referencia}°C). Classificação pendente de critério específico validado."

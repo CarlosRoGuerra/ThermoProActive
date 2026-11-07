@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { Paginated } from "@/lib/types";
 import { type AchadoForm, type TecnologiaTipo, deltaTPreview } from "@/lib/inspecoes";
 import { Field, Input, Select, Textarea } from "@/components/ds";
+import { SugestoesAchado } from "@/features/preditiva/sugestoes-achado";
 
 type CatOpt = {
   id: number;
@@ -32,6 +33,7 @@ export function AchadoCampos({
   tecnologiaId,
   camposTecnicosDesabilitados = false,
   ocultarVibracaoGlobal = false,
+  achadoId,
 }: {
   form: AchadoForm;
   setForm: (f: AchadoForm) => void;
@@ -48,6 +50,8 @@ export function AchadoCampos({
   // aceleração). Não depende do nome cadastrado da tecnologia (`tipo` acima é só
   // uma heurística por substring) — é decidido pelo `tipo_corretiva` real.
   ocultarVibracaoGlobal?: boolean;
+  // Achado já salvo: habilita o painel de sugestões técnicas (apps.preditiva).
+  achadoId?: number;
 }) {
   const [componentes, setComponentes] = useState<CatOpt[]>([]);
   const [anomalias, setAnomalias] = useState<CatOpt[]>([]);
@@ -153,6 +157,12 @@ export function AchadoCampos({
           <Input value={form.recomendacao_texto} onChange={(e) => set("recomendacao_texto", e.target.value)} />
         </Field>
       </fieldset>
+
+      {achadoId && (
+        <div className="mt-4">
+          <SugestoesAchado achadoId={achadoId} onAplicar={(id) => set("recomendacao", String(id))} />
+        </div>
+      )}
 
       {/* Observações fica fora do fieldset: sempre editável no escritório, mesmo na
           manutenção corretiva (não tem validação cruzada de catálogo). */}

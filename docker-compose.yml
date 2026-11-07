@@ -30,6 +30,8 @@ services:
     environment:
       SECRET_KEY: docker-dev-secret-troque-em-producao
       DEBUG: "True"
+      # Só o ambiente de DESENVOLVIMENTO semeia o usuário/dados de demonstração.
+      SEED_DEMO: "1"
       ALLOWED_HOSTS: localhost,127.0.0.1,backend
       DATABASE_URL: postgres://thermo:thermo@db:5432/thermoproactive
       # Porta do front (ajuste 1/2 se a porta mudar de novo).

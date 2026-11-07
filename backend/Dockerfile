@@ -33,5 +33,10 @@ EXPOSE 8000
 #   2) aplica as migrations. Se falhar, o container MORRE com o erro no log.
 #      (Antes o migrate ficava em loop e o gunicorn nunca subia: o sintoma virava
 #       um 502 no nginx, escondendo a mensagem real do banco.)
-#   3) coleta estáticos, semeia dados de demonstração e entrega o processo ao gunicorn.
-CMD ["sh", "-c", "n=0; until python manage.py showmigrations >/dev/null 2>&1 || [ $n -ge 30 ]; do n=$((n+1)); echo \"aguardando o banco de dados... ($n/30)\"; sleep 2; done; python manage.py migrate --noinput && python manage.py collectstatic --noinput && { python manage.py seed_demo || echo 'seed_demo ignorado'; } && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]
+#   3) coleta estáticos, semeia dados de demonstração SOMENTE se SEED_DEMO=1 e
+#      entrega o processo ao gunicorn.
+# SEED_DEMO é opt-in (o docker-compose.yml de desenvolvimento liga). Antes, este CMD
+# semeava SEMPRE — quem subisse a imagem sem sobrescrever o comando em produção
+# criaria o superusuário de demonstração com senha pública. Os composes de
+# produção (prod/http) já sobrescrevem o comando e nunca semeiam.
+CMD ["sh", "-c", "n=0; until python manage.py showmigrations >/dev/null 2>&1 || [ $n -ge 30 ]; do n=$((n+1)); echo \"aguardando o banco de dados... ($n/30)\"; sleep 2; done; python manage.py migrate --noinput && python manage.py collectstatic --noinput && { if [ \"${SEED_DEMO:-0}\" = 1 ]; then python manage.py seed_demo || echo 'seed_demo ignorado'; else echo 'seed_demo desligado (defina SEED_DEMO=1 só em desenvolvimento)'; fi; } && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"]

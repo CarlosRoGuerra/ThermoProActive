@@ -22,6 +22,7 @@ from .models import (
     FalhaRecorrente,
     GrupoAcesso,
     Instrumento,
+    Sensor,
     Norma,
     Rota,
     Setor,
@@ -47,6 +48,7 @@ from .serializers import (
     FalhaRecorrenteSerializer,
     GrupoAcessoSerializer,
     InstrumentoSerializer,
+    SensorSerializer,
     NormaSerializer,
     RotaSerializer,
     SetorSerializer,
@@ -146,6 +148,10 @@ class BaseCadastroViewSet(viewsets.ModelViewSet):
 
 
 class EmpresaViewSet(BaseCadastroViewSet):
+    # Cadastro do PRESTADOR (CNPJ, contato do gestor, e-mail): tela só da equipe interna
+    # (`prestadores:gerenciar`). O papel timbrado que o cliente vê já vai dentro do
+    # dossiê do relatório — o Portal não precisa listar `/empresas/` (achado A-05).
+    permission_classes = [IsInterno, InternoEditaClienteVisualiza]
     queryset = Empresa.objects.ativos()
     serializer_class = EmpresaSerializer
     search_fields = ["nome", "cnpj"]
@@ -201,11 +207,34 @@ class EquipamentoViewSet(BaseCadastroViewSet):
     serializer_class = EquipamentoSerializer
     pagination_class = CatalogoPagination
     filterset_fields = ["setor", "setor__area", "setor__area__cliente", "classe_iso"]
+
+    def get_queryset(self):
+        # Item 2.1.1.6: cliente com restrição de setor só enxerga equipamentos desses setores.
+        from apps.core.escopo import restringe_setor
+        return restringe_setor(super().get_queryset(), self.request.user, "setor")
     # Busca por TAG e número de série — como o cliente pediu na reunião.
     search_fields = ["tag", "nome", "fabricante", "modelo", "numero_serie"]
 
 
-class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
+class _RestricaoSetorEquipamentoMixin:
+    """2.1.1.6 nos cadastros ligados ao equipamento: restrição de setor pelo setor do equipamento.
+    Vale para lista e detalhe (o `get_object` passa por `get_queryset`), então fora do setor = 404."""
+
+    def get_queryset(self):
+        from apps.core.escopo import restringe_setor
+        return restringe_setor(super().get_queryset(), self.request.user, "equipamento__setor")
+
+
+class SensorViewSet(_RestricaoSetorEquipamentoMixin, BaseCadastroViewSet):
+    """Sensores instalados (Anexo I 3.1.11). Escopo do cliente pelo equipamento."""
+
+    campo_cliente = "equipamento__setor__area__cliente"
+    queryset = Sensor.objects.ativos().select_related("equipamento")
+    serializer_class = SensorSerializer
+    filterset_fields = ["equipamento", "tipo", "status"]
+
+
+class DadosTecnicosMotorViewSet(_RestricaoSetorEquipamentoMixin, BaseCadastroViewSet):
     """Datasheet de Motor Elétrico — acesso estruturado via /equipamentos/{id}/ (nested,
     somente leitura) e aqui para criar/editar (mesmo padrão de balanceamento-planos)."""
 
@@ -215,14 +244,14 @@ class DadosTecnicosMotorViewSet(BaseCadastroViewSet):
     filterset_fields = ["equipamento"]
 
 
-class DadosTecnicosTransformadorViewSet(BaseCadastroViewSet):
+class DadosTecnicosTransformadorViewSet(_RestricaoSetorEquipamentoMixin, BaseCadastroViewSet):
     campo_cliente = "equipamento__setor__area__cliente"
     queryset = DadosTecnicosTransformador.objects.ativos().select_related("equipamento")
     serializer_class = DadosTecnicosTransformadorSerializer
     filterset_fields = ["equipamento"]
 
 
-class ComponenteViewSet(BaseCadastroViewSet):
+class ComponenteViewSet(_RestricaoSetorEquipamentoMixin, BaseCadastroViewSet):
     campo_cliente = "equipamento__setor__area__cliente"
     queryset = Componente.objects.ativos().select_related("equipamento")
     serializer_class = ComponenteSerializer

@@ -138,8 +138,11 @@ def emitir_laudo(laudo, usuario, request=None):
     from .snapshots import montar_snapshot, hash_snapshot
     from .pdf import congelar_imagens, gerar_pdf, ErroGeracaoPDF
 
-    laudo = Laudo.objects.select_for_update().select_related("responsavel", "template", "inspecao__cliente",
-                                                             "relatorio_origem__cliente").get(pk=laudo.pk)
+    # of=("self",): o PostgreSQL recusa FOR UPDATE no lado anulável de um LEFT JOIN
+    # (template/inspecao/relatorio_origem são opcionais); trava só o laudo.
+    laudo = Laudo.objects.select_for_update(of=("self",)).select_related(
+        "responsavel", "template", "inspecao__cliente", "relatorio_origem__cliente"
+    ).get(pk=laudo.pk)
     validar_responsavel(laudo, usuario)
     if laudo.status == StatusLaudo.EMITIDO:
         return laudo, False

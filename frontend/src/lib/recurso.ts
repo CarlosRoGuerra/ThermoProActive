@@ -33,7 +33,16 @@ export type Recurso<T> = {
  *   buscar ainda — é o caso de telas que dependem de um cliente ativo.
  * @param contexto Nome do carregamento no log de falhas (não aparece na tela).
  */
-export function useRecurso<T>(caminho: string | null, contexto = "carregamento"): Recurso<T> {
+export type OpcoesRecurso = {
+  /** Atualização silenciosa (sem mostrar "carregando"); pausa com a aba oculta. */
+  atualizarACadaMs?: number;
+};
+
+export function useRecurso<T>(
+  caminho: string | null,
+  contexto = "carregamento",
+  opcoes: OpcoesRecurso = {}
+): Recurso<T> {
   const [dados, setDados] = useState<T | null>(null);
   const [falha, setFalha] = useState<Falha | null>(null);
   const [carregando, setCarregando] = useState<boolean>(caminho !== null);
@@ -77,6 +86,38 @@ export function useRecurso<T>(caminho: string | null, contexto = "carregamento")
   }, [caminho, tentativa]);
 
   const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
+
+  // Item 2.8.1.3.4: painel que se atualiza sozinho. Busca em silêncio (sem piscar o estado de
+  // carregamento), não roda com a aba oculta e, se uma busca falhar, mantém o último dado válido.
+  const intervalo = opcoes.atualizarACadaMs;
+  useEffect(() => {
+    if (caminho === null || !intervalo) return;
+    let temporizador: ReturnType<typeof setInterval> | undefined;
+    const buscar = () => {
+      api<T>(caminho).then((resposta) => setDados(resposta)).catch(() => undefined);
+    };
+    const iniciar = () => {
+      if (temporizador === undefined) temporizador = setInterval(buscar, intervalo);
+    };
+    const parar = () => {
+      if (temporizador !== undefined) clearInterval(temporizador);
+      temporizador = undefined;
+    };
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === "visible") {
+        buscar();
+        iniciar();
+      } else {
+        parar();
+      }
+    };
+    if (document.visibilityState === "visible") iniciar();
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    return () => {
+      parar();
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+    };
+  }, [caminho, intervalo]);
 
   const definirDados = useCallback(
     (atualizar: T | null | ((atual: T | null) => T | null)) => {

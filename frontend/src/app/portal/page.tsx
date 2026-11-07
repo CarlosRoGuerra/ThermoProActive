@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -36,6 +37,7 @@ import { data as fmtData, plural } from "@/lib/format";
 import { destinoNoPortal } from "@/lib/permissions";
 import type { PortalHistoricoItem, PortalVisaoGeral } from "@/lib/types";
 import { BoasVindasPortal } from "@/features/portal/onboarding";
+import { GraficoRosca } from "@/components/graficos-interativos";
 
 const ICONE_HISTORICO: Record<PortalHistoricoItem["tipo"], LucideIcon> = {
   laudo: ScrollText,
@@ -72,10 +74,16 @@ const ATALHOS: { href: string; label: string; descricao: string; icon: LucideIco
 
 export default function PortalInicioPage() {
   const { user } = useAuth();
+  // Item 2.8.1.3.4: o painel se atualiza sozinho (a cada minuto; pausa com a aba oculta).
   const { dados, falha, carregando, recarregar } = useRecurso<PortalVisaoGeral>(
     "/portal/visao-geral/",
-    "visão geral do portal"
+    "visão geral do portal",
+    { atualizarACadaMs: 60_000 }
   );
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
+  useEffect(() => {
+    if (dados) setAtualizadoEm(new Date());
+  }, [dados]);
 
   const nomeCliente = dados?.cliente?.nome ?? "sua operação";
 
@@ -98,6 +106,12 @@ export default function PortalInicioPage() {
 
       {user && <BoasVindasPortal user={user} visao={dados} />}
 
+      {atualizadoEm && (
+        <p className="-mt-2 mb-4 text-xs text-fg-subtle">
+          Atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · atualiza sozinho a cada minuto
+        </p>
+      )}
+
       {carregando ? (
         <LoadingState variante="indicadores" colunas={4} label="Carregando a visão geral…" />
       ) : falha ? (
@@ -112,6 +126,9 @@ export default function PortalInicioPage() {
 function Conteudo({ dados }: { dados: PortalVisaoGeral }) {
   const ind = dados.indicadores;
   const saudaveis = Math.max(0, ind.equipamentos_monitorados - ind.equipamentos_atencao);
+  // Estado do parque: sem ocorrência = saudáveis menos os que aguardam avaliação (fatia própria).
+  const pendentes = ind.equipamentos_pendentes ?? 0;
+  const semOcorrencia = Math.max(0, saudaveis - pendentes);
   const indice = ind.indice_disponibilidade;
   const tomDisponibilidade =
     indice === null ? "neutral" : indice >= 95 ? "success" : indice >= 80 ? "warning" : "danger";
@@ -162,6 +179,23 @@ function Conteudo({ dados }: { dados: PortalVisaoGeral }) {
           hrefLabel="Consultar"
         />
       </MetricGrid>
+
+      <Card className="mb-4">
+        <CardHeader
+          title="Estado do parque"
+          description="Equipamentos monitorados por condição. Passe o mouse ou clique numa fatia para ver a lista correspondente."
+          icon={Activity}
+        />
+        <GraficoRosca
+          descricao={`Estado do parque: ${semOcorrencia} sem ocorrência crítica, ${ind.equipamentos_atencao} exigem intervenção e ${pendentes} aguardam avaliação.`}
+          centro={{ valor: String(ind.equipamentos_monitorados), rotulo: "monitorados" }}
+          fatias={[
+            { chave: "ok", rotulo: "Sem ocorrência crítica", valor: semOcorrencia, cor: "var(--success)", destino: "/portal/equipamentos" },
+            { chave: "atencao", rotulo: "Exigem intervenção", valor: ind.equipamentos_atencao, cor: "var(--danger)", destino: "/portal/equipamentos?estado=critico" },
+            { chave: "pendente", rotulo: "Aguardando avaliação", valor: pendentes, cor: "var(--fg-subtle)", destino: "/portal/equipamentos" },
+          ]}
+        />
+      </Card>
 
       <SplitLayout
         principal={

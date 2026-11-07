@@ -55,6 +55,15 @@ class Laudo(TimeStampedModel):
     assinatura = models.JSONField(default=dict, blank=True, editable=False)
     pdf_conteudo = models.BinaryField(null=True, editable=False)
     pdf_hash = models.CharField(max_length=64, blank=True, editable=False)
+    # Item 2.5.1.3 — assinatura PAdES (invisível) sobre o PDF emitido. O design aprovado não muda:
+    # o PDF assinado é uma cópia com a assinatura incremental; `pdf_hash` continua o do original.
+    pdf_assinado_conteudo = models.BinaryField(null=True, editable=False)
+    pdf_assinado_sha256 = models.CharField(max_length=64, blank=True, editable=False)
+    assinatura_titular = models.CharField(max_length=255, blank=True, editable=False)
+    assinatura_emissor = models.CharField(max_length=255, blank=True, editable=False)
+    assinatura_serial = models.CharField(max_length=80, blank=True, editable=False)
+    assinatura_certificado_sha256 = models.CharField(max_length=64, blank=True, editable=False)
+    assinatura_em = models.DateTimeField(null=True, blank=True, editable=False)
     cancelado_em = models.DateTimeField(null=True, blank=True, editable=False)
     cancelado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                        null=True, blank=True, related_name="laudos_cancelados", editable=False)

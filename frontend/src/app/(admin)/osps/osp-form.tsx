@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Calculator, Save, Wrench } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { PainelExecucaoOSP } from "@/features/osp/painel-execucao";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { useClientes } from "@/lib/hierarquia";
 import { usePermissoes } from "@/lib/permissions";
@@ -489,6 +490,11 @@ export function OspForm({ ospId }: { ospId?: number }) {
         </Button>
       </span>
       </FormActions>
+      {editando && ospId !== undefined && (
+        <div className="mt-6">
+          <PainelExecucaoOSP ospId={ospId} modo="interno" />
+        </div>
+      )}
     </PageBody>
   );
 }

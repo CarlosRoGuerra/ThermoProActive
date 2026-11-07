@@ -225,6 +225,21 @@ e completude; não foi criado replay geral para os motores laboratoriais/correti
 | AP09 | Homologar qualidade do balanceamento, tolerâncias de alinhamento e hipóteses de economia | Cálculos existentes mantidos com limitação explícita; redução ≥50% não promovida a norma |
 | AP10 | Definir eventual prognóstico/IA: objetivo, dados rotulados, métricas, validação, operação e orçamento, somente se desejado | Nenhum modelo/serviço externo obrigatório; sem probabilidade de falha ou vida restante |
 
+## Complementos de 2.4.1.3, 2.4.1.5 e 2.4.2.4 (documento 23)
+
+Detalhe técnico em [docs/23](23-ANALISE-PREDITIVA-COMPLEMENTOS.md). Matriz, todos
+os itens em **C** (concluído) com seus limites:
+
+| Item | Entrega | Limite honesto | Situação |
+| --- | --- | --- | --- |
+| 2.4.1.3 Tendência | Regressão linear e log-linear, escolha por R² ajustado com margem, teste t da inclinação, IC 95% da reta, data até ALERTA/CRITICO só com limite validado | Extrapolação de 4 a 8 pontos; não é probabilidade de falha; fluidos sem projeção | C (vibração, termografia, técnicas com limite) |
+| 2.4.1.5 Risco | Índice por equipamento = 100 × p × c (condição, tendência, criticidade A/B/C), matriz cadastrada, ranking com decomposição, escopo de cliente | Priorização, não probabilidade; pesos e faixas provisórios | C (padrão provisório a confirmar) |
+| 2.4.2.4 Sugestões | Regras cadastradas por Master e histórico do mesmo cliente (mínimo 3 ocorrências), aceitação/edição/rejeição registrada, aderência medida | Sem regra nem histórico, nenhuma sugestão; não aplica sozinha | C (regras a cadastrar pelo cliente) |
+
+Pendências que continuam abertas: texto no laudo (Agente 2), painel de sugestões
+e tendência nas telas de inspeção (Agente 1), projeção de fluidos e prognóstico/IA
+(AP10).
+
 ## Implementação e verificação desta entrega
 
 Arquivos alterados/criados neste complemento:

@@ -308,6 +308,11 @@ class OrdemServico(TimeStampedModel):
     custo_real = models.DecimalField(
         "Custo real (R$)", max_digits=12, decimal_places=2, null=True, blank=True
     )
+    # Soma das peças aplicadas (2.6.2.7). Entra no custo real; NÃO altera o ROI,
+    # que continua em `total_preditiva`/`total_emergencial` (estimativas).
+    custo_material_real = models.DecimalField(
+        "Material aplicado (R$)", max_digits=12, decimal_places=2, null=True, blank=True, editable=False,
+    )
 
     objects = OrdemServicoQuerySet.as_manager()
 
@@ -564,6 +569,7 @@ class TipoHistorico(models.TextChoices):
     EDICAO = "EDICAO", "Edição"
     RETORNO_CLIENTE = "RETORNO_CLIENTE", "Retorno do cliente"
     SLA = "SLA", "Alteração de prazo (SLA)"
+    ASSINATURA = "ASSINATURA", "Assinatura do cliente"
 
 
 class HistoricoOSP(models.Model):
@@ -604,3 +610,181 @@ class HistoricoOSP(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError("O histórico da OSP não pode ser apagado.")
+
+
+# --- Itens 2.6.2.2 a 2.6.2.8 (checklist, evidências, peças, execução, assinatura) ---
+
+class ModeloChecklist(TimeStampedModel):
+    """
+    Modelo de checklist técnico cadastrado pelo Master (2.6.2.2). Vale para uma
+    tecnologia e/ou um tipo de equipamento; campo vazio = "qualquer um".
+    `obrigatorio_para_finalizar`: sem todos os itens obrigatórios respondidos,
+    a OSP não pode ser finalizada.
+    """
+
+    nome = models.CharField("Nome do modelo", max_length=120)
+    tecnologia = models.ForeignKey(
+        "cadastros.TecnologiaAnalise", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="modelos_checklist", verbose_name="Tecnologia",
+    )
+    tipo_equipamento = models.ForeignKey(
+        "cadastros.TipoEquipamento", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="modelos_checklist", verbose_name="Tipo de equipamento",
+    )
+    obrigatorio_para_finalizar = models.BooleanField("Exige preenchimento para finalizar", default=True)
+    ativo = models.BooleanField("Ativo", default=True)
+
+    class Meta:
+        verbose_name = "Modelo de checklist"
+        verbose_name_plural = "Modelos de checklist"
+        ordering = ["nome", "id"]
+
+    def __str__(self):
+        return self.nome
+
+
+class ItemModeloChecklist(models.Model):
+    modelo = models.ForeignKey(ModeloChecklist, on_delete=models.CASCADE, related_name="itens")
+    ordem = models.PositiveSmallIntegerField("Ordem", default=1)
+    descricao = models.CharField("Item", max_length=240)
+    obrigatorio = models.BooleanField("Obrigatório", default=True)
+
+    class Meta:
+        verbose_name = "Item de checklist"
+        verbose_name_plural = "Itens de checklist"
+        ordering = ["modelo_id", "ordem", "id"]
+
+    def __str__(self):
+        return self.descricao
+
+
+class SituacaoItem(models.TextChoices):
+    CONFORME = "CONFORME", "Conforme"
+    NAO_CONFORME = "NAO_CONFORME", "Não conforme"
+    NAO_SE_APLICA = "NAO_SE_APLICA", "Não se aplica"
+
+
+class RespostaChecklist(TimeStampedModel):
+    """Resposta de um item do checklist dentro de UMA OSP (2.6.2.2)."""
+
+    osp = models.ForeignKey(OrdemServico, on_delete=models.CASCADE, related_name="respostas_checklist")
+    item = models.ForeignKey(ItemModeloChecklist, on_delete=models.PROTECT, related_name="respostas")
+    situacao = models.CharField("Situação", max_length=16, choices=SituacaoItem.choices)
+    observacao = models.TextField("Observação", blank=True)
+    respondido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Resposta de checklist"
+        verbose_name_plural = "Respostas de checklist"
+        constraints = [
+            models.UniqueConstraint(fields=["osp", "item"], name="uniq_resposta_checklist_osp_item"),
+        ]
+
+
+class FaseEvidencia(models.TextChoices):
+    ANTES = "ANTES", "Antes"
+    DURANTE = "DURANTE", "Durante"
+    DEPOIS = "DEPOIS", "Depois"
+    OUTRA = "OUTRA", "Outra"
+
+
+class EvidenciaOSP(TimeStampedModel):
+    """Foto enviada direto na OSP (2.6.2.4), antes/durante/depois da execução."""
+
+    osp = models.ForeignKey(OrdemServico, on_delete=models.CASCADE, related_name="evidencias_osp")
+    fase = models.CharField("Fase", max_length=8, choices=FaseEvidencia.choices, default=FaseEvidencia.DEPOIS)
+    arquivo = models.ImageField("Foto", upload_to="osp/evidencias/", max_length=160)
+    legenda = models.CharField("Legenda", max_length=200, blank=True)
+    enviado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Evidência da OSP"
+        verbose_name_plural = "Evidências da OSP"
+        ordering = ["fase", "id"]
+
+
+class PecaOSP(TimeStampedModel):
+    """Peça ou material aplicado na execução (2.6.2.7)."""
+
+    osp = models.ForeignKey(OrdemServico, on_delete=models.CASCADE, related_name="pecas")
+    descricao = models.CharField("Descrição", max_length=200)
+    codigo = models.CharField("Código", max_length=60, blank=True)
+    quantidade = models.DecimalField("Quantidade", max_digits=12, decimal_places=3)
+    unidade = models.CharField("Unidade", max_length=10, default="un")
+    custo_unitario = models.DecimalField("Custo unitário (R$)", max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = "Peça aplicada"
+        verbose_name_plural = "Peças aplicadas"
+        ordering = ["criado_em", "id"]
+
+    @property
+    def custo_total(self) -> Decimal:
+        return (self.quantidade or Decimal("0")) * (self.custo_unitario or Decimal("0"))
+
+
+class OrigemApontamento(models.TextChoices):
+    TRANSICAO = "TRANSICAO", "Registrado pela mudança de status"
+    MANUAL = "MANUAL", "Apontado pela equipe"
+
+
+class ApontamentoExecucao(TimeStampedModel):
+    """
+    Intervalo de execução (2.6.2.8). Abre ao entrar em EM_EXECUCAO e fecha ao sair
+    (transição), ou é apontado à mão com início e fim. A duração total é a soma dos
+    intervalos fechados.
+    """
+
+    osp = models.ForeignKey(OrdemServico, on_delete=models.CASCADE, related_name="apontamentos")
+    inicio = models.DateTimeField("Início")
+    fim = models.DateTimeField("Fim", null=True, blank=True)
+    origem = models.CharField("Origem", max_length=10, choices=OrigemApontamento.choices)
+    ator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    observacao = models.CharField("Observação", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "Apontamento de execução"
+        verbose_name_plural = "Apontamentos de execução"
+        ordering = ["inicio", "id"]
+
+    @property
+    def duracao_minutos(self) -> int | None:
+        if self.fim is None:
+            return None
+        return int((self.fim - self.inicio).total_seconds() // 60)
+
+
+class AssinaturaOSP(models.Model):
+    """
+    Aceite do cliente sobre o estado da OSP (2.6.2.6). Imutável: nunca é editada
+    nem apagada. `estado_sha256` é o hash do estado da OSP no momento da assinatura.
+    """
+
+    osp = models.OneToOneField(OrdemServico, on_delete=models.CASCADE, related_name="assinatura")
+    nome = models.CharField("Nome do signatário", max_length=160)
+    cargo = models.CharField("Cargo", max_length=120)
+    assinado_em = models.DateTimeField("Assinado em")
+    ip = models.GenericIPAddressField("IP", null=True, blank=True)
+    estado_sha256 = models.CharField("SHA-256 do estado da OSP", max_length=64)
+    imagem = models.ImageField("Assinatura desenhada", upload_to="osp/assinaturas/", max_length=160)
+    assinado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "Assinatura da OSP"
+        verbose_name_plural = "Assinaturas da OSP"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValueError("A assinatura da OSP é imutável.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("A assinatura da OSP não pode ser apagada.")

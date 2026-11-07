@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Clock, Plus, TriangleAlert, Wrench } from "lucide-react";
 import {
   Alert,
@@ -88,10 +88,22 @@ function codigo(o: OrdemServico): string {
 
 type Filtro = "abertas" | "vencidas" | "todas";
 
+/** Valores de `criticidade_origem` aceitos pelo servidor, com o rótulo do chip de filtro. */
+const ROTULO_CRITICIDADE_ORIGEM = {
+  CRITICO: "crítica",
+  ALERTA: "alerta",
+  NORMAL: "normal",
+} as const;
+
 export default function OspsPage() {
   const toast = useToast();
   const { pode, podeEditar } = usePermissoes();
   const router = useRouter();
+  const parametros = useSearchParams();
+  // Drill-down do painel: `?criticidade_origem=CRITICO|ALERTA|NORMAL` (valor fora da lista é ignorado aqui
+  // e o servidor responderia 400; por isso a tela só repassa o que conhece).
+  const criticidadeUrl = parametros?.get("criticidade_origem") ?? "";
+  const criticidade = (ROTULO_CRITICIDADE_ORIGEM as Record<string, string>)[criticidadeUrl] ? criticidadeUrl : "";
   const { clienteAtivo } = useClienteAtivo();
   const { opcoes: opcoesClientes } = useClientes();
   const [cliente, setCliente] = useState<number | "">(clienteAtivo?.id ?? "");
@@ -104,7 +116,7 @@ export default function OspsPage() {
   }, [clienteAtivo]);
 
   const lista = useLista<OrdemServico>(
-    `/osps/${qs({ ordering: "-criado_em", page_size: 300, cliente })}`,
+    `/osps/${qs({ ordering: "-criado_em", page_size: 300, cliente, criticidade_origem: criticidade })}`,
     "ordens de serviço"
   );
   const mutacao = useMutacao("mudança de status da OSP");
@@ -352,6 +364,11 @@ export default function OspsPage() {
                 { valor: "todas", label: "Todas" },
               ]}
             />
+            {criticidade && (
+              <Link href="/osps" className="self-end pb-2 text-sm text-primary underline-offset-2 hover:underline">
+                Origem: criticidade {ROTULO_CRITICIDADE_ORIGEM[criticidade as keyof typeof ROTULO_CRITICIDADE_ORIGEM]} · limpar filtro
+              </Link>
+            )}
           </>
         }
       />

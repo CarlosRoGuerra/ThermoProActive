@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from . import criterios
 from .models import (
+    Sensor,
     Area,
     CLASSES_VIGENTES,
     CategoriaTecnica,
@@ -413,3 +414,48 @@ class RotaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rota
         exclude = ["ativo"]
+
+    def validate(self, attrs):
+        # O M2M `equipamentos` não passa pela guarda de `campo_cliente` das views (que só
+        # olha o campo `cliente` da própria rota): sem esta checagem, uma rota do cliente A
+        # carregava equipamentos do cliente B para dentro da folha de campo (achado A-02).
+        cliente = attrs.get("cliente") or getattr(self.instance, "cliente", None)
+        if "equipamentos" in attrs:
+            equipamentos = attrs["equipamentos"]
+        elif self.instance is not None and "cliente" in attrs:
+            equipamentos = list(self.instance.equipamentos.all())  # trocou o cliente: revalida os atuais
+        else:
+            equipamentos = []
+        if cliente is not None:
+            alheios = [
+                e.tag for e in equipamentos
+                if (e.setor.area.cliente_id if e.setor_id else None) != cliente.pk
+            ]
+            if alheios:
+                raise serializers.ValidationError({
+                    "equipamentos": "Há equipamentos de outro cliente nesta rota: " + ", ".join(sorted(alheios)) + "."
+                })
+        return attrs
+
+
+class SensorSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source="get_tipo_display", read_only=True)
+    equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = Sensor
+        exclude = ["ativo"]
+
+    def validate(self, attrs):
+        from datetime import date
+
+        minimo = attrs.get("faixa_minima", getattr(self.instance, "faixa_minima", None))
+        maximo = attrs.get("faixa_maxima", getattr(self.instance, "faixa_maxima", None))
+        if minimo is not None and maximo is not None and minimo > maximo:
+            raise serializers.ValidationError({"faixa_maxima": "A faixa máxima deve ser maior que a mínima."})
+        for campo in ("data_instalacao", "data_ultima_calibracao"):
+            valor = attrs.get(campo)
+            if valor and valor > date.today():
+                raise serializers.ValidationError({campo: "A data não pode ser futura."})
+        return attrs

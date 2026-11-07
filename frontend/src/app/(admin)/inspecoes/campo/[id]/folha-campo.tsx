@@ -50,6 +50,7 @@ import {
 import { PainelEquipamento } from "@/features/inspecoes/campo/painel-equipamento";
 import { PainelPendencias } from "@/features/inspecoes/campo/painel-pendencias";
 import { estadoDoItem } from "@/features/inspecoes/campo/progresso";
+import { AnexosDocumentos } from "@/features/inspecoes/anexos-documentos";
 import { condicoesEmOrdem } from "@/features/inspecoes/campo/seletor-condicao";
 
 const ddmmaaaa = (iso: string | null) => (iso ? iso.split("-").reverse().join("/") : "—");
@@ -644,6 +645,18 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
         <Card>
           <p className="text-sm text-danger-fg">{msg}</p>
         </Card>
+      )}
+
+      {/* Documentos do relatório desta inspeção (Anexo I 2.3.1.3). */}
+      {carreg.relatorio && (
+        <div className="mb-3">
+          <AnexosDocumentos
+            cliente={carreg.cliente}
+            relatorio={carreg.relatorio}
+            titulo="Documentos da inspeção"
+            podeEditar={!!user?.is_interno}
+          />
+        </div>
       )}
 
       {/* ---------- Mestre-detalhe ---------- */}

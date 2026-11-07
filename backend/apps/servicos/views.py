@@ -23,11 +23,9 @@ from .serializers import (
 )
 
 
-def escopo_cliente(qs, user, campo_cliente="cliente"):
-    """Perfis cliente só enxergam os próprios serviços (Portal — item 2.7)."""
-    if user.is_cliente:
-        return qs.filter(**{campo_cliente: user.cliente_id})
-    return qs
+# Filtro de tenant ÚNICO do projeto (falha fechada p/ cliente sem `cliente_id`, item 2.7):
+# a cópia local que existia aqui tinha semântica diferente das demais (achado A-04).
+from apps.coletas.views import escopo_cliente  # noqa: E402,F401
 
 
 class ServicoCampoViewSet(viewsets.ModelViewSet):

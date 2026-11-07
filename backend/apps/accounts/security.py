@@ -31,9 +31,25 @@ def hash_ip(ip: str) -> str:
     return hmac.new(chave, ip.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def metadados_requisicao(request) -> dict:
+def ip_do_cliente(request) -> str:
+    """
+    IP do cliente sem confiar em X-Forwarded-For forjável: o primeiro item do
+    cabeçalho é o que o PRÓPRIO cliente mandou; só o que o nosso proxy acrescentou
+    (os últimos NUM_PROXIES itens) é confiável. Mesma regra do throttle do DRF.
+    """
+    from rest_framework.settings import api_settings
+
+    proxies = api_settings.NUM_PROXIES
     encaminhado = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    ip = encaminhado.split(",")[0].strip() if encaminhado else request.META.get("REMOTE_ADDR", "")
+    if proxies and encaminhado:
+        itens = [i.strip() for i in encaminhado.split(",") if i.strip()]
+        if itens:
+            return itens[-min(proxies, len(itens))]
+    return request.META.get("REMOTE_ADDR", "")
+
+
+def metadados_requisicao(request) -> dict:
+    ip = ip_do_cliente(request)
     return {
         "ip_hash": hash_ip(ip),
         "user_agent": request.META.get("HTTP_USER_AGENT", "")[:300],
@@ -149,7 +165,11 @@ def enviar_email_convite(convite, token: str):
 
 
 def _fernet() -> Fernet:
-    chave = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+    # Chave própria do MFA quando definida (MFA_ENCRYPTION_KEY); senão, como sempre, derivada
+    # do SECRET_KEY — assim os segredos TOTP já gravados continuam decifráveis. Trocar a chave
+    # exige recadastrar o MFA dos usuários (ou recifrar os segredos antes).
+    semente = getattr(settings, "MFA_ENCRYPTION_KEY", "") or settings.SECRET_KEY
+    chave = hashlib.sha256(semente.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(chave))
 
 

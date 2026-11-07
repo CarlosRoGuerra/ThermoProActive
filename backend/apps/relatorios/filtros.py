@@ -14,7 +14,9 @@ from datetime import date, datetime
 
 from django.db.models import Exists, OuterRef, Q
 
+from apps.coletas.models import MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
 from apps.coletas.views import escopo_cliente
+from apps.core.escopo import restringe_setor, restringe_setor_por_filhos
 
 
 class FiltroInvalido(ValueError):
@@ -80,6 +82,9 @@ def aplicar(qs, user, f: Filtros, *, cliente: str, data: str | None = None, equi
     recorte de parque, para não ignorar o filtro em silêncio.
     """
     qs = escopo_cliente(qs, user, cliente)
+    if equipamento:
+        # 2.1.1.6: cliente com restrição de setor só entra no que está nesses setores.
+        qs = restringe_setor(qs, user, f"{equipamento}__setor")
     if f.cliente:
         qs = qs.filter(**{cliente: f.cliente})
     if data:
@@ -110,10 +115,14 @@ def inspecoes(user, f: Filtros, base=None):
     Inspeções no escopo. A inspeção não tem equipamento: com recorte de parque,
     entram as que têm ao menos uma medição de equipamento do recorte.
     """
-    from apps.coletas.models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
+    from apps.coletas.models import Inspecao
 
     qs = aplicar(base if base is not None else Inspecao.objects.ativos(), user, f.sem_parque(),
                  cliente="cliente", data="data")
+    # 2.1.1.6: inspeção entra se alguma medição (de qualquer tipo) cai num setor permitido.
+    qs = restringe_setor_por_filhos(qs, user, [
+        (MedicaoVibracao, "inspecao"), (MedicaoTermografia, "inspecao"), (MedicaoTecnica, "inspecao"),
+    ])
     if f.recorte_de_parque:
         alguma = Q()
         for modelo in (MedicaoVibracao, MedicaoTermografia, MedicaoTecnica):
@@ -147,6 +156,7 @@ def equipamentos(user, f: Filtros):
     from apps.cadastros.models import Equipamento
 
     qs = escopo_cliente(Equipamento.objects.ativos(), user, "setor__area__cliente")
+    qs = restringe_setor(qs, user, "setor")
     if f.cliente:
         qs = qs.filter(setor__area__cliente=f.cliente)
     if f.equipamento:
@@ -168,6 +178,14 @@ def laudos(user, f: Filtros, *, data="data_emissao__date"):
             return qs.none()
         qs = qs.filter(Q(status=StatusLaudo.EMITIDO) | Q(status=StatusLaudo.CANCELADO, data_emissao__isnull=False))
         qs = qs.filter(Laudo.q_do_cliente(user.cliente_id))
+        # 2.1.1.6: com restrição de setor, só laudo de inspeção com medição nesses setores.
+        from apps.coletas.models import Inspecao
+        from apps.core.escopo import setores_restritos
+        if setores_restritos(user) is not None:
+            inspecoes_ok = restringe_setor_por_filhos(Inspecao.objects.all(), user, [
+                (MedicaoVibracao, "inspecao"), (MedicaoTermografia, "inspecao"), (MedicaoTecnica, "inspecao"),
+            ])
+            qs = qs.filter(inspecao__in=inspecoes_ok)
     if f.cliente:
         qs = qs.filter(Laudo.q_do_cliente(f.cliente))
     if data:

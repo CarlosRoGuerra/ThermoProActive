@@ -1,19 +1,22 @@
 # ThermoProActive — Backend (Django + DRF)
 # Stack 100% open-source, sem lock-in (Cláusula 12.4 do contrato).
 
-Django==5.1.4
-djangorestframework==3.15.2
-djangorestframework-simplejwt==5.3.1
+Django==5.2.18                    # série LTS (suporte até abr/2028); 5.1 saiu de suporte em dez/2025
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.6.0
 django-filter==24.3
 drf-spectacular==0.28.0          # OpenAPI/Swagger — documentação automática da API
 dj-database-url==2.3.0           # DATABASE_URL portável (Postgres em prod, SQLite em dev)
 django-environ==0.11.2           # leitura de variáveis de ambiente (.env)
 psycopg[binary]==3.2.3           # driver PostgreSQL
-Pillow==11.0.0                   # upload/processamento de imagens (evidências)
+Pillow==13.0.0                   # upload/processamento de imagens (evidências)
 openpyxl==3.1.5                   # exportação de relatórios em Excel (.xlsx)
 reportlab==4.2.5                  # exportação de relatórios em PDF (server-side)
 python-docx==1.1.2                # geração da Carta ao Cliente em .docx (MIT)
 gunicorn==23.0.0                 # WSGI server para produção (VPS Linux)
 whitenoise==6.8.2                # arquivos estáticos em produção
-cryptography==43.0.3             # criptografia dos segredos TOTP em repouso
+cryptography==50.0.2             # criptografia dos segredos TOTP em repouso
+
+pyhanko==0.38.0
+pywebpush==2.0.3

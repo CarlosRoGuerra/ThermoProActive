@@ -107,6 +107,60 @@ export type OspD = {
   tipo_corretiva: string;
   tipo_corretiva_display: string;
   corretiva: Corretiva | null;
+  /** Espessura (2.3.2.7): só no módulo ESPESSURA; null = sem medição no período. */
+  espessura?: EspessuraOsp | null;
+  /** Isolação de motor (2.3.2.5.1.1): só no módulo MOTOR_RXI; null = sem ensaio no período. */
+  motor_rxi?: MotorRxiOsp | null;
+  /** Ultrassom (2.3.2.6): só no módulo ULTRASSOM; null = sem leitura no período. */
+  ultrassom?: UltrassomOsp | null;
+  /** Qualidade de energia (2.3.2.10): última leitura de cada grandeza; null = sem medição no período. */
+  qualidade_energia?: Record<string, QualidadeLeituraOsp | null> | null;
+  /** Alinhamento a laser (2.3.2.8.1.1–2): último serviço até o fim do relatório; null = sem serviço. */
+  alinhamento?: AlinhamentoOsp | null;
+};
+
+/** Um serviço de alinhamento, antes ou depois da correção. Números chegam como texto. */
+export type AlinhamentoFaseOsp = { medicao_id: number; data: string; rpm: string | null;
+  angular_mm_100mm: string | null; paralelo_mm: string | null;
+  correcao_pe_vertical_mm: string | null; correcao_pe_horizontal_mm: string | null };
+
+export type AlinhamentoOsp = {
+  data: string; ponto: string;
+  antes: AlinhamentoFaseOsp | null; depois: AlinhamentoFaseOsp | null;
+  reducao_angular_pct: string | null; reducao_paralelo_pct: string | null;
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  criterio_validado: boolean;
+};
+
+/** Última leitura de uma grandeza de qualidade de energia. Números chegam como texto. */
+export type QualidadeLeituraOsp = {
+  data: string; valor: string; janela_agregacao: string;
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  criterio_validado: boolean;
+};
+
+/** Última leitura de ultrassom do equipamento até o fim do relatório. Números chegam como texto. */
+export type UltrassomOsp = {
+  data: string; subtipo: string; grandeza: string; nivel_db: string;
+  ganho_db: string | null; distancia_cm: string | null; frequencia_khz: string | null;
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  criterio_validado: boolean;
+};
+
+/** Último grupo de leituras de isolação do motor até o fim do relatório. Números chegam como texto. */
+export type MotorRxiOsp = {
+  data: string; ponto: string; tensao_ensaio_v: string; temperatura_c: string; ligacao: string;
+  R30: string | null; R60: string | null; R600: string | null; DAR: string | null; IP: string | null;
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  criterio_validado: boolean;
+};
+
+/** Última medição de espessura do equipamento até o fim do relatório. Números chegam como texto. */
+export type EspessuraOsp = {
+  data: string; material: string; nominal_mm: string | null; medida_mm: string;
+  perda_percentual: string | null; taxa_mm_ano: string | null;
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  criterio_validado: boolean;
 };
 export type DadosInspecao = { secao_b: SecaoB; secao_d: OspD[] };
 

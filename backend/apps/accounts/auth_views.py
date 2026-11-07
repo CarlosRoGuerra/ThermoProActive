@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import timedelta
 from urllib.parse import quote
@@ -55,9 +56,28 @@ from .security import (
     validar_totp,
 )
 from .serializers import UserSerializer
-from .throttles import LoginThrottle, OtpThrottle, RecoveryThrottle, RegistrationThrottle
+from .throttles import (
+    LoginThrottle,
+    OtpThrottle,
+    RecoveryThrottle,
+    RegistrationThrottle,
+    SensivelUsuarioThrottle,
+)
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
+#: Falhas seguidas (senha OU código MFA) que travam a conta, e por quanto tempo.
+MAX_TENTATIVAS_LOGIN = 8
+BLOQUEIO_LOGIN_MINUTOS = 15
+
+
+def _registrar_falha_login(usuario):
+    """Soma uma falha de credencial e trava a conta ao atingir o limite."""
+    usuario.tentativas_login += 1
+    if usuario.tentativas_login >= MAX_TENTATIVAS_LOGIN:
+        usuario.bloqueado_ate = timezone.now() + timedelta(minutes=BLOQUEIO_LOGIN_MINUTOS)
+    usuario.save(update_fields=["tentativas_login", "bloqueado_ate", "atualizado_em"])
 
 
 def _cookie_kwargs(max_age):
@@ -96,7 +116,7 @@ def _clear_auth_cookies(response):
     response.delete_cookie(settings.AUTH_COOKIE_REFRESH, path="/api/auth/", samesite="Lax")
 
 
-def _emitir_sessao(request, usuario, lembrar=False):
+def _emitir_sessao(request, usuario, lembrar=False, mfa_pendente=False):
     session_id = uuid.uuid4()
     refresh = RefreshToken.for_user(usuario)
     refresh["sid"] = str(session_id)
@@ -108,6 +128,7 @@ def _emitir_sessao(request, usuario, lembrar=False):
         usuario=usuario,
         refresh_jti=str(refresh["jti"]),
         lembrar=lembrar,
+        mfa_pendente=mfa_pendente,
         ultimo_uso_em=agora,
         expira_em=agora + settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"],
         **metadados_requisicao(request),
@@ -146,6 +167,9 @@ class LoginContextualView(APIView):
     contexto = "portal"
 
     def post(self, request):
+        # Login também exige o token CSRF (/auth/csrf/): sem isso um site de terceiros faria o
+        # navegador da vítima entrar numa conta do atacante ("login CSRF"). O front já o envia.
+        enforce_csrf(request)
         email = str(request.data.get("email", "")).strip().lower()
         usuario = User.objects.filter(email=email).first()
         if usuario and usuario.bloqueado_ate and usuario.bloqueado_ate > timezone.now():
@@ -158,10 +182,7 @@ class LoginContextualView(APIView):
         serializer = LoginContextualSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             if usuario:
-                usuario.tentativas_login += 1
-                if usuario.tentativas_login >= 8:
-                    usuario.bloqueado_ate = timezone.now() + timedelta(minutes=15)
-                usuario.save(update_fields=["tentativas_login", "bloqueado_ate", "atualizado_em"])
+                _registrar_falha_login(usuario)
             registrar_evento(request, "LOGIN_FALHOU", usuario=usuario, sucesso=False, detalhes={"area": self.contexto})
             return Response({"detail": "E-mail ou senha incorretos."}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -185,6 +206,15 @@ class LoginContextualView(APIView):
             )
             recuperacao = passo is None and consumir_codigo_recuperacao(dispositivo, codigo)
             if passo is None and not recuperacao:
+                # Senha certa + código errado também é adivinhação (de um espaço de
+                # 10^6): conta para o bloqueio, senão o TOTP só dependia do throttle.
+                # Primeira etapa (sem código informado) é o fluxo normal e não conta.
+                if codigo:
+                    _registrar_falha_login(usuario)
+                    registrar_evento(
+                        request, "LOGIN_FALHOU", usuario=usuario, sucesso=False,
+                        detalhes={"area": self.contexto, "motivo": "mfa"},
+                    )
                 return Response(
                     {"mfa_required": True, "detail": "Informe o código de autenticação."},
                     status=status.HTTP_428_PRECONDITION_REQUIRED,
@@ -198,8 +228,10 @@ class LoginContextualView(APIView):
         usuario.last_login = timezone.now()
         usuario.save(update_fields=["tentativas_login", "bloqueado_ate", "last_login", "atualizado_em"])
         lembrar = serializer.validated_data["lembrar"] and self.contexto == "portal"
-        access, refresh = _emitir_sessao(request, usuario, lembrar)
-        resposta = Response({"user": UserSerializer(usuario).data})
+        # S-25: MFA obrigatório e ainda não configurado -> sessão restrita até concluir o MFA.
+        mfa_pendente = bool(usuario.mfa_obrigatorio and not (dispositivo and dispositivo.ativo))
+        access, refresh = _emitir_sessao(request, usuario, lembrar, mfa_pendente=mfa_pendente)
+        resposta = Response({"user": UserSerializer(usuario).data, "mfa_setup_required": mfa_pendente})
         _set_auth_cookies(resposta, access, refresh, lembrar=lembrar)
         get_token(request)
         registrar_evento(request, "LOGIN_REALIZADO", usuario=usuario, detalhes={"area": self.contexto})
@@ -228,6 +260,10 @@ class RefreshCookieView(APIView):
             sessao = SessaoAutenticacao.objects.select_related("usuario").get(pk=session_id)
             if not sessao.ativa:
                 raise TokenError("Sessão revogada")
+            if not sessao.usuario.is_active or sessao.usuario.estado != EstadoConta.ACTIVE:
+                # Conta suspensa/bloqueada/desativada não renova: derruba a sessão.
+                _revogar_sessao(sessao)
+                raise TokenError("Conta indisponível")
             anterior.blacklist()
             novo = RefreshToken.for_user(sessao.usuario)
             novo["sid"] = str(sessao.id)
@@ -275,7 +311,14 @@ class EsqueciSenhaView(APIView):
             token, _ = criar_token_usuario(
                 usuario, FinalidadeToken.RESET_PASSWORD, self.contexto, minutos=30
             )
-            enviar_email_redefinicao(usuario, token, self.contexto)
+            try:
+                enviar_email_redefinicao(usuario, token, self.contexto)
+            except Exception as erro:  # SMTP fora do ar não pode distinguir conta existente de inexistente
+                # Só o tipo do erro: a mensagem do SMTP pode trazer o e-mail do destinatário.
+                logger.error(
+                    "Falha ao enviar e-mail de redefinição de senha (usuario_id=%s, erro=%s)",
+                    usuario.pk, type(erro).__name__,
+                )
             registrar_evento(request, "RECUPERACAO_SOLICITADA", usuario=usuario, detalhes={"area": self.contexto})
         else:
             registrar_evento(request, "RECUPERACAO_SOLICITADA", sucesso=True, detalhes={"area": self.contexto})
@@ -314,6 +357,7 @@ class RedefinirSenhaView(APIView):
 
 class TokenStatusView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [OtpThrottle]
 
     def post(self, request):
         from .security import localizar_token
@@ -353,7 +397,12 @@ class ReenviarVerificacaoView(APIView):
         if usuario:
             contexto = "portal" if usuario.is_cliente else "admin"
             token, _ = criar_token_usuario(usuario, FinalidadeToken.VERIFY_EMAIL, contexto, minutos=30)
-            enviar_email_verificacao(usuario, token, contexto)
+            try:
+                enviar_email_verificacao(usuario, token, contexto)
+            except Exception as erro:  # falha de SMTP não pode denunciar conta pendente existente
+                logger.error(
+                    "Falha ao enviar e-mail de verificação (usuario_id=%s, erro=%s)", usuario.pk, type(erro).__name__
+                )
         return Response({"detail": "Se houver uma confirmação pendente, enviaremos um novo link."})
 
 
@@ -392,10 +441,12 @@ class ConviteView(APIView):
             if dados["nivel"] == Nivel.MASTER:
                 return Response({"detail": "Solicite à ThermoProActive a concessão do nível Master."}, status=403)
         token, token_hash = novo_token()
+        extra = {"empresa": None} if request.user.is_cliente else {}  # cliente não vincula prestador
         convite = serializer.save(
             token_hash=token_hash,
             expira_em=timezone.now() + timedelta(hours=72),
             criado_por=request.user,
+            **extra,
         )
         enviar_email_convite(convite, token)
         registrar_evento(request, "CONVITE_CRIADO", usuario=request.user, detalhes={"tipo": convite.tipo})
@@ -442,6 +493,8 @@ class ConvitePublicoView(APIView):
 
 
 class AlterarSenhaView(APIView):
+    throttle_classes = [SensivelUsuarioThrottle]
+
     def post(self, request):
         serializer = AlterarSenhaSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
@@ -489,9 +542,17 @@ class EventosSegurancaView(APIView):
 
 
 class MFASetupView(APIView):
-    throttle_classes = [OtpThrottle]
+    throttle_classes = [SensivelUsuarioThrottle]
 
     def post(self, request):
+        existente = getattr(request.user, "mfa", None)
+        if existente and existente.ativo:
+            # Recriar o dispositivo zeraria `confirmado_em` e DESLIGARIA o MFA sem pedir
+            # senha nem código (quem tivesse uma sessão roubada derrubava o 2º fator).
+            return Response(
+                {"detail": "A autenticação em dois fatores já está ativa. Desative-a (com senha e código) antes de reconfigurar."},
+                status=status.HTTP_409_CONFLICT,
+            )
         segredo = novo_segredo_totp()
         dispositivo, _ = DispositivoMFA.objects.update_or_create(
             usuario=request.user,
@@ -504,7 +565,7 @@ class MFASetupView(APIView):
 
 
 class MFAConfirmView(APIView):
-    throttle_classes = [OtpThrottle]
+    throttle_classes = [SensivelUsuarioThrottle]
 
     def post(self, request):
         serializer = ConfirmarMFASerializer(data=request.data)
@@ -521,13 +582,16 @@ class MFAConfirmView(APIView):
         dispositivo.confirmado_em = timezone.now()
         dispositivo.ultimo_passo_usado = passo
         dispositivo.save(update_fields=["confirmado_em", "ultimo_passo_usado", "atualizado_em"])
+        # S-25: concluir o MFA libera a sessão restrita (só a sessão atual, não as outras).
+        sid = request.auth.get("sid") if request.auth else None
+        SessaoAutenticacao.objects.filter(pk=sid, usuario=request.user).update(mfa_pendente=False)
         codigos = gerar_codigos_recuperacao(dispositivo)
         registrar_evento(request, "MFA_ATIVADO", usuario=request.user)
         return Response({"detail": "Autenticação em dois fatores ativada.", "recovery_codes": codigos})
 
 
 class MFADisableView(APIView):
-    throttle_classes = [OtpThrottle]
+    throttle_classes = [SensivelUsuarioThrottle]
 
     def post(self, request):
         serializer = ConfirmarMFASerializer(data=request.data)

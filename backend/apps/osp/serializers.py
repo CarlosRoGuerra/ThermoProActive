@@ -1,7 +1,17 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from . import services
-from .models import HistoricoOSP, OrdemServico
+from .models import (
+    ApontamentoExecucao,
+    AssinaturaOSP,
+    EvidenciaOSP,
+    HistoricoOSP,
+    ItemModeloChecklist,
+    ModeloChecklist,
+    OrdemServico,
+    PecaOSP,
+)
 
 
 class OrdemServicoSerializer(serializers.ModelSerializer):
@@ -45,6 +55,9 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     transicoes_permitidas = serializers.SerializerMethodField()
     # Evidências fotográficas (2.6.2.4): as da análise que originou a OSP.
     evidencias = serializers.SerializerMethodField()
+    evidencias_osp = serializers.SerializerMethodField()
+    tempo_execucao_min = serializers.SerializerMethodField()
+    assinatura = serializers.SerializerMethodField()
 
     cliente_nome = serializers.CharField(source="cliente.nome", read_only=True)
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
@@ -104,6 +117,8 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
             "emerg_material_valor", "emerg_producao_h", "emerg_producao_valor", "emerg_outros_valor",
             "total_preditiva", "total_emergencial", "retorno_investimento",
             "custo_estimado", "custo_real", "finalizada_em", "criado_em",
+            # 2.6.2.4 / 2.6.2.6 / 2.6.2.7 / 2.6.2.8 (somente leitura aqui)
+            "custo_material_real", "tempo_execucao_min", "evidencias_osp", "assinatura",
         ]
         # `status` só muda por `/status/` (máquina de estados + permissão + histórico).
         read_only_fields = [
@@ -115,6 +130,26 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
         usuario = getattr(self.context.get("request"), "user", None)
         return services.transicoes_permitidas(usuario, obj) if usuario else []
 
+    def get_evidencias_osp(self, obj):
+        return [
+            {"id": e.id, "fase": e.fase, "fase_display": e.get_fase_display(), "legenda": e.legenda,
+             "arquivo": e.arquivo.url if e.arquivo else None, "criado_em": e.criado_em}
+            for e in obj.evidencias_osp.all()
+        ]
+
+    def get_tempo_execucao_min(self, obj):
+        from .execucao import tempo_execucao_minutos
+
+        return tempo_execucao_minutos(obj)
+
+    def get_assinatura(self, obj):
+        try:
+            a = obj.assinatura
+        except ObjectDoesNotExist:  # OneToOne ausente
+            return None
+        return {"nome": a.nome, "cargo": a.cargo, "assinado_em": a.assinado_em,
+                "estado_sha256": a.estado_sha256, "ip": a.ip}
+
     def get_evidencias(self, obj):
         if not obj.achado_id:
             return []
@@ -123,6 +158,31 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
              "arquivo": img.arquivo.url if img.arquivo else None}
             for img in obj.achado.imagens.all()
         ]
+
+    def validate(self, attrs):
+        # Cliente, equipamento, inspeção e achado de uma OSP têm de ser do MESMO cliente: um
+        # vínculo cruzado mostraria TAG/nome de equipamento de outro cliente no Portal do dono da OSP.
+        # Só roda quando algum desses campos chega (o cliente do Portal não os envia).
+        campos = ("cliente", "equipamento", "inspecao", "achado")
+        if any(c in attrs for c in campos):
+            def valor(nome):
+                return attrs[nome] if nome in attrs else getattr(self.instance, nome, None)
+
+            cliente = valor("cliente")
+            if cliente is not None:
+                equipamento, inspecao, achado = valor("equipamento"), valor("inspecao"), valor("achado")
+                erros = {}
+                if equipamento is not None and (
+                    (equipamento.setor.area.cliente_id if equipamento.setor_id else None) != cliente.pk
+                ):
+                    erros["equipamento"] = "Este equipamento pertence a outro cliente."
+                if inspecao is not None and inspecao.cliente_id != cliente.pk:
+                    erros["inspecao"] = "Esta inspeção pertence a outro cliente."
+                if achado is not None and achado.item.carregamento.cliente_id != cliente.pk:
+                    erros["achado"] = "Esta análise pertence a outro cliente."
+                if erros:
+                    raise serializers.ValidationError(erros)
+        return attrs
 
     def validate_responsavel(self, valor):
         # A OSP é atendida pela CONTRATADA: apontar um usuário do cliente
@@ -179,4 +239,83 @@ class HistoricoOSPSerializer(serializers.ModelSerializer):
             "id", "tipo", "tipo_display", "ator", "ator_nome", "ator_perfil",
             "status_anterior", "status_novo", "alteracoes", "motivo", "criado_em",
         ]
+        read_only_fields = fields
+
+
+# --- 2.6.2.2 a 2.6.2.8 -------------------------------------------------------
+
+class ItemModeloChecklistSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemModeloChecklist
+        fields = ["id", "modelo", "ordem", "descricao", "obrigatorio"]
+
+
+class ModeloChecklistSerializer(serializers.ModelSerializer):
+    itens = ItemModeloChecklistSerializer(many=True, read_only=True)
+    tecnologia_nome = serializers.CharField(source="tecnologia.nome", read_only=True, default=None)
+    tipo_equipamento_nome = serializers.CharField(source="tipo_equipamento.nome", read_only=True, default=None)
+
+    class Meta:
+        model = ModeloChecklist
+        fields = [
+            "id", "nome", "tecnologia", "tecnologia_nome", "tipo_equipamento", "tipo_equipamento_nome",
+            "obrigatorio_para_finalizar", "ativo", "itens",
+        ]
+
+
+class PecaOSPSerializer(serializers.ModelSerializer):
+    custo_total = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = PecaOSP
+        fields = ["id", "osp", "descricao", "codigo", "quantidade", "unidade", "custo_unitario", "custo_total"]
+
+    def validate_quantidade(self, valor):
+        if valor is None or valor <= 0:
+            raise serializers.ValidationError("A quantidade deve ser maior que zero.")
+        return valor
+
+    def validate_custo_unitario(self, valor):
+        if valor is None or valor < 0:
+            raise serializers.ValidationError("O custo unitário não pode ser negativo.")
+        return valor
+
+
+class EvidenciaOSPSerializer(serializers.ModelSerializer):
+    fase_display = serializers.CharField(source="get_fase_display", read_only=True)
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EvidenciaOSP
+        fields = ["id", "osp", "fase", "fase_display", "arquivo", "url", "legenda", "criado_em"]
+
+    def get_url(self, obj):
+        return obj.arquivo.url if obj.arquivo else None
+
+    def validate_arquivo(self, arquivo):
+        from .execucao import validar_foto
+
+        try:
+            validar_foto(arquivo)
+        except ValueError as erro:
+            raise serializers.ValidationError(str(erro))
+        return arquivo
+
+
+class ApontamentoExecucaoSerializer(serializers.ModelSerializer):
+    duracao_minutos = serializers.IntegerField(read_only=True)
+    origem_display = serializers.CharField(source="get_origem_display", read_only=True)
+
+    class Meta:
+        model = ApontamentoExecucao
+        fields = ["id", "osp", "inicio", "fim", "duracao_minutos", "origem", "origem_display", "observacao"]
+        read_only_fields = ["origem"]
+
+
+class AssinaturaOSPSerializer(serializers.ModelSerializer):
+    """Leitura da assinatura. A criação é feita pela view (corpo com a imagem em base64)."""
+
+    class Meta:
+        model = AssinaturaOSP
+        fields = ["id", "osp", "nome", "cargo", "assinado_em", "ip", "estado_sha256", "imagem"]
         read_only_fields = fields

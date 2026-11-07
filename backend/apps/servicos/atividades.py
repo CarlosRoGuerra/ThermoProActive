@@ -10,6 +10,7 @@ from apps.accounts.permissions import InternoEditaClienteVisualiza
 from apps.cadastros.models import Condicao
 from apps.coletas.models import Carregamento, ItemInspecao, StatusCarregamento
 from apps.coletas.serializers import CarregamentoSerializer, ItemInspecaoSerializer
+from apps.coletas.views import escopo_cliente
 from .models import ServicoCampo, TipoServico
 from .serializers import ServicoCampoSerializer
 from .analise_balanceamento import (
@@ -94,9 +95,7 @@ class AtividadeCorretivaViewSet(
             "itens__equipamento__setor__area", "itens__condicao", "itens__achados",
             "itens__servico_corretivo",
         )
-        if self.request.user.is_cliente:
-            qs = qs.filter(cliente_id=self.request.user.cliente_id)
-        return qs
+        return escopo_cliente(qs, self.request.user)
 
     def item_da_atividade(self, item_id, *, editar=False):
         atividade = self.get_object()

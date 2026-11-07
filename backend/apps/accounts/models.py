@@ -250,6 +250,9 @@ class SessaoAutenticacao(TimeStampedModel):
     ip_hash = models.CharField(max_length=64, blank=True)
     user_agent = models.CharField(max_length=300, blank=True)
     lembrar = models.BooleanField(default=False)
+    # S-25: conta com `mfa_obrigatorio` sem MFA configurado entra em sessão RESTRITA: só
+    # configura o MFA (ver `CookieJWTAuthentication`). Concluir o MFA zera o flag.
+    mfa_pendente = models.BooleanField("Sessão aguardando configuração do MFA", default=False)
     ultimo_uso_em = models.DateTimeField()
     expira_em = models.DateTimeField(db_index=True)
     revogada_em = models.DateTimeField(null=True, blank=True)
@@ -289,3 +292,73 @@ class CodigoRecuperacaoMFA(TimeStampedModel):
     )
     codigo_hash = models.CharField(max_length=128)
     usado_em = models.DateTimeField(null=True, blank=True)
+
+
+class RestricaoSetorUsuario(TimeStampedModel):
+    """
+    Item 2.1.1.6 — restringe um usuário de CLIENTE a setores do próprio cliente.
+    Sem nenhuma linha para o usuário = acesso a todo o cliente (comportamento atual).
+    Com linhas = só os setores listados (e o que estiver neles). Aplicada por
+    `apps.core.escopo`. Quem configura: Master interno ou Master do mesmo cliente.
+    """
+
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name="restricoes_setor")
+    setor = models.ForeignKey("cadastros.Setor", on_delete=models.CASCADE, related_name="restricoes_usuario")
+    criado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="restricoes_setor_criadas",
+    )
+
+    class Meta:
+        verbose_name = "restrição de setor do usuário"
+        constraints = [
+            models.UniqueConstraint(fields=["usuario", "setor"], name="uniq_restricao_setor_usuario"),
+        ]
+
+
+class DadosPessoaisUsuario(TimeStampedModel):
+    """
+    Item 3.1.2 — dados pessoais da equipe técnica (LGPD, Cl. 13). Todos OPCIONAIS.
+    Finalidade: cadastro da equipe técnica exigido pelo contrato (identificação do
+    responsável técnico e da equipe em laudos e cadastros internos). Não é usado em
+    listas, exports, PDFs de laudo nem em respostas a perfis de cliente.
+    Quem vê/edita: Master interno e o próprio usuário. Valores nunca vão para log.
+    """
+
+    class EstadoCivil(models.TextChoices):
+        SOLTEIRO = "SOLTEIRO", "Solteiro(a)"
+        CASADO = "CASADO", "Casado(a)"
+        DIVORCIADO = "DIVORCIADO", "Divorciado(a)"
+        VIUVO = "VIUVO", "Viúvo(a)"
+        UNIAO_ESTAVEL = "UNIAO_ESTAVEL", "União estável"
+        OUTRO = "OUTRO", "Outro"
+
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name="dados_pessoais")
+    data_nascimento = models.DateField("Data de nascimento", null=True, blank=True)
+    rg = models.CharField("RG", max_length=30, blank=True)
+    ctps = models.CharField("CTPS (número/série)", max_length=40, blank=True)
+    estado_civil = models.CharField("Estado civil", max_length=20, choices=EstadoCivil.choices, blank=True)
+    quantidade_filhos = models.PositiveSmallIntegerField("Quantidade de filhos", null=True, blank=True)
+    logradouro = models.CharField("Logradouro", max_length=160, blank=True)
+    numero = models.CharField("Número", max_length=20, blank=True)
+    complemento = models.CharField("Complemento", max_length=80, blank=True)
+    bairro = models.CharField("Bairro", max_length=80, blank=True)
+    cidade = models.CharField("Cidade", max_length=80, blank=True)
+    uf = models.CharField("UF", max_length=2, blank=True)
+    cep = models.CharField("CEP", max_length=9, blank=True)
+
+
+class CertificadoA1(TimeStampedModel):
+    """
+    Item 2.5.1.3 — certificado digital A1 (PKCS#12) do responsável técnico, usado para a
+    assinatura PAdES do laudo. O arquivo fica CIFRADO em repouso (mesma chave de
+    `accounts.security`/MFA_ENCRYPTION_KEY). A senha do .pfx NUNCA é guardada: é pedida
+    no upload (para validar e extrair os dados do certificado) e de novo a cada assinatura.
+    """
+
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name="certificado_a1")
+    arquivo_cifrado = models.TextField("PKCS#12 cifrado (Fernet)")
+    titular = models.CharField("Titular", max_length=255)
+    emissor = models.CharField("Emissor", max_length=255)
+    numero_serie = models.CharField("Número de série", max_length=80)
+    valido_ate = models.DateTimeField("Válido até")
+    sha256_certificado = models.CharField("SHA-256 do certificado", max_length=64)

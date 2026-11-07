@@ -179,6 +179,7 @@ class CenarioTransformador:
         rel = Relatorio.objects.create(
             cliente=cliente, tecnologia=tecnologia, numero=f"RT-{modulo[:4]}-{Relatorio.objects.count() + 1:05d}",
             data_inicio=data, data_termino=data,
+            data_finalizacao=data,  # relatório finalizado: o cliente só vê o liberado (S-24)
         )
         rota = Carregamento.objects.create(cliente=cliente, tecnologia=tecnologia, analista=cls.tecnico,
                                            relatorio=rel, data_coleta=data)

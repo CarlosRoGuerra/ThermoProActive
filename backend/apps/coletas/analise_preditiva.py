@@ -148,7 +148,8 @@ def replay_vibracao(snapshot):
             "diagnostico_sugerido": resultado.diagnostico}
 
 
-MOTORES_REPLAY = {"vibracao_v2", "termografia_delta_v2", "sensitiva_manual_v2", "tecnica_pendente_v2"}
+MOTORES_REPLAY = {"vibracao_v2", "termografia_delta_v2", "termografia_criterio_v1", "sensitiva_manual_v2",
+                  "tecnica_pendente_v2"}
 
 
 def replay_medicao(snapshot):
@@ -159,6 +160,14 @@ def replay_medicao(snapshot):
     entrada = snapshot.get("entradas")
     if motor not in MOTORES_REPLAY or not entrada:
         raise ValueError("Snapshot sem entradas/versão compatível; replay indisponível.")
+    if motor == "termografia_criterio_v1":
+        # Reexecuta com os limites congelados no snapshot, nunca com o cadastro atual.
+        from .rules import classificar_termografia
+
+        limites = {nivel: Decimal(valor) for nivel, valor in (snapshot.get("limites_congelados") or {}).items()}
+        resultado = classificar_termografia(Decimal(entrada["temperatura_ponto"]),
+                                            Decimal(entrada["temperatura_referencia"]), limites or None)
+        return {"zona_iso": "", "criticidade": resultado.criticidade, "diagnostico_sugerido": resultado.diagnostico}
     if motor == "termografia_delta_v2":
         delta = Decimal(entrada["temperatura_ponto"]) - Decimal(entrada["temperatura_referencia"])
         return {"zona_iso": "", "criticidade": "", "diagnostico_sugerido": (

@@ -9,6 +9,7 @@ from apps.accounts.permissions import InternoEditaClienteVisualiza, IsInterno, M
 from apps.cadastros.models import Equipamento, ModuloTecnico
 from apps.cadastros.views import CatalogoPagination, CatalogoViewSet
 from apps.coletas.models import ItemInspecao, StatusCarregamento
+from apps.core.escopo import liberado_ao_cliente, restringe_setor
 from apps.coletas.views import escopo_cliente
 
 from .models import (
@@ -143,7 +144,12 @@ class _DadoDeEnsaioViewSet(viewsets.ModelViewSet):
     filterset_fields = ["item", "item__carregamento", "item__carregamento__relatorio", "item__equipamento"]
 
     def get_queryset(self):
-        return escopo_cliente(super().get_queryset(), self.request.user, campo_cliente=CAMPO_CLIENTE)
+        # S-24: dado de ensaio de relatório não finalizado é interno (cliente vê só o finalizado).
+        qs = liberado_ao_cliente(
+            super().get_queryset(), self.request.user,
+            item__carregamento__relatorio__data_finalizacao__isnull=False,
+        )
+        return restringe_setor(escopo_cliente(qs, self.request.user, campo_cliente=CAMPO_CLIENTE), self.request.user, "item__equipamento__setor")
 
 
 class ColetaOleoViewSet(_DadoDeEnsaioViewSet):

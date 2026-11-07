@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -32,6 +32,15 @@ class LaudoViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Q(status=StatusLaudo.EMITIDO) | Q(status=StatusLaudo.CANCELADO, data_emissao__isnull=False)).filter(
                 Q(cliente_documento_id=self.request.user.cliente_id) | (Q(cliente_documento__isnull=True) & (
                     Q(inspecao__cliente_id=self.request.user.cliente_id) | Q(relatorio_origem__cliente_id=self.request.user.cliente_id))))
+            # 2.1.1.6: cliente restrito a setores só vê laudo de inspeção com medição nesses setores
+            # (laudo de relatório de rotas fica de fora para quem tem restrição: falha fechada).
+            from apps.coletas.models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
+            from apps.core.escopo import restringe_setor_por_filhos, setores_restritos
+            if setores_restritos(self.request.user) is not None:
+                inspecoes = restringe_setor_por_filhos(Inspecao.objects.all(), self.request.user, [
+                    (MedicaoVibracao, "inspecao"), (MedicaoTermografia, "inspecao"), (MedicaoTecnica, "inspecao"),
+                ])
+                qs = qs.filter(inspecao__in=inspecoes)
         return qs
 
     @transaction.atomic
@@ -133,6 +142,9 @@ class LaudoViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def eventos(self, request, pk=None):
+        # S-24: o histórico de decisões/edições (dados.antes) é interno; o cliente não lê.
+        if request.user.is_cliente:
+            raise PermissionDenied("Histórico de decisões do laudo é restrito à equipe técnica.")
         laudo = self.get_object()
         return Response(EventoLaudoSerializer(laudo.eventos.select_related("autor"), many=True).data)
 
@@ -190,6 +202,112 @@ class LaudoViewSet(viewsets.ModelViewSet):
         if laudo.status == StatusLaudo.CANCELADO:
             resposta["X-Documento-Status"] = "CANCELADO"
         return resposta
+
+
+    @action(detail=True, methods=["post"], url_path="assinar-digitalmente")
+    @transaction.atomic
+    def assinar_digitalmente(self, request, pk=None):
+        """
+        Item 2.5.1.3 — assina o PDF EMITIDO com o certificado A1 do próprio responsável técnico.
+        Corpo: {"senha": "<senha do .pfx>"} — usada só para assinar, nunca guardada.
+        Sem certificado: 409 (a aprovação eletrônica do laudo continua valendo).
+        """
+        from django.utils import timezone
+        from apps.accounts.certificados import decifrar_arquivo
+        from apps.accounts.models import CertificadoA1
+        from .assinatura import assinar_pades
+
+        laudo = Laudo.objects.select_for_update().get(pk=self.get_object().pk)
+        if laudo.responsavel_id != request.user.pk:
+            raise PermissionDenied("Só o responsável técnico do laudo assina digitalmente.")
+        if laudo.status != StatusLaudo.EMITIDO or not laudo.pdf_disponivel:
+            raise ValidationError("Só laudo emitido, com PDF íntegro, pode ser assinado.")
+        if laudo.pdf_assinado_conteudo:
+            return Response({"detail": "Este laudo já está assinado digitalmente."}, status=status.HTTP_409_CONFLICT)
+        cert = CertificadoA1.objects.filter(usuario=request.user).first()
+        if not cert:
+            return Response(
+                {"detail": "Sem certificado A1 cadastrado: a aprovação eletrônica do laudo permanece.",
+                 "codigo": "SEM_CERTIFICADO"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if cert.valido_ate <= timezone.now():
+            return Response({"detail": "Certificado vencido.", "codigo": "CERTIFICADO_VENCIDO"},
+                            status=status.HTTP_409_CONFLICT)
+        senha = request.data.get("senha", "")
+        if not senha:
+            raise ValidationError({"senha": "Informe a senha do certificado."})
+        try:
+            assinado = assinar_pades(bytes(laudo.pdf_conteudo), decifrar_arquivo(cert.arquivo_cifrado), senha,
+                                     motivo=f"Laudo {laudo.numero}", local="Brasil")
+        except Exception:  # senha errada ou pyHanko recusou o material — sem detalhes técnicos ao cliente
+            return Response({"detail": "Não foi possível assinar: verifique a senha do certificado."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        import hashlib
+        agora = timezone.now()
+        laudo.pdf_assinado_conteudo = assinado
+        laudo.pdf_assinado_sha256 = hashlib.sha256(assinado).hexdigest()
+        laudo.assinatura_titular, laudo.assinatura_emissor = cert.titular, cert.emissor
+        laudo.assinatura_serial, laudo.assinatura_certificado_sha256 = cert.numero_serie, cert.sha256_certificado
+        laudo.assinatura_em = agora
+        # A assinatura é metadado do documento já emitido (não altera o conteúdo aprovado),
+        # por isso grava por update: `save()` recusa qualquer escrita em laudo emitido.
+        Laudo.objects.filter(pk=laudo.pk).update(
+            pdf_assinado_conteudo=assinado, pdf_assinado_sha256=laudo.pdf_assinado_sha256,
+            assinatura_titular=laudo.assinatura_titular, assinatura_emissor=laudo.assinatura_emissor,
+            assinatura_serial=laudo.assinatura_serial, assinatura_certificado_sha256=laudo.assinatura_certificado_sha256,
+            assinatura_em=agora, atualizado_em=agora,
+        )
+        return Response(self._dados_assinatura(laudo), status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _dados_assinatura(laudo):
+        return {
+            "assinado": bool(laudo.pdf_assinado_conteudo), "tipo": "PAdES", "invisivel": True,
+            "titular": laudo.assinatura_titular, "emissor": laudo.assinatura_emissor,
+            "numero_serie": laudo.assinatura_serial, "certificado_sha256": laudo.assinatura_certificado_sha256,
+            "assinado_em": laudo.assinatura_em, "pdf_assinado_sha256": laudo.pdf_assinado_sha256,
+        }
+
+    @action(detail=True, methods=["get"], url_path="pdf-assinado")
+    def pdf_assinado(self, request, pk=None):
+        laudo = self.get_object()
+        if not laudo.pdf_assinado_conteudo:
+            raise NotFound("Laudo sem assinatura digital.")
+        conteudo = bytes(laudo.pdf_assinado_conteudo)
+        import hashlib
+        if hashlib.sha256(conteudo).hexdigest() != laudo.pdf_assinado_sha256:
+            raise ValidationError("A integridade do PDF assinado não confere.")
+        resposta = HttpResponse(conteudo, content_type="application/pdf")
+        resposta["Content-Disposition"] = f'attachment; filename="{laudo.numero}-assinado.pdf"'
+        resposta["Cache-Control"] = "private, no-store"
+        resposta["X-Content-SHA256"] = laudo.pdf_assinado_sha256
+        return resposta
+
+    @action(detail=True, methods=["get"], url_path="verificar-assinatura")
+    def verificar_assinatura(self, request, pk=None):
+        """Verifica as assinaturas do PDF assinado guardado (integridade, validade e confiança)."""
+        from django.conf import settings
+        from .assinatura import AssinaturaInvalida, verificar_pades
+        laudo = self.get_object()
+        if not laudo.pdf_assinado_conteudo:
+            return Response({"assinado": False, "assinaturas": []})
+        raizes = []
+        caminho = getattr(settings, "ASSINATURA_RAIZES_PEM", "")
+        if caminho:
+            with open(caminho, "rb") as arq:
+                raizes = [arq.read()]
+        try:
+            assinaturas = verificar_pades(bytes(laudo.pdf_assinado_conteudo), raizes)
+        except AssinaturaInvalida as erro:
+            return Response({"detail": str(erro)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        import hashlib
+        return Response({
+            "assinado": True,
+            "sha256_confere": hashlib.sha256(bytes(laudo.pdf_assinado_conteudo)).hexdigest() == laudo.pdf_assinado_sha256,
+            "assinaturas": assinaturas,
+            "raiz_configurada": bool(raizes),
+        })
 
 
 class TemplateLaudoViewSet(viewsets.ModelViewSet):

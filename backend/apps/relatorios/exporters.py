@@ -1,6 +1,7 @@
 """Exportadores de relatórios — Anexo I 2.9.2 (CSV / Excel / PDF). Tudo open-source."""
 import csv
 import io
+from xml.sax.saxutils import escape
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -73,9 +74,11 @@ def to_pdf(rel: Relatorio) -> bytes:
     largura_total = landscape(A4)[0] - 2.4 * cm
     col_widths = [largura_total / ncols] * ncols
 
-    data = [[Paragraph(str(c), head_style) for c in rel.colunas]]
+    # O Paragraph do ReportLab interpreta marcação (<img src=...> lê arquivo local e BUSCA URL
+    # remota no servidor): todo texto vindo de dado precisa ser escapado antes.
+    data = [[Paragraph(escape(str(c)), head_style) for c in rel.colunas]]
     for row in rel.linhas:
-        data.append([Paragraph(str(c), cell_style) for c in row])
+        data.append([Paragraph(escape(str(c)), cell_style) for c in row])
 
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(
@@ -92,7 +95,7 @@ def to_pdf(rel: Relatorio) -> bytes:
     )
 
     elems = [
-        Paragraph(rel.titulo, styles["Title"]),
+        Paragraph(escape(str(rel.titulo)), styles["Title"]),
         Paragraph("Pred Ativos — Gestão de Manutenção Preditiva", styles["Italic"]),
         Spacer(1, 0.4 * cm),
         table,

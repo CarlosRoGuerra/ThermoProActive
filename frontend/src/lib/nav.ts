@@ -16,6 +16,7 @@ import {
   type LucideIcon,
   Map,
   ScrollText,
+  ShieldAlert,
   Users,
   Wrench,
 } from "lucide-react";
@@ -135,6 +136,7 @@ export function navAdmin(temClienteAtivo: boolean): GrupoNav[] {
       titulo: "Análise",
       itens: [
         { href: "/relatorios", label: "Relatórios", icon: FileChartColumn, exige: "relatorios:ver" },
+        { href: "/risco", label: "Risco por equipamento", icon: ShieldAlert, exige: "operacional:ver" },
       ],
     },
     {
@@ -150,6 +152,7 @@ export function navAdmin(temClienteAtivo: boolean): GrupoNav[] {
           ],
         },
         { href: "/prestadores", label: "Prestadores", icon: Factory, exige: "prestadores:gerenciar" },
+        { href: "/auditoria", label: "Auditoria", icon: ClipboardList, exige: "auditoria:ver" },
         {
           href: "/cadastros",
           label: "Dados de sistema",

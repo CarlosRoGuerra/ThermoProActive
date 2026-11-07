@@ -55,6 +55,8 @@ export type Habilidade =
   | "dados-sistema:curar"
   /* Pessoas */
   | "usuarios:ver"
+  /* Consulta da trilha de auditoria (Anexo I 3.1.22): só Master interno. */
+  | "auditoria:ver"
   | "usuarios:gerenciar"
   /* Equipe do PRÓPRIO cliente, vista de dentro do Portal (não confundir com
      "usuarios:*", que é a concessão de acesso pela ThermoProActive). */
@@ -120,6 +122,9 @@ export function can(user: User | null | undefined, habilidade: Habilidade): bool
        ViewSet inteiro exige Master, nem a leitura é liberada aos demais. */
     case "usuarios:ver":
     case "usuarios:gerenciar":
+      return interno && master;
+
+    case "auditoria:ver":
       return interno && master;
 
     /* Ver os colegas da própria empresa: qualquer usuário do Portal. Convidar
@@ -238,6 +243,7 @@ const REGRAS_ROTA: RegraRota[] = [
   { prefixo: "/relatorios", exige: "relatorios:ver" },
   { prefixo: "/alertas", exige: "operacional:ver" },
   { prefixo: "/notificacoes", exige: "operacional:ver" },
+  { prefixo: "/risco", exige: "operacional:ver" },
   { prefixo: "/dashboard", exige: "area:admin" },
 ];
 

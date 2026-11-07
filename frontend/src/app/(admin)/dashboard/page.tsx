@@ -29,7 +29,6 @@ import {
   EstadoBadge,
   Field,
   Input,
-  LegendaEstados,
   LoadingState,
   MetricCard,
   MetricGrid,
@@ -48,6 +47,7 @@ import {
   useToast,
 } from "@/components/ds";
 import { downloadFile, qs } from "@/lib/api";
+import { GraficoBarras, GraficoRosca } from "@/components/graficos-interativos";
 import { useRecurso } from "@/lib/recurso";
 import { useClienteAtivo } from "@/lib/cliente-ativo";
 import { inteiro, moeda, percentual, plural } from "@/lib/format";
@@ -68,6 +68,17 @@ import type { Dashboard, DashboardExecutivo } from "@/lib/types";
 
 type Aba = "operacional" | "executivo";
 type Periodo = { data_inicio: string; data_fim: string };
+
+/** "MM/AAAA" (formato de `indicadores.executivo`) → primeiro e último dia do mês, em AAAA-MM-DD. */
+function intervaloDoMes(mes: string): Periodo | null {
+  const m = /^(\d{2})\/(\d{4})$/.exec(mes);
+  if (!m) return null;
+  const ano = Number(m[2]);
+  const numero = Number(m[1]);
+  const ultimo = new Date(ano, numero, 0).getDate();
+  const mm = String(numero).padStart(2, "0");
+  return { data_inicio: `${ano}-${mm}-01`, data_fim: `${ano}-${mm}-${String(ultimo).padStart(2, "0")}` };
+}
 
 export default function DashboardPage() {
   const [aba, setAba] = useState<Aba>("operacional");
@@ -152,7 +163,7 @@ export default function DashboardPage() {
         </p>
       </Card>
 
-      {aba === "operacional" ? <Operacional periodo={periodo} /> : <Executivo periodo={periodo} />}
+      {aba === "operacional" ? <Operacional periodo={periodo} /> : <Executivo periodo={periodo} onPeriodo={setPeriodo} />}
     </PageBody>
   );
 }
@@ -166,7 +177,8 @@ function Operacional({ periodo }: { periodo: Periodo }) {
   const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<Dashboard>(
     `/dashboard/${qs({ cliente: clienteAtivo?.id, ...periodo })}`,
-    "painel operacional"
+    "painel operacional",
+    { atualizarACadaMs: 60_000 }
   );
 
   if (carregando) return <LoadingState variante="indicadores" colunas={4} label="Carregando indicadores…" />;
@@ -340,20 +352,17 @@ function Operacional({ periodo }: { periodo: Periodo }) {
                   description="Os números aparecem assim que a primeira coleta for lançada."
                 />
               ) : (
-                <>
-                  <BarMeter
-                    total={total}
-                    itens={[
-                      { label: "Normal", valor: c.NORMAL ?? 0, tom: "success" },
-                      { label: "Alerta", valor: c.ALERTA ?? 0, tom: "warning" },
-                      { label: "Crítico", valor: c.CRITICO ?? 0, tom: "danger" },
-                      { label: "Pendente", valor: pendentes, tom: "neutral" },
-                    ]}
-                  />
-                  <div className="mt-4 border-t border-border pt-3">
-                    <LegendaEstados graus={["NORMAL", "ALERTA", "CRITICO"]} />
-                  </div>
-                </>
+                <GraficoRosca
+                  descricao={`Distribuição de ${inteiro(total)} medições por condição: normal, alerta, crítico e pendente. Clique em crítico para ver as ordens de serviço correspondentes.`}
+                  centro={{ valor: inteiro(total), rotulo: "medições" }}
+                  fatias={[
+                    { chave: "NORMAL", rotulo: "Normal", valor: c.NORMAL ?? 0, cor: "var(--success)" },
+                    { chave: "ALERTA", rotulo: "Alerta", valor: c.ALERTA ?? 0, cor: "var(--warning)" },
+                    { chave: "CRITICO", rotulo: "Crítico", valor: c.CRITICO ?? 0, cor: "var(--danger)", destino: "/osps?criticidade_origem=CRITICO" },
+                    // Pendente sem destino: não há tela de medições pendentes (ver docs/21 §6).
+                    { chave: "PENDENTE", rotulo: "Pendente", valor: pendentes, cor: "var(--fg-subtle)" },
+                  ]}
+                />
               )}
             </Card>
 
@@ -381,11 +390,12 @@ function Operacional({ periodo }: { periodo: Periodo }) {
 
 /* ============================ Executivo ============================ */
 
-function Executivo({ periodo }: { periodo: Periodo }) {
+function Executivo({ periodo, onPeriodo }: { periodo: Periodo; onPeriodo: (p: Periodo) => void }) {
   const { clienteAtivo } = useClienteAtivo();
   const { dados, falha, carregando, recarregar } = useRecurso<DashboardExecutivo>(
     `/dashboard/executivo/${qs({ cliente: clienteAtivo?.id, ...periodo })}`,
-    "painel executivo"
+    "painel executivo",
+    { atualizarACadaMs: 60_000 }
   );
 
   if (carregando) return <LoadingState variante="indicadores" colunas={4} label="Carregando indicadores…" />;
@@ -395,7 +405,6 @@ function Executivo({ periodo }: { periodo: Periodo }) {
   const k = dados.kpis;
   const custos = dados.custos;
   const semCusto = custos.real === null && custos.estimado === null;
-  const maxEvolucao = Math.max(1, ...dados.evolucao.map((m) => Math.max(m.criticas, m.osps)));
 
   return (
     <>
@@ -444,38 +453,25 @@ function Executivo({ periodo }: { periodo: Periodo }) {
               title="Seis meses de operação"
               description="Medições críticas e ordens abertas por mês — a leitura é a tendência, não o valor absoluto."
             />
-            <p className="mb-4 flex flex-wrap gap-4 text-xs text-fg-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-danger" aria-hidden="true" /> Medições
-                críticas
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden="true" /> Ordens
-                abertas
-              </span>
-            </p>
             {dados.evolucao.length === 0 ? (
               <EmptyState compacto icon={ChartColumn} title="Sem histórico suficiente" />
             ) : (
-              <div className="flex h-44 items-end justify-between gap-2" role="img" aria-label="Evolução mensal de medições críticas e ordens abertas">
-                {dados.evolucao.map((m) => (
-                  <div key={m.mes} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                    <div className="flex h-32 w-full items-end justify-center gap-1">
-                      <div
-                        className="w-1/2 rounded-t bg-danger/85 transition-[height] duration-slow ease-out"
-                        style={{ height: `${(m.criticas / maxEvolucao) * 100}%` }}
-                        title={`${m.criticas} medições críticas em ${m.mes}`}
-                      />
-                      <div
-                        className="w-1/2 rounded-t bg-primary/85 transition-[height] duration-slow ease-out"
-                        style={{ height: `${(m.osps / maxEvolucao) * 100}%` }}
-                        title={`${m.osps} ordens abertas em ${m.mes}`}
-                      />
-                    </div>
-                    <span className="truncate text-2xs text-fg-subtle">{m.mes.slice(0, 5)}</span>
-                  </div>
-                ))}
-              </div>
+              <GraficoBarras
+                descricao="Evolução mensal: medições críticas e ordens abertas. Clique num mês para filtrar o painel por ele."
+                categorias={dados.evolucao.map((m) => ({
+                  chave: m.mes,
+                  rotulo: `${m.mes.slice(0, 2)}/${m.mes.slice(-2)}`,
+                  valores: { criticas: m.criticas, osps: m.osps },
+                }))}
+                series={[
+                  { chave: "criticas", rotulo: "Medições críticas", cor: "var(--danger)" },
+                  { chave: "osps", rotulo: "Ordens abertas", cor: "var(--primary)" },
+                ]}
+                onSelecionar={(categoria) => {
+                  const periodoDoMes = intervaloDoMes(categoria.chave);
+                  if (periodoDoMes) onPeriodo(periodoDoMes);
+                }}
+              />
             )}
           </Card>
         }

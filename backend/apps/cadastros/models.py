@@ -599,19 +599,25 @@ class ModuloTecnico(models.TextChoices):
     FLUIDO_LUBRIFICANTE = "FLUIDO_LUBRIFICANTE", "Fluidos lubrificantes e hidráulicos"
     INSPECAO_GENERICA = "INSPECAO_GENERICA", "Inspeção genérica (sem medições específicas)"
     # Planejados — relatório ainda não implementado (ver MODULOS_PLANEJADOS).
-    ALINHAMENTO_EIXOS = "ALINHAMENTO_EIXOS", "Alinhamento a laser entre eixos (não implementado)"
-    ALINHAMENTO_POLIAS = "ALINHAMENTO_POLIAS", "Alinhamento a laser entre polias (não implementado)"
-    TERMOGRAFIA_MECANICA = "TERMOGRAFIA_MECANICA", "Termografia — sistemas mecânicos (não implementado)"
+    ALINHAMENTO_EIXOS = "ALINHAMENTO_EIXOS", "Alinhamento a laser entre eixos"
+    ALINHAMENTO_POLIAS = "ALINHAMENTO_POLIAS", "Alinhamento a laser entre polias"
+    TERMOGRAFIA_MECANICA = "TERMOGRAFIA_MECANICA", "Termografia — sistemas mecânicos"
     ENSAIO_ELETRICO_TC = "ENSAIO_ELETRICO_TC", "Ensaios elétricos — TC (não implementado)"
     ENSAIO_ELETRICO_TP = "ENSAIO_ELETRICO_TP", "Ensaios elétricos — TP (não implementado)"
     ENSAIO_ELETRICO_DJ = "ENSAIO_ELETRICO_DJ", "Ensaios elétricos — disjuntor (não implementado)"
     ENSAIO_ELETRICO_CS = "ENSAIO_ELETRICO_CS", "Ensaios elétricos — chave seccionadora (não implementado)"
     ENSAIO_ELETRICO_RP = "ENSAIO_ELETRICO_RP", "Ensaios elétricos — relé de proteção (não implementado)"
+    # Coleta técnica (Anexo I 2.3) — chaves acrescentadas de uma vez; sai de MODULOS_PLANEJADOS
+    # quando o relatório do módulo estiver pronto.
+    ESPESSURA = "ESPESSURA", "Medição de espessura"
+    MOTOR_RXI = "MOTOR_RXI", "Motor — resistência de isolação"
+    ULTRASSOM = "ULTRASSOM", "Ultrassom — elétrico e mecânico"
+    QUALIDADE_ENERGIA = "QUALIDADE_ENERGIA", "Qualidade de energia"
+    TERMO_PROCESSOS = "TERMO_PROCESSOS", "Termografia — processos industriais"
 
 
 #: Módulos já cadastráveis cujo relatório ainda não existe.
 MODULOS_PLANEJADOS = frozenset({
-    ModuloTecnico.ALINHAMENTO_EIXOS, ModuloTecnico.ALINHAMENTO_POLIAS, ModuloTecnico.TERMOGRAFIA_MECANICA,
     ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_TP, ModuloTecnico.ENSAIO_ELETRICO_DJ,
     ModuloTecnico.ENSAIO_ELETRICO_CS, ModuloTecnico.ENSAIO_ELETRICO_RP,
 })
@@ -941,3 +947,61 @@ class Rota(BaseModel):
 
     def __str__(self):
         return f"{self.cliente} / {self.nome}"
+
+
+class TipoSensor(models.TextChoices):
+    ACELEROMETRO = "ACELEROMETRO", "Acelerômetro"
+    VELOCIMETRO = "VELOCIMETRO", "Velocímetro"
+    TERMOPAR = "TERMOPAR", "Termopar"
+    PT100 = "PT100", "Termorresistência (PT100)"
+    PRESSAO = "PRESSAO", "Transdutor de pressão"
+    CORRENTE = "CORRENTE", "Transdutor de corrente"
+    TENSAO = "TENSAO", "Transdutor de tensão"
+    OUTRO = "OUTRO", "Outro"
+
+
+class StatusSensor(models.TextChoices):
+    ATIVO = "ATIVO", "Ativo"
+    EM_MANUTENCAO = "EM_MANUTENCAO", "Em manutenção"
+    INATIVO = "INATIVO", "Inativo"
+    DESINSTALADO = "DESINSTALADO", "Desinstalado"
+
+
+class Sensor(BaseModel):
+    """
+    Sensor instalado em um equipamento (Anexo I 3.1.11).
+
+    Cadastro apenas: não há ingestão automática (coleta IoT, 2.3.1.5, é item futuro).
+    `identificador_externo` deixa o vínculo pronto para quando o IoT existir.
+    Escopo por cliente pelo equipamento (`campo_cliente` no viewset).
+    """
+
+    equipamento = models.ForeignKey(
+        "Equipamento", on_delete=models.PROTECT, related_name="sensores", verbose_name="Equipamento",
+    )
+    ponto_instalacao = models.CharField("Ponto de instalação", max_length=120)
+    tipo = models.CharField("Tipo", max_length=20, choices=TipoSensor.choices)
+    fabricante = models.CharField("Fabricante", max_length=80, blank=True)
+    modelo = models.CharField("Modelo", max_length=80, blank=True)
+    numero_serie = models.CharField("Número de série", max_length=80, blank=True)
+    grandeza = models.CharField(
+        "Grandeza medida", max_length=60, blank=True, help_text="Ex.: aceleração, temperatura, corrente",
+    )
+    unidade = models.CharField("Unidade", max_length=20, blank=True, help_text="Ex.: mm/s, °C, A")
+    faixa_minima = models.DecimalField("Faixa mínima", max_digits=12, decimal_places=3, null=True, blank=True)
+    faixa_maxima = models.DecimalField("Faixa máxima", max_digits=12, decimal_places=3, null=True, blank=True)
+    data_instalacao = models.DateField("Data de instalação", null=True, blank=True)
+    data_ultima_calibracao = models.DateField("Última calibração", null=True, blank=True)
+    status = models.CharField("Status", max_length=16, choices=StatusSensor.choices, default=StatusSensor.ATIVO)
+    identificador_externo = models.CharField(
+        "Identificador no sistema de coleta", max_length=80, blank=True,
+        help_text="Reservado para a coleta IoT futura (2.3.1.5). Não há ingestão nesta versão.",
+    )
+    observacoes = models.TextField("Observações", blank=True)
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Sensor"
+        verbose_name_plural = "Sensores"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} {self.ponto_instalacao} — {self.equipamento.tag}"

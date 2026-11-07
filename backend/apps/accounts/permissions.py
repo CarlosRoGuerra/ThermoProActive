@@ -23,6 +23,23 @@ class IsInterno(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_interno)
 
 
+class DocumentacaoApi(BasePermission):
+    """
+    Swagger/OpenAPI expõem toda a superfície da API. Em desenvolvimento (DEBUG)
+    ficam abertos; em produção, só equipe interna autenticada. Avaliado a cada
+    requisição (não no import das URLs), então acompanha o `settings.DEBUG`.
+    """
+
+    message = "A documentação da API é restrita à equipe interna."
+
+    def has_permission(self, request, view):
+        from django.conf import settings
+
+        if settings.DEBUG:
+            return True
+        return bool(request.user and request.user.is_authenticated and request.user.is_interno)
+
+
 class IsAdmin(BasePermission):
     message = "Apenas administradores."
 

@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AchadoImagemViewSet,
+    AnexoDocumentoViewSet,
     AchadoViewSet,
     CarregamentoViewSet,
     DashboardExecutivoView,
@@ -28,6 +29,8 @@ router.register("carregamentos", CarregamentoViewSet, basename="carregamento")
 router.register("itens-inspecao", ItemInspecaoViewSet, basename="iteminspecao")
 router.register("achados", AchadoViewSet, basename="achado")
 router.register("achados-imagens", AchadoImagemViewSet, basename="achadoimagem")
+# Anexos de documento (PDF/XLSX/DOCX/CSV) — Anexo I 2.3.1.3
+router.register("anexos-documentos", AnexoDocumentoViewSet, basename="anexodocumento")
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),

@@ -18,6 +18,32 @@ from apps.osp.models import OrdemServico
 
 from .models import Inspecao, MedicaoTecnica, MedicaoTermografia, MedicaoVibracao
 
+# Fichas válidas por modalidade (2.3.2.5 a 2.3.2.10 e 2.3.2.8). Os testes deste arquivo
+# verificam classificação, autoria e permissões: a ficha exigida pelo módulo entra
+# no fixture para que a recusa testada seja a da regra em teste, não a da ficha.
+GRANDEZA_TESTE = {
+    ("ULTRASSOM", "ELETRICO"): "Nível de ultrassom elétrico",
+    ("ULTRASSOM", "MECANICO"): "Nível de ultrassom mecânico",
+    ("QUALIDADE_ENERGIA", "QUALIDADE_ENERGIA"): "THD de tensão",
+    ("CORRETIVA", "ALINHAMENTO_EIXOS"): "Desalinhamento angular",
+    ("CORRETIVA", "ALINHAMENTO_POLIAS"): "Desalinhamento angular",
+}
+
+
+def ficha_teste(tipo, subtipo, valor):
+    if tipo == "ESPESSURA":
+        return {"material": "Aço QA", "espessura_nominal_mm": "12"}
+    if (tipo, subtipo) == ("ENSAIO_ELETRICO", "MOTOR_RI"):
+        return {"tempo_leitura_s": 60, "tensao_ensaio_v": "500", "temperatura_c": "25"}
+    if tipo == "ULTRASSOM":
+        return {"ganho_db": "40", "distancia_cm": "30"}
+    if tipo == "QUALIDADE_ENERGIA":
+        return {"janela_agregacao": "10 min"}
+    if tipo == "CORRETIVA" and subtipo in ("ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS"):
+        return {"fase": "antes", "vertical_paralelo_mm": "0.05", "vertical_angular_mm_100mm": valor,
+                "horizontal_paralelo_mm": "0.02", "horizontal_angular_mm_100mm": "0", "rpm": "1800"}
+    return {}
+
 
 class ConformidadeColetaTecnicaTest(TestCase):
     @classmethod
@@ -67,13 +93,20 @@ class ConformidadeColetaTecnicaTest(TestCase):
         if tipo == "FLUIDOS":
             ensaio = extras.get("parametros", {}).get("ensaio")
             unidade = "mg/kg" if ensaio in ("PCB", "2FAL") else "part./mL" if ensaio == "CP" else "ppm"
+        if (tipo, subtipo) in (("CORRETIVA", "ALINHAMENTO_EIXOS"), ("CORRETIVA", "ALINHAMENTO_POLIAS")):
+            unidade = "mm/100mm"
         dados = {
             "inspecao": self.inspecao(tipo).pk, "equipamento": self.equipamento.pk,
             "componente": self.componente.pk, "instrumento": self.instrumento.pk,
             "tipo": tipo, "subtipo": subtipo, "ponto_medicao": "Ponto 1",
-            "grandeza": "Leitura", "valor": "12.2500", "unidade": unidade, "parametros": {},
+            "grandeza": GRANDEZA_TESTE.get((tipo, subtipo), "Leitura"), "valor": "12.2500",
+            "unidade": unidade, "parametros": {},
         }
         dados.update(extras)
+        # Parâmetros explícitos do teste são somados à ficha válida; um teste que envia algo que
+        # não é objeto JSON continua recebendo esse valor, para testar a recusa.
+        if isinstance(dados.get("parametros"), dict):
+            dados["parametros"] = {**ficha_teste(tipo, subtipo, dados["valor"]), **dados["parametros"]}
         return dados
 
     def criar(self, dados, endpoint="medicoes-tecnicas"):

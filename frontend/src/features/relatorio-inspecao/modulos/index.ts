@@ -3,7 +3,13 @@ import type { DossieShell } from "../tipos";
 import type { ModuloRelatorio } from "./contrato";
 import { MODULO_ENSAIO_ELETRICO } from "./eletrico";
 import { MODULO_FLUIDO_LUBRIFICANTE } from "./fluido";
+import { MODULO_ESPESSURA } from "./espessura";
 import { MODULO_INSPECAO_GENERICA } from "./generico";
+import { MODULO_MOTOR_RXI } from "./motor-rxi";
+import { MODULO_ALINHAMENTO_EIXOS, MODULO_ALINHAMENTO_POLIAS } from "./alinhamento";
+import { MODULO_QUALIDADE_ENERGIA } from "./qualidade-energia";
+import { MODULO_TERMO_PROCESSOS, MODULO_TERMOGRAFIA_MECANICA } from "./termografia-sistemas";
+import { MODULO_ULTRASSOM } from "./ultrassom";
 import { MODULO_OLEO_ISOLANTE } from "./oleo";
 import { MODULO_TERMOGRAFIA } from "./termografia";
 import { MODULO_BALANCEAMENTO, MODULO_VIBRACAO } from "./vibracao";
@@ -34,6 +40,14 @@ const MODULOS: Record<string, ModuloRelatorio> = Object.fromEntries(
     registrar(MODULO_BALANCEAMENTO),
     registrar(MODULO_TERMOGRAFIA),
     registrar(MODULO_INSPECAO_GENERICA),
+    registrar(MODULO_ESPESSURA),
+    registrar(MODULO_MOTOR_RXI),
+    registrar(MODULO_ULTRASSOM),
+    registrar(MODULO_QUALIDADE_ENERGIA),
+    registrar(MODULO_ALINHAMENTO_EIXOS),
+    registrar(MODULO_ALINHAMENTO_POLIAS),
+    registrar(MODULO_TERMOGRAFIA_MECANICA),
+    registrar(MODULO_TERMO_PROCESSOS),
     registrar(MODULO_OLEO_ISOLANTE),
     registrar(MODULO_ENSAIO_ELETRICO),
     registrar(MODULO_FLUIDO_LUBRIFICANTE),

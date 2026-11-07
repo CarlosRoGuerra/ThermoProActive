@@ -573,7 +573,7 @@ class PermissoesFluidosTest(CenarioFluidos, TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.criar()
-        cls.rel, (cls.item,) = cls.rota(date(2026, 9, 1), [cls.uh])
+        cls.rel, (cls.item,) = cls.rota(date(2026, 9, 1), [cls.uh], finalizado=date(2026, 9, 10))
         cls.coleta = ColetaFluido.objects.create(item=cls.item, aplicacao="HIDRAULICO", data_coleta=date(2026, 9, 1))
         cls.res = cls.resultado(cls.item, "CP", {"P4": 4000, "P6": 1200, "P14": 100})
 
@@ -600,6 +600,7 @@ class PermissoesFluidosTest(CenarioFluidos, TestCase):
 
     def test_portal_so_ve_historico_de_relatorio_finalizado(self):
         api = self.como(self.leitor)
+        Relatorio.objects.filter(pk=self.rel.pk).update(data_finalizacao=None)  # em elaboração: fora do Portal
         self.assertEqual(api.get("/api/fluidos-historico/").data, [])
         Relatorio.objects.filter(pk=self.rel.pk).update(data_finalizacao=date(2026, 9, 10))
         self.assertEqual([x["tag"] for x in api.get("/api/fluidos-historico/").data], ["120-ENX-002"])

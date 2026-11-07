@@ -14,6 +14,7 @@ import {
   ThemeToggle,
 } from "@/components/ds";
 import { useAuth } from "@/lib/auth";
+import { CertificadoA1 } from "@/features/perfil/certificado-a1";
 import { NIVEL_LABEL, NIVEL_RESUMO, PERFIL_LABEL } from "@/lib/permissions";
 import { texto } from "@/lib/format";
 
@@ -151,6 +152,7 @@ export function MeuPerfil({ ehCliente }: { ehCliente: boolean }) {
           <li>Nunca compartilhe seu login: cada pessoa deve ter o seu próprio.</li>
         </ul>
       </Card>
+      {!ehCliente && <CertificadoA1 />}
     </PageBody>
   );
 }

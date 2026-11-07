@@ -8,8 +8,9 @@ Idempotente: pode ser executado várias vezes (usa get_or_create).
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.cadastros.models import (
@@ -44,10 +45,15 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = "Cria dados de demonstração do ThermoProActive."
+    help = "Cria dados de demonstração do ThermoProActive (somente desenvolvimento: DEBUG=True)."
 
     @transaction.atomic
     def handle(self, *args, **options):
+        # Cria um superusuário com senha pública (README/seed). Com DEBUG=False o
+        # comando recusa rodar: o CMD padrão da imagem o chama antes do gunicorn e
+        # um servidor real nunca pode ganhar essa conta por acidente (achado A-07).
+        if not settings.DEBUG:
+            raise CommandError("seed_demo só roda com DEBUG=True (cria contas com senha de demonstração).")
         # --- Empresa contratada (Guerra IT / ThermoProActive prestadora) ---
         empresa, _ = Empresa.objects.get_or_create(
             cnpj="39.923.567/0001-75",

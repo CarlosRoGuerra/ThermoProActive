@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import Convite, SolicitacaoAcesso
 
@@ -50,6 +50,13 @@ class UserWriteSerializer(serializers.ModelSerializer):
             "conselho_classe", "is_active",
         ]
 
+    def validate_password(self, valor):
+        # Mesma régua da troca/redefinição de senha (mín. 15, validadores do Django);
+        # antes aqui só valia o min_length e "aaaaaaaaaaaaaaa" passava.
+        from .auth_serializers import validar_senha_forte
+
+        return validar_senha_forte(valor, self.instance)
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         user = User(**validated_data)
@@ -63,19 +70,9 @@ class UserWriteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
+            instance.senha_alterada_em = timezone.now()
         instance.save()
         return instance
-
-
-class LoginSerializer(TokenObtainPairSerializer):
-    """JWT (item 2.1.1.3) que retorna também os dados do usuário autenticado."""
-
-    username_field = User.USERNAME_FIELD
-
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        data["user"] = UserSerializer(self.user).data
-        return data
 
 
 class ConvitePendenteSerializer(serializers.ModelSerializer):
@@ -114,3 +111,15 @@ class SolicitacaoAcessoListSerializer(serializers.ModelSerializer):
             "criado_em",
         ]
         read_only_fields = fields
+
+
+class DadosPessoaisSerializer(serializers.ModelSerializer):
+    """Item 3.1.2 (LGPD): usado SÓ em /auth/dados-pessoais/ e /usuarios/{id}/dados-pessoais/."""
+
+    class Meta:
+        from .models import DadosPessoaisUsuario
+        model = DadosPessoaisUsuario
+        fields = [
+            "data_nascimento", "rg", "ctps", "estado_civil", "quantidade_filhos",
+            "logradouro", "numero", "complemento", "bairro", "cidade", "uf", "cep",
+        ]

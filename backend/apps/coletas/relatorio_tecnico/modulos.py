@@ -21,6 +21,12 @@ from apps.cadastros.models import MODULOS_PLANEJADOS, ModuloTecnico
 from apps.ensaios.relatorio import ModuloEnsaioEletrico, ModuloOleoIsolante
 from apps.ensaios.relatorio_fluidos import ModuloFluidoLubrificante
 
+from .espessura import MODULO_ESPESSURA
+from .motor_rxi import MODULO_MOTOR_RXI
+from .alinhamento import MODULO_ALINHAMENTO_EIXOS, MODULO_ALINHAMENTO_POLIAS
+from .qualidade_energia import MODULO_QUALIDADE_ENERGIA
+from .termografia_sistemas import MODULO_TERMO_PROCESSOS, MODULO_TERMOGRAFIA_MECANICA
+from .ultrassom import MODULO_ULTRASSOM
 from .generico import CONSIDERACOES_GENERICAS, GLOSSARIO_GENERICO
 from .inspecao import (
     MEDIA_ACELERACAO,
@@ -92,8 +98,10 @@ FLUIDO_LUBRIFICANTE = ModuloFluidoLubrificante()
 
 MODULOS = {
     m.chave: m
-    for m in (VIBRACAO, BALANCEAMENTO, TERMOGRAFIA, INSPECAO_GENERICA, OLEO_ISOLANTE, ENSAIO_ELETRICO,
-              FLUIDO_LUBRIFICANTE)
+    for m in (VIBRACAO, BALANCEAMENTO, TERMOGRAFIA, INSPECAO_GENERICA, MODULO_ESPESSURA, MODULO_MOTOR_RXI,
+              MODULO_ULTRASSOM, MODULO_QUALIDADE_ENERGIA, MODULO_TERMOGRAFIA_MECANICA, MODULO_TERMO_PROCESSOS,
+              MODULO_ALINHAMENTO_EIXOS, MODULO_ALINHAMENTO_POLIAS,
+              OLEO_ISOLANTE, ENSAIO_ELETRICO, FLUIDO_LUBRIFICANTE)
 }
 
 

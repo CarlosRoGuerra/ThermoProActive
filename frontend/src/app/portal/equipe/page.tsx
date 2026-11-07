@@ -24,6 +24,7 @@ import { useLista, useMutacao, useRecurso } from "@/lib/recurso";
 import { usePermissoes } from "@/lib/permissions";
 import { NIVEL_LABEL, PERFIL_LABEL, PERFIS_CLIENTE } from "@/lib/permissions";
 import { dataHora } from "@/lib/format";
+import { SetoresRestritos } from "@/features/usuarios/setores-restritos";
 import type { Nivel, Perfil, User } from "@/lib/types";
 
 /* ==========================================================================
@@ -58,6 +59,7 @@ export default function PortalEquipePage() {
   const { user } = useAuth();
   const { pode } = usePermissoes();
   const [convidando, setConvidando] = useState(false);
+  const [setoresDe, setSetoresDe] = useState<User | null>(null);
 
   const podeGerenciar = pode("equipe:gerenciar");
 
@@ -119,6 +121,12 @@ export default function PortalEquipePage() {
                   {u.is_master && <Badge tone="primary">Master</Badge>}
                   {!u.is_active && <Badge tone="danger">Inativo</Badge>}
                 </div>
+                {user?.is_master && u.id !== user.id && (<Button size="sm" variant="secondary" onClick={() => setSetoresDe(u)}>Setores</Button>)}
+                {setoresDe?.id === u.id && (
+                  <Modal aberto onFechar={() => setSetoresDe(null)} title={`Setores de ${u.nome}`} description="Restrinja o acesso desta pessoa a setores da sua empresa.">
+                    <SetoresRestritos alvoId={u.id} clienteId={u.cliente} pelaEquipe />
+                  </Modal>
+                )}
               </li>
             ))}
           </ul>

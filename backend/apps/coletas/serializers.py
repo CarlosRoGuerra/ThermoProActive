@@ -1,13 +1,16 @@
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 import unicodedata
+from django.conf import settings
 from rest_framework import serializers
 
 from apps.cadastros.models import Condicao
 
+from .anexos import validar_upload
 from .models import (
     Achado,
     AchadoImagem,
+    AnexoDocumento,
     Carregamento,
     Inspecao,
     ItemInspecao,
@@ -226,6 +229,57 @@ class MedicaoTecnicaSerializer(ValidacaoMedicaoMixin, serializers.ModelSerialize
             if unidades is not None and unidade not in unidades:
                 exibidas = [u or "adimensional" for u in unidades]
                 raise serializers.ValidationError({"unidade": f"Unidade incompatível com a grandeza. Use: {', '.join(exibidas)}."})
+        # Ficha de espessura (2.3.2.7): material e espessura nominal são obrigatórios na coleta.
+        if tipo == TipoAnalise.ESPESSURA and (self.instance is None or "parametros" in attrs):
+            from .espessura import validar_ficha
+
+            erros = validar_ficha(parametros)
+            if erros:
+                raise serializers.ValidationError({"parametros": erros})
+        # Ficha de motor — resistência de isolação (2.3.2.5.1.1): tempo, tensão e temperatura.
+        if subtipo == "MOTOR_RI" and (self.instance is None or "parametros" in attrs):
+            from .motor_rxi import validar_ficha as validar_ficha_motor
+
+            erros = validar_ficha_motor(parametros)
+            if erros:
+                raise serializers.ValidationError({"parametros": erros})
+        # Ficha de ultrassom (2.3.2.6): ganho e distância são obrigatórios para a leitura em dB ser comparável.
+        if tipo == TipoAnalise.ULTRASSOM and (self.instance is None or "parametros" in attrs):
+            from .ultrassom import validar_ficha as validar_ficha_ultrassom
+
+            erros = validar_ficha_ultrassom(parametros)
+            if erros:
+                raise serializers.ValidationError({"parametros": erros})
+            from .ultrassom import GRANDEZA_POR_SUBTIPO
+
+            if subtipo in GRANDEZA_POR_SUBTIPO and self.valor(attrs, "grandeza", "") != GRANDEZA_POR_SUBTIPO[subtipo]:
+                raise serializers.ValidationError({"grandeza": f"Para {subtipo.lower()}, a grandeza é “{GRANDEZA_POR_SUBTIPO[subtipo]}”."})
+        # Qualidade de energia (2.3.2.10): ficha com janela de agregação; grandezas em % conhecidas.
+        if tipo == TipoAnalise.QUALIDADE_ENERGIA and (self.instance is None or {"parametros", "grandeza", "unidade"} & set(attrs)):
+            from .qualidade_energia import GRANDEZAS, UNIDADE, validar_ficha as validar_ficha_qe
+
+            erros = validar_ficha_qe(parametros)
+            if erros:
+                raise serializers.ValidationError({"parametros": erros})
+            if self.valor(attrs, "grandeza", "") not in GRANDEZAS:
+                raise serializers.ValidationError({"grandeza": "Use uma das grandezas: " + ", ".join(GRANDEZAS) + "."})
+            if self.valor(attrs, "unidade", "") != UNIDADE:
+                raise serializers.ValidationError({"unidade": "A unidade de qualidade de energia é “%”."})
+        # Alinhamento a laser (2.3.2.8.1.1–2): ficha antes/depois com os dois planos, rpm e grandeza angular.
+        if subtipo in ("ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS") and (
+            self.instance is None or {"parametros", "valor", "grandeza", "unidade"} & set(attrs)
+        ):
+            from .alinhamento import GRANDEZA_ANGULAR, UNIDADE_ANGULAR, validar_ficha as validar_alinhamento
+
+            erros = validar_alinhamento(parametros, self.valor(attrs, "valor"))
+            erro_valor = erros.pop("valor", None)
+            if erro_valor or erros:
+                detalhe = {"parametros": erros} if erros else {}
+                if erro_valor:
+                    detalhe["valor"] = erro_valor
+                raise serializers.ValidationError(detalhe)
+            if self.valor(attrs, "grandeza", "") != GRANDEZA_ANGULAR or self.valor(attrs, "unidade", "") != UNIDADE_ANGULAR:
+                raise serializers.ValidationError({"grandeza": f"O alinhamento registra “{GRANDEZA_ANGULAR}” em {UNIDADE_ANGULAR}."})
         return attrs
 
 
@@ -308,6 +362,74 @@ class AchadoImagemSerializer(serializers.ModelSerializer):
     class Meta:
         model = AchadoImagem
         fields = ["id", "achado", "tipo", "tipo_display", "arquivo", "legenda", "criado_em"]
+
+    def validate_arquivo(self, arquivo):
+        # Mesmo teto da emissão do laudo (que recusa imagem maior): barrar aqui evita
+        # guardar no disco um arquivo que depois impede o PDF, e limita upload abusivo.
+        limite = settings.LAUDOS_MAX_IMAGEM_BYTES
+        if arquivo.size > limite:
+            raise serializers.ValidationError(f"A imagem excede {limite // (1024 * 1024)} MB.")
+        return arquivo
+
+
+class AnexoDocumentoSerializer(serializers.ModelSerializer):
+    """
+    Anexo de documento (Anexo I 2.3.1.3). O arquivo é validado pelo conteúdo
+    (`apps.coletas.anexos`); o cliente do anexo tem de ser o dono de TODOS os vínculos
+    (inspeção, equipamento, relatório), senão 400 — evita anexar no cliente errado.
+    Após o envio o arquivo não é trocado: envie outro anexo.
+    """
+
+    categoria_display = serializers.CharField(source="get_categoria_display", read_only=True)
+
+    class Meta:
+        model = AnexoDocumento
+        fields = [
+            "id", "cliente", "inspecao", "equipamento", "relatorio",
+            "categoria", "categoria_display", "arquivo", "nome_original", "tamanho_bytes",
+            "sha256", "descricao", "visivel_cliente", "enviado_por", "criado_em",
+        ]
+        read_only_fields = ["nome_original", "tamanho_bytes", "sha256", "enviado_por", "criado_em"]
+
+    def validate_arquivo(self, arquivo):
+        try:
+            self._metadados = validar_upload(arquivo)
+        except ValueError as erro:
+            raise serializers.ValidationError(str(erro))
+        return arquivo
+
+    def validate(self, attrs):
+        atual = self.instance
+        if atual is not None:
+            if "arquivo" in attrs:
+                raise serializers.ValidationError({"arquivo": "O arquivo não pode ser trocado; envie outro anexo."})
+            if "cliente" in attrs and attrs["cliente"] != atual.cliente:
+                raise serializers.ValidationError({"cliente": "O cliente do anexo não pode ser alterado."})
+        cliente = attrs.get("cliente") or (atual.cliente if atual else None)
+
+        vinculos = {
+            campo: attrs[campo] if campo in attrs else getattr(atual, campo, None)
+            for campo in ("inspecao", "equipamento", "relatorio")
+        }
+        if not any(vinculos.values()):
+            raise serializers.ValidationError(
+                "Vincule o anexo a uma inspeção, a um equipamento ou a um relatório."
+            )
+        if vinculos["inspecao"] and vinculos["inspecao"].cliente_id != cliente.pk:
+            raise serializers.ValidationError({"inspecao": "A inspeção pertence a outro cliente."})
+        if vinculos["relatorio"] and vinculos["relatorio"].cliente_id != cliente.pk:
+            raise serializers.ValidationError({"relatorio": "O relatório pertence a outro cliente."})
+        equipamento = vinculos["equipamento"]
+        if equipamento and equipamento.setor.area.cliente_id != cliente.pk:
+            raise serializers.ValidationError({"equipamento": "O equipamento pertence a outro cliente."})
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        validated_data.update(self._metadados)
+        if request is not None and request.user.is_authenticated:
+            validated_data["enviado_por"] = request.user
+        return super().create(validated_data)
 
 
 class AchadoSerializer(serializers.ModelSerializer):
@@ -435,6 +557,20 @@ class ItemInspecaoSerializer(serializers.ModelSerializer):
         if value.tipo_corretiva:
             raise serializers.ValidationError("Use os equipamentos da atividade corretiva carregada.")
         return value
+
+    def validate(self, attrs):
+        # A folha de campo é do cliente do carregamento: um equipamento de OUTRO cliente aqui
+        # apareceria (TAG, nome, área) no Portal do cliente dono da folha.
+        if "equipamento" in attrs or "carregamento" in attrs:
+            carregamento = attrs.get("carregamento") or getattr(self.instance, "carregamento", None)
+            equipamento = attrs.get("equipamento") or getattr(self.instance, "equipamento", None)
+            if carregamento is not None and equipamento is not None:
+                dono = equipamento.setor.area.cliente_id if equipamento.setor_id else None
+                if dono != carregamento.cliente_id:
+                    raise serializers.ValidationError(
+                        {"equipamento": "Este equipamento pertence a outro cliente."}
+                    )
+        return attrs
 
     equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
     equipamento_nome = serializers.CharField(source="equipamento.nome", read_only=True)
@@ -583,6 +719,10 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        rota = attrs.get("rota")
+        cliente_informado = attrs.get("cliente")
+        if rota and cliente_informado and rota.cliente_id != cliente_informado.pk:
+            raise serializers.ValidationError({"rota": "A rota pertence a outro cliente."})
         relatorio = attrs.get("relatorio")
         if relatorio and relatorio.carregamentos.exclude(tipo_corretiva="").exists():
             raise serializers.ValidationError({"relatorio": "Relatório vinculado a uma atividade corretiva."})
@@ -630,9 +770,11 @@ class CarregamentoSerializer(serializers.ModelSerializer):
         carregamento = super().create(validated_data)
         if carregamento.rota_id:
             # Ordem natural de inspeção: área → setor → tag (não a ordem de cadastro).
-            equipamentos = carregamento.rota.equipamentos.order_by(
-                "setor__area__nome", "setor__nome", "tag"
-            )
+            # Só equipamentos do PRÓPRIO cliente do carregamento: a rota é um M2M e não
+            # impede, sozinha, um equipamento de outro cliente (defesa em profundidade, A-02).
+            equipamentos = carregamento.rota.equipamentos.filter(
+                setor__area__cliente_id=carregamento.cliente_id
+            ).order_by("setor__area__nome", "setor__nome", "tag")
             ItemInspecao.objects.bulk_create([
                 ItemInspecao(carregamento=carregamento, equipamento=eq, ordem=i)
                 for i, eq in enumerate(equipamentos, start=1)

@@ -113,6 +113,7 @@ export function ModalAnalise({
         setForm={setForm}
         tipo={tecnologiaTipo(tecnologiaModulo)}
         tecnologiaId={tecnologiaId}
+        achadoId={achado?.id}
       />
     </Modal>
   );

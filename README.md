@@ -138,6 +138,28 @@ docs/      Arquitetura (ADR), Discovery dos módulos técnicos, redesign do fron
 > RBAC com guarda de rota, tela de usuários, onboarding do cliente) e o que ficou de
 > fora estão descritos em [`docs/08-FRONTEND-REDESIGN.md`](docs/08-FRONTEND-REDESIGN.md).
 
+## Implantação em produção (VPS Linux) e backup
+
+Guia completo — implantação do zero, atualização com migrações, **backup criptografado**,
+restauração, runbook de falhas e transferência para outro provedor:
+[`docs/19-OPERACAO-DEPLOY-BACKUP.md`](docs/19-OPERACAO-DEPLOY-BACKUP.md). Resumo:
+
+```bash
+cp .env.prod.example .env.prod && nano .env.prod          # segredos reais; NUNCA versionar
+# com domínio + TLS:
+bash deploy/init-letsencrypt.sh && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# teste por IP, sem TLS (COOKIES_SECURE=False; só homologação):
+docker compose --env-file .env.prod -f docker-compose.http.yml up -d --build
+bash deploy/verificar-producao.sh      # check-up somente leitura (containers, DEBUG, backup, portas...)
+bash deploy/testar-restauracao.sh      # simulado de restauração em ambiente isolado (trimestral)
+```
+
+- O serviço `backup` faz `pg_dump` + cópia dos uploads (`media`) todo dia, **criptografa**
+  (AES-256, `gpg`), confere por SHA-256 e mantém 7 diários / 4 semanais / 12 mensais; envio
+  externo opcional por `rclone` para qualquer destino. Sem a frase-secreta **não há restauração**.
+- Banco nunca é publicado; só o nginx abre as portas 80/443. Logs com rotação (10 MB x 5).
+- `seed_demo` (usuários `thermo123`) só roda com `SEED_DEMO=1` (somente no compose de desenvolvimento).
+
 ## Conformidade contratual (Cláusula 12.4 — anti-lock-in)
 Todas as dependências são open-source com licenças permissivas; o SGBD é selecionado por
 `DATABASE_URL` (PostgreSQL/SQLite) sem acoplamento; o deploy roda em qualquer VPS Linux com

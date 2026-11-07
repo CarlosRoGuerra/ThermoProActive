@@ -3,6 +3,15 @@
 # Este arquivo é um TEMPLATE: o container nginx substitui ${DOMAIN} em build-time
 # (NGINX_ENVSUBST_FILTER=DOMAIN preserva as variáveis internas do nginx como $host).
 
+# Limite de requisições por IP nas rotas de login (defesa em profundidade: o Django
+# já aplica throttle próprio e bloqueio de conta). `limit_req_zone` fica no contexto
+# http — este arquivo é incluído em conf.d, então vale aqui.
+limit_req_zone $binary_remote_addr zone=tpa_login:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=tpa_admin:10m rate=10r/m;
+
+# Não revela a versão do nginx nas respostas/erros.
+server_tokens off;
+
 # --- HTTP: desafio ACME + redirect para HTTPS --------------------------------
 server {
     listen 80;
@@ -33,6 +42,13 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
+    # Upstreams resolvidos a cada requisição pelo DNS interno do Docker: com o
+    # nome literal no proxy_pass o nginx guarda o IP do boot e responde 502
+    # quando o backend/frontend é recriado num deploy (IP novo).
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $tpa_backend  http://backend:8000;
+    set $tpa_frontend http://frontend:3000;
+
     # Uploads (evidências/fotos — futuro) e exportações grandes.
     client_max_body_size 25m;
 
@@ -41,35 +57,72 @@ server {
     proxy_read_timeout 120s;
     proxy_set_header Host              $host;
     proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    # Sobrescreve (não acrescenta) o X-Forwarded-For: o cliente não pode forjar o
+    # IP que o Django usa no throttle e no log de segurança. Django: NUM_PROXIES=1.
+    proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # --- API Django (DRF, Swagger em /api/docs/, auth JWT) ---
-    location /api/ {
-        proxy_pass http://backend:8000;
+    # Cabeçalhos de segurança. O subconjunto "seguro" do CSP não afeta o Next.js;
+    # um CSP completo (script-src) exige nonce no Next e fica como evolução.
+    add_header Strict-Transport-Security "max-age=31536000" always;  # includeSubDomains só após confirmar HTTPS em todos os subdomínios
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" always;
+
+    # --- Login: limite de taxa por IP antes de chegar ao Django ---
+    location ~ ^/api/auth/(portal|admin)/(login|esqueci-senha)/$ {
+        limit_req zone=tpa_login burst=15 nodelay;
+        limit_req_status 429;
+        proxy_pass $tpa_backend;
     }
 
-    # --- Admin do Django ---
+    # --- API Django (DRF, Swagger em /api/docs/ só para interno logado, auth JWT) ---
+    location /api/ {
+        proxy_pass $tpa_backend;
+    }
+
+    # --- Admin do Django (login próprio, sem MFA: limitado por IP; prefira
+    #     DJANGO_ADMIN_ENABLED=False ou restringir por IP/VPN aqui) ---
     location /django-admin/ {
-        proxy_pass http://backend:8000;
+        limit_req zone=tpa_admin burst=20 nodelay;
+        limit_req_status 429;
+        # allow 203.0.113.10;   # IP fixo do escritório/VPN
+        # deny  all;
+        proxy_pass $tpa_backend;
     }
 
     # --- Estáticos do Django/DRF/admin (servidos pelo WhiteNoise no backend) ---
     location /static/ {
-        proxy_pass http://backend:8000;
+        proxy_pass $tpa_backend;
     }
 
-    # --- Mídia (uploads) servida direto pelo nginx a partir do volume ---
-    location /media/ {
+    # --- Mídia (uploads): NÃO é mais pública (achado A-03) ---
+    # O navegador pede /api/media/<arquivo> (Django confere login e dono do arquivo
+    # por cliente) e o Django responde X-Accel-Redirect para a location interna
+    # abaixo, que só o nginx alcança (acesso direto de fora devolve 404).
+    location /protected-media/ {
+        internal;
         alias /var/www/media/;
-        access_log off;
-        expires 30d;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+    }
+    # URL antiga: não serve mais nada daqui.
+    location /media/ {
+        return 404;
     }
 
     # --- Frontend Next.js (tudo o mais: /, /login, /portal, /_next/...) ---
     location / {
-        proxy_pass http://frontend:3000;
+        proxy_pass $tpa_frontend;
         proxy_http_version 1.1;
+        # proxy_set_header aqui ANULA os herdados do server: repete Host/XFF,
+        # senão o Next recebe Host "frontend:3000" e o X-Forwarded-For do cliente.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade    $http_upgrade;
         proxy_set_header Connection "upgrade";
     }

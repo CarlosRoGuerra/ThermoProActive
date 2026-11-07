@@ -43,6 +43,12 @@ const SISTEMAS = [
 ];
 
 import { mensagemDeErro } from "@/lib/erros";
+import { TendenciaExpansivel } from "@/features/preditiva/tendencia-expansivel";
+import { EspessuraMedicao } from "@/features/preditiva/espessura-medicao";
+import { MotorRxiMedicao } from "@/features/preditiva/motor-rxi-medicao";
+import { UltrassomMedicao } from "@/features/preditiva/ultrassom-medicao";
+import { QualidadeEnergiaMedicao } from "@/features/preditiva/qualidade-energia-medicao";
+import { AlinhamentoMedicao } from "@/features/preditiva/alinhamento-medicao";
 import {
   decimalColeta, ensaiosDoFluido, grandezasDaColeta,
   SUBTIPOS_TECNICOS, SUBTIPOS_VIBRACAO,
@@ -58,6 +64,9 @@ function Classificacao({ medicao }: { medicao: ClassificacaoColeta }) {
 }
 
 type ContextoColeta = ClassificacaoMedicao & {
+  id: number;
+  tipo?: string;
+  subtipo?: string;
   data_hora: string;
   parametros?: Record<string, unknown>;
   aceleracao_rms?: string | null;
@@ -85,13 +94,31 @@ function DadosColeta({ medicao }: { medicao: ContextoColeta }) {
     ["Fase (°)", medicao.parametros?.fase_graus],
     ["Observação", medicao.parametros?.observacao],
   ].filter(([, valor]) => valor != null && valor !== "");
-  return <details className="mt-2 text-xs text-fg-muted">
+  return <>
+  <details className="mt-2 text-xs text-fg-muted">
     <summary className="cursor-pointer py-1">Dados da coleta</summary>
     <dl className="mt-1 space-y-1">
       {detalhes.map(([label, valor]) => <div key={String(label)}><dt className="inline font-medium">{String(label)}: </dt><dd className="inline">{String(valor)}</dd></div>)}
     </dl>
     {!!medicao.historico_classificacao?.length && <p className="mt-2">{medicao.historico_classificacao.length} versão(ões) anterior(es) preservada(s) no histórico.</p>}
-  </details>;
+  </details>
+  <TendenciaExpansivel
+    modalidade={"velocidade_rms" in medicao ? "vibracao" : "delta_t" in medicao ? "termografia" : "tecnica"}
+    medicaoId={medicao.id}
+  />
+  {medicao.tipo === "ESPESSURA" && <EspessuraMedicao medicaoId={medicao.id} />}
+  {medicao.subtipo === "MOTOR_RI" && <MotorRxiMedicao medicaoId={medicao.id} />}
+  {medicao.tipo === "ULTRASSOM" && <UltrassomMedicao medicaoId={medicao.id} />}
+  {medicao.tipo === "QUALIDADE_ENERGIA" && <QualidadeEnergiaMedicao medicaoId={medicao.id} />}
+  {(medicao.subtipo === "ALINHAMENTO_EIXOS" || medicao.subtipo === "ALINHAMENTO_POLIAS") && <AlinhamentoMedicao medicaoId={medicao.id} />}
+  </>;
+}
+
+/** Maior |angular| entre os dois planos, como texto; vazio enquanto um dos planos não foi digitado. */
+function maiorAngular(v: string, h: string): string {
+  const a = Math.abs(Number(v.trim().replace(",", ".")));
+  const b = Math.abs(Number(h.trim().replace(",", ".")));
+  return v.trim() && h.trim() && Number.isFinite(a) && Number.isFinite(b) ? String(Math.max(a, b)) : "";
 }
 
 export default function InspecaoDetailPage() {
@@ -135,6 +162,17 @@ export default function InspecaoDetailPage() {
     equipamento: "" as number | "", ponto_medicao: "", grandezaIdx: 0,
     subtipo: "", ensaio: "FQ", grandeza_livre: "", unidade_livre: "",
     valor: "", valor_referencia: "", criticidade: "", observacao: "",
+    // Ficha de espessura (2.3.2.7): material e espessura nominal da peça.
+    material: "", espessura_nominal: "",
+    // Ficha de isolação de motor (2.3.2.5.1.1): tempo de leitura, tensão, temperatura e ligação.
+    tempo_leitura: "", tensao_ensaio: "", temperatura: "", ligacao: "",
+    // Ficha de ultrassom (2.3.2.6): ganho e distância obrigatórios; frequência e evidência opcionais.
+    ganho_db: "", distancia_cm: "", frequencia_khz: "", tipo_evidencia: "",
+    // Ficha de qualidade de energia (2.3.2.10): janela de agregação obrigatória; fase e tensão opcionais.
+    janela_agregacao: "", fase: "", tensao_nominal: "",
+    // Ficha de alinhamento a laser (2.3.2.8.1.1–2): antes/depois, dois planos, rpm e correções nos pés.
+    alin_fase: "antes", alin_par_v: "", alin_ang_v: "", alin_par_h: "", alin_ang_h: "", alin_rpm: "",
+    alin_corr_v: "", alin_corr_h: "", alin_dist: "",
   });
 
   const subtipoTecnico = tec.subtipo || SUBTIPOS_TECNICOS[tipo]?.[0]?.valor || "";
@@ -258,6 +296,32 @@ export default function InspecaoDetailPage() {
       unidade: grandezaSel?.livre ? tec.unidade_livre : grandezaSel?.unidade ?? "",
       valor: isSensitiva ? null : n.valor, valor_referencia: n.valor_referencia ?? null,
       parametros: { ...(tipo === "FLUIDOS" ? { ensaio: tec.ensaio } : {}),
+        ...(tipo === "ESPESSURA" ? { material: tec.material.trim(), espessura_nominal_mm: tec.espessura_nominal.trim().replace(",", ".") } : {}),
+        ...(subtipoTecnico === "MOTOR_RI" ? {
+          tempo_leitura_s: Number(tec.tempo_leitura), tensao_ensaio_v: tec.tensao_ensaio.trim().replace(",", "."),
+          temperatura_c: tec.temperatura.trim().replace(",", "."), ...(tec.ligacao.trim() ? { ligacao: tec.ligacao.trim() } : {}),
+        } : {}),
+        ...(tipo === "ULTRASSOM" ? {
+          ganho_db: tec.ganho_db.trim().replace(",", "."), distancia_cm: tec.distancia_cm.trim().replace(",", "."),
+          ...(tec.frequencia_khz.trim() ? { frequencia_khz: tec.frequencia_khz.trim().replace(",", ".") } : {}),
+          ...(tec.tipo_evidencia.trim() ? { tipo_evidencia: tec.tipo_evidencia.trim() } : {}),
+        } : {}),
+        ...(subtipoTecnico === "ALINHAMENTO_EIXOS" || subtipoTecnico === "ALINHAMENTO_POLIAS" ? {
+          fase: tec.alin_fase,
+          vertical_paralelo_mm: tec.alin_par_v.trim().replace(",", "."),
+          vertical_angular_mm_100mm: tec.alin_ang_v.trim().replace(",", "."),
+          horizontal_paralelo_mm: tec.alin_par_h.trim().replace(",", "."),
+          horizontal_angular_mm_100mm: tec.alin_ang_h.trim().replace(",", "."),
+          rpm: tec.alin_rpm.trim().replace(",", "."),
+          ...(tec.alin_corr_v.trim() ? { correcao_pe_vertical_mm: tec.alin_corr_v.trim().replace(",", ".") } : {}),
+          ...(tec.alin_corr_h.trim() ? { correcao_pe_horizontal_mm: tec.alin_corr_h.trim().replace(",", ".") } : {}),
+          ...(tec.alin_dist.trim() ? { distancia_pes_mm: tec.alin_dist.trim().replace(",", ".") } : {}),
+        } : {}),
+        ...(tipo === "QUALIDADE_ENERGIA" ? {
+          janela_agregacao: tec.janela_agregacao.trim(),
+          ...(tec.fase.trim() ? { fase: tec.fase.trim() } : {}),
+          ...(tec.tensao_nominal.trim() ? { tensao_nominal_v: tec.tensao_nominal.trim().replace(",", ".") } : {}),
+        } : {}),
         ...(isSensitiva ? { criticidade: tec.criticidade } : {}), observacao: tec.observacao },
     }, () => setTec({ ...tec, ponto_medicao: "", valor: "", valor_referencia: "", criticidade: "", observacao: "" }));
   }
@@ -445,7 +509,7 @@ export default function InspecaoDetailPage() {
               <Button onClick={salvarTermografia} loading={saving} disabled={saving} icon={Plus} className="w-full">Adicionar</Button>
             </div>
           </div>
-          <p className="mt-3 text-xs text-fg-subtle">ΔT é a diferença entre a temperatura medida e a de referência. A classificação aguarda critério validado para o sistema inspecionado.</p>
+          <p className="mt-3 text-xs text-fg-subtle">ΔT é a diferença entre a temperatura medida e a de referência. A classificação usa o critério validado do sistema inspecionado; sem critério validado, fica pendente.</p>
         </Card>
       )}
 
@@ -488,6 +552,90 @@ export default function InspecaoDetailPage() {
             <Field label="Ponto de medição" htmlFor="coleta-ponto_medicao" erro={erros.ponto_medicao} obrigatorio>
               <Input value={tec.ponto_medicao} onChange={(e) => setTec({ ...tec, ponto_medicao: e.target.value })} placeholder="Ex.: Enrolamento do estator" />
             </Field>
+            {tipo === "ESPESSURA" && <>
+              <Field label="Material da peça" obrigatorio erro={erros.material} htmlFor="coleta-material">
+                <Input maxLength={80} value={tec.material} onChange={(e) => setTec({ ...tec, material: e.target.value })} placeholder="Ex.: aço carbono ASTM A106" />
+              </Field>
+              <Field label="Espessura nominal (mm)" obrigatorio erro={erros.espessura_nominal} htmlFor="coleta-espessura_nominal">
+                <Input inputMode="decimal" value={tec.espessura_nominal} onChange={(e) => setTec({ ...tec, espessura_nominal: e.target.value })} placeholder="Ex.: 12,5" />
+              </Field>
+            </>}
+            {subtipoTecnico === "MOTOR_RI" && <>
+              <Field label="Tempo de leitura" obrigatorio erro={erros.tempo_leitura} htmlFor="coleta-tempo_leitura">
+                <Select value={tec.tempo_leitura} onChange={(e) => setTec({ ...tec, tempo_leitura: e.target.value })}>
+                  <option value="">Selecione…</option>
+                  <option value="30">30 s (R30)</option>
+                  <option value="60">60 s (R60)</option>
+                  <option value="600">600 s (R600)</option>
+                </Select>
+              </Field>
+              <Field label="Tensão de ensaio (V)" obrigatorio erro={erros.tensao_ensaio} htmlFor="coleta-tensao_ensaio">
+                <Input inputMode="decimal" value={tec.tensao_ensaio} onChange={(e) => setTec({ ...tec, tensao_ensaio: e.target.value })} placeholder="Ex.: 500" />
+              </Field>
+              <Field label="Temperatura do enrolamento (°C)" obrigatorio erro={erros.temperatura} htmlFor="coleta-temperatura">
+                <Input inputMode="decimal" value={tec.temperatura} onChange={(e) => setTec({ ...tec, temperatura: e.target.value })} placeholder="Ex.: 25" />
+              </Field>
+              <Field label="Ligação do ensaio" htmlFor="coleta-ligacao">
+                <Input maxLength={60} value={tec.ligacao} onChange={(e) => setTec({ ...tec, ligacao: e.target.value })} placeholder="Ex.: fase-terra" />
+              </Field>
+            </>}
+            {tipo === "ULTRASSOM" && <>
+              <Field label="Ganho do instrumento (dB)" obrigatorio erro={erros.ganho_db} htmlFor="coleta-ganho_db">
+                <Input inputMode="decimal" value={tec.ganho_db} onChange={(e) => setTec({ ...tec, ganho_db: e.target.value })} placeholder="Ex.: 40" />
+              </Field>
+              <Field label="Distância do sensor à fonte (cm)" obrigatorio erro={erros.distancia_cm} htmlFor="coleta-distancia_cm">
+                <Input inputMode="decimal" value={tec.distancia_cm} onChange={(e) => setTec({ ...tec, distancia_cm: e.target.value })} placeholder="Ex.: 30" />
+              </Field>
+              <Field label="Frequência (kHz, se registrada)" htmlFor="coleta-frequencia_khz">
+                <Input inputMode="decimal" value={tec.frequencia_khz} onChange={(e) => setTec({ ...tec, frequencia_khz: e.target.value })} placeholder="Ex.: 40" />
+              </Field>
+              <Field label="Tipo de evidência" htmlFor="coleta-tipo_evidencia">
+                <Input maxLength={60} value={tec.tipo_evidencia} onChange={(e) => setTec({ ...tec, tipo_evidencia: e.target.value })} placeholder="Ex.: descarga, atrito" />
+              </Field>
+            </>}
+            {(subtipoTecnico === "ALINHAMENTO_EIXOS" || subtipoTecnico === "ALINHAMENTO_POLIAS") && <>
+              <Field label="Fase" obrigatorio erro={erros.fase} htmlFor="coleta-alin_fase">
+                <Select value={tec.alin_fase} onChange={(e) => setTec({ ...tec, alin_fase: e.target.value })}>
+                  <option value="antes">Antes da correção</option>
+                  <option value="depois">Depois da correção</option>
+                </Select>
+              </Field>
+              <Field label="Rotação (rpm)" obrigatorio erro={erros.rpm} htmlFor="coleta-alin_rpm">
+                <Input inputMode="decimal" value={tec.alin_rpm} onChange={(e) => setTec({ ...tec, alin_rpm: e.target.value })} placeholder="Ex.: 1800" />
+              </Field>
+              <Field label="Vertical — paralelo (mm)" obrigatorio htmlFor="coleta-alin_par_v">
+                <Input inputMode="decimal" value={tec.alin_par_v} onChange={(e) => setTec({ ...tec, alin_par_v: e.target.value })} placeholder="com sinal" />
+              </Field>
+              <Field label="Vertical — angular (mm/100 mm)" obrigatorio htmlFor="coleta-alin_ang_v">
+                <Input inputMode="decimal" value={tec.alin_ang_v} onChange={(e) => setTec({ ...tec, alin_ang_v: e.target.value, valor: maiorAngular(e.target.value, tec.alin_ang_h) })} placeholder="com sinal" />
+              </Field>
+              <Field label="Horizontal — paralelo (mm)" obrigatorio htmlFor="coleta-alin_par_h">
+                <Input inputMode="decimal" value={tec.alin_par_h} onChange={(e) => setTec({ ...tec, alin_par_h: e.target.value })} placeholder="com sinal" />
+              </Field>
+              <Field label="Horizontal — angular (mm/100 mm)" obrigatorio htmlFor="coleta-alin_ang_h">
+                <Input inputMode="decimal" value={tec.alin_ang_h} onChange={(e) => setTec({ ...tec, alin_ang_h: e.target.value, valor: maiorAngular(tec.alin_ang_v, e.target.value) })} placeholder="com sinal" />
+              </Field>
+              <Field label="Correção no pé vertical (mm)" htmlFor="coleta-alin_corr_v">
+                <Input inputMode="decimal" value={tec.alin_corr_v} onChange={(e) => setTec({ ...tec, alin_corr_v: e.target.value })} placeholder="calço aplicado" />
+              </Field>
+              <Field label="Correção no pé horizontal (mm)" htmlFor="coleta-alin_corr_h">
+                <Input inputMode="decimal" value={tec.alin_corr_h} onChange={(e) => setTec({ ...tec, alin_corr_h: e.target.value })} placeholder="deslocamento aplicado" />
+              </Field>
+              <Field label="Distância do acoplamento aos pés (mm)" htmlFor="coleta-alin_dist">
+                <Input inputMode="decimal" value={tec.alin_dist} onChange={(e) => setTec({ ...tec, alin_dist: e.target.value })} placeholder="quando medida" />
+              </Field>
+            </>}
+            {tipo === "QUALIDADE_ENERGIA" && <>
+              <Field label="Janela e critério de agregação" obrigatorio erro={erros.janela_agregacao} htmlFor="coleta-janela_agregacao">
+                <Input maxLength={60} value={tec.janela_agregacao} onChange={(e) => setTec({ ...tec, janela_agregacao: e.target.value })} placeholder="Ex.: 10 min, 95 %" />
+              </Field>
+              <Field label="Fase de medição" htmlFor="coleta-fase">
+                <Input maxLength={20} value={tec.fase} onChange={(e) => setTec({ ...tec, fase: e.target.value })} placeholder="Ex.: R, S, T ou trifásico" />
+              </Field>
+              <Field label="Tensão nominal (V)" htmlFor="coleta-tensao_nominal">
+                <Input inputMode="decimal" value={tec.tensao_nominal} onChange={(e) => setTec({ ...tec, tensao_nominal: e.target.value })} placeholder="Ex.: 380" />
+              </Field>
+            </>}
 
             {isSensitiva ? (
               <>

@@ -177,6 +177,41 @@ class ModuloInspecaoRota:
         return [_paragrafo_anomalias(rel)]
 
 
+def _ultima_espessura(cliente_id, equipamento_id, ate):
+    # Importação tardia: `espessura.py` depende deste módulo.
+    from .espessura import ultima_espessura
+
+    return ultima_espessura(cliente_id, equipamento_id, ate)
+
+
+def _ultimo_motor_rxi(cliente_id, equipamento_id, ate):
+    # Importação tardia: `motor_rxi.py` depende deste módulo.
+    from .motor_rxi import ultimo_motor_rxi
+
+    return ultimo_motor_rxi(cliente_id, equipamento_id, ate)
+
+
+def _ultimo_ultrassom(cliente_id, equipamento_id, ate):
+    # Importação tardia: `ultrassom.py` (relatório) depende deste módulo.
+    from .ultrassom import ultimo_ultrassom
+
+    return ultimo_ultrassom(cliente_id, equipamento_id, ate)
+
+
+def _ultimo_qualidade_energia(cliente_id, equipamento_id, ate):
+    # Importação tardia: `qualidade_energia.py` (relatório) depende deste módulo.
+    from .qualidade_energia import ultimo_qualidade_energia
+
+    return ultimo_qualidade_energia(cliente_id, equipamento_id, ate)
+
+
+def _ultimo_alinhamento(cliente_id, equipamento_id, ate, chave):
+    # Importação tardia: `alinhamento.py` (relatório) depende deste módulo.
+    from .alinhamento import ultimo_alinhamento
+
+    return ultimo_alinhamento(cliente_id, equipamento_id, ate, chave)
+
+
 def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict:
     from apps.cadastros.models import CriticidadeEquip, Equipamento
     from apps.osp.models import OrdemServico, ResultadoConfirmacao
@@ -308,6 +343,28 @@ def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict
             "delta_t_corrigido": a.delta_t_corrigido,
             "corrente": [a.corrente_nominal, a.corrente_a, a.corrente_b, a.corrente_c],
             "tensao": [a.tensao_nominal, a.tensao_a, a.tensao_b, a.tensao_c],
+            # Espessura (2.3.2.7): só no módulo ESPESSURA — última medição do equipamento até o fim do relatório.
+            # Isolação de motor (2.3.2.5.1.1): só no módulo MOTOR_RXI — último grupo de leituras até o fim do relatório.
+            "motor_rxi": (
+                _ultimo_motor_rxi(cliente.pk, eq.pk, rel.data_termino) if modulo.chave == "MOTOR_RXI" else None
+            ),
+            # Ultrassom (2.3.2.6): só no módulo ULTRASSOM — última leitura do equipamento até o fim do relatório.
+            "ultrassom": (
+                _ultimo_ultrassom(cliente.pk, eq.pk, rel.data_termino) if modulo.chave == "ULTRASSOM" else None
+            ),
+            # Qualidade de energia (2.3.2.10): só no módulo QUALIDADE_ENERGIA — última leitura de cada grandeza.
+            "qualidade_energia": (
+                _ultimo_qualidade_energia(cliente.pk, eq.pk, rel.data_termino)
+                if modulo.chave == "QUALIDADE_ENERGIA" else None
+            ),
+            # Alinhamento a laser (2.3.2.8.1.1–2): só nos módulos de eixos e polias — último serviço até o fim do relatório.
+            "alinhamento": (
+                _ultimo_alinhamento(cliente.pk, eq.pk, rel.data_termino, modulo.chave)
+                if modulo.chave in ("ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS") else None
+            ),
+            "espessura": (
+                _ultima_espessura(cliente.pk, eq.pk, rel.data_termino) if modulo.chave == "ESPESSURA" else None
+            ),
             "analista": a.item.carregamento.analista.nome if a.item.carregamento.analista_id else "",
             "imagens": imagens,
             "avaliacao": _avaliacao_osp(osp),
