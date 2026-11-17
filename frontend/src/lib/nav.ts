@@ -17,6 +17,7 @@ import {
   Map,
   ScrollText,
   ShieldAlert,
+  Sparkles,
   Users,
   Wrench,
 } from "lucide-react";
@@ -69,6 +70,7 @@ const DADOS_SISTEMA = [
   { href: "/cadastros?item=criticidades", label: "Tipos de criticidade" },
   { href: "/cadastros?item=condicoes", label: "Condição do equipamento" },
   { href: "/cadastros?item=criterios-vibracao", label: "Critérios de severidade de vibração" },
+  { href: "/cadastros?item=limites-alarme-serie", label: "Limites de alarme (termografia, alinhamento)" },
   { href: "/cadastros?item=tipos-fluido", label: "Tipos de fluido isolante" },
   { href: "/cadastros?item=pontos-coleta", label: "Pontos de coleta de amostras" },
   { href: "/cadastros?item=produtos-fluido", label: "Fluidos lubrificantes / hidráulicos" },
@@ -154,6 +156,17 @@ export function navAdmin(temClienteAtivo: boolean): GrupoNav[] {
         { href: "/prestadores", label: "Prestadores", icon: Factory, exige: "prestadores:gerenciar" },
         { href: "/auditoria", label: "Auditoria", icon: ClipboardList, exige: "auditoria:ver" },
         {
+          href: "/ia/chaves",
+          label: "Inteligência artificial",
+          icon: Sparkles,
+          exige: "ia:gerenciar",
+          filhos: [
+            { href: "/ia/chaves", label: "Chaves de API" },
+            { href: "/ia/ativacao", label: "Ativação" },
+          ],
+          tambemAtivoEm: ["/ia"],
+        },
+        {
           href: "/cadastros",
           label: "Dados de sistema",
           icon: Database,
@@ -233,6 +246,9 @@ export const ROTULO_ROTA: Record<string, string> = {
   alertas: "Alertas",
   cadastros: "Dados de sistema",
   prestadores: "Prestadores",
+  ia: "Inteligência artificial",
+  chaves: "Chaves de API",
+  ativacao: "Ativação",
   usuarios: "Usuários e acessos",
   solicitacoes: "Solicitações de acesso",
   equipe: "Equipe",

@@ -20,6 +20,7 @@ tem o registro espelho em `frontend/src/features/relatorio-inspecao/modulos/inde
 from apps.cadastros.models import MODULOS_PLANEJADOS, ModuloTecnico
 from apps.ensaios.relatorio import ModuloEnsaioEletrico, ModuloOleoIsolante
 from apps.ensaios.relatorio_fluidos import ModuloFluidoLubrificante
+from apps.ensaios.relatorio_subestacao import MODULO_CS, MODULO_DJ, MODULO_RP, MODULO_TC, MODULO_TP
 
 from .espessura import MODULO_ESPESSURA
 from .motor_rxi import MODULO_MOTOR_RXI
@@ -71,15 +72,21 @@ BALANCEAMENTO = ModuloInspecaoRota(
     tabelas_normativas=("ISO_10816",),
 )
 
-# Termografia: glossário (critérios de ΔT por Grau de Risco) e considerações do
-# relatório de referência RT.TE-2026.02.12.02307; sem a tabela ISO-10816 de vibração.
+# Termografia em sistemas elétricos: segue o relatório de referência do cliente
+# (RT.TE-2026.05.18.02326) — glossário com os critérios de ΔT por Grau de Risco e o
+# Fluxo de Trabalho (6.11), Considerações como item 7, instrumentação numerada, data
+# "Upload das OSP´s" e Seção C por nome do equipamento. Sem a tabela ISO de vibração.
 TERMOGRAFIA = ModuloInspecaoRota(
     chave=ModuloTecnico.TERMOGRAFIA.value,
     medias=(MEDIA_TEMPERATURA,),
     carta_glossario=GLOSSARIO_TERMOGRAFIA,
     carta_consideracoes=CONSIDERACOES_TERMOGRAFIA,
-    # 23 termos não cabem numa A4: 6.1–6.2.4 (215 mm) e 6.3–6.10 (244 mm), medidos.
-    carta_quebras_glossario=("6.3",),
+    # 31 termos não cabem numa A4 (cada folha da carta é fixa): três folhas, medidas.
+    carta_quebras_glossario=("6.3", "6.8"),
+    carta_definicao_tecnica=False,
+    carta_instrumentacao_numerada=True,
+    carta_data_osps=True,
+    secao_c_ordem="nome",
 )
 
 # Inspeção genérica (ex.: Análise Sensitiva Sensorial): OSPs sem bloco de medição,
@@ -101,7 +108,8 @@ MODULOS = {
     for m in (VIBRACAO, BALANCEAMENTO, TERMOGRAFIA, INSPECAO_GENERICA, MODULO_ESPESSURA, MODULO_MOTOR_RXI,
               MODULO_ULTRASSOM, MODULO_QUALIDADE_ENERGIA, MODULO_TERMOGRAFIA_MECANICA, MODULO_TERMO_PROCESSOS,
               MODULO_ALINHAMENTO_EIXOS, MODULO_ALINHAMENTO_POLIAS,
-              OLEO_ISOLANTE, ENSAIO_ELETRICO, FLUIDO_LUBRIFICANTE)
+              OLEO_ISOLANTE, ENSAIO_ELETRICO, FLUIDO_LUBRIFICANTE,
+              MODULO_TC, MODULO_TP, MODULO_DJ, MODULO_CS, MODULO_RP)
 }
 
 

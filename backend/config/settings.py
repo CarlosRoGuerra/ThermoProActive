@@ -81,6 +81,7 @@ LOCAL_APPS = [
     "apps.notificacoes",
     "apps.relatorios",
     "apps.preditiva",
+    "apps.ia",
 ]
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
@@ -183,6 +184,10 @@ SIMPLE_JWT = {
 # Chave que cifra os segredos TOTP do MFA. Vazia = deriva do SECRET_KEY (compatível com o
 # que já está gravado). Defina para desacoplar o MFA da rotação do SECRET_KEY (achado A-07).
 MFA_ENCRYPTION_KEY = env("MFA_ENCRYPTION_KEY", default="")
+
+# Chave que cifra as chaves de API de IA (apps.ia). Vazia = deriva do SECRET_KEY. Trocar esta
+# chave (ou o SECRET_KEY, quando ela deriva dele) exige cadastrar as chaves de IA de novo.
+IA_ENCRYPTION_KEY = env("IA_ENCRYPTION_KEY", default="")
 
 AUTH_COOKIE_ACCESS = "tpa_access"
 AUTH_COOKIE_REFRESH = "tpa_refresh"

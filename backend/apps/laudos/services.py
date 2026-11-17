@@ -29,7 +29,7 @@ def _diagnostico_rastreavel(m):
 
 
 def _linha_vibracao(m):
-    ponto = f"{m.equipamento.tag} — {m.ponto_medicao} ({m.get_direcao_display()})"
+    ponto = f"{m.equipamento.rotulo_curto} — {m.ponto_medicao} ({m.get_direcao_display()})"
     leituras = [f"{valor} {unidade}" for valor, unidade in (
         (m.velocidade_rms, "mm/s RMS"), (m.aceleracao_rms, "g RMS"), (m.deslocamento_pp, "µm pico a pico"),
     ) if valor is not None]
@@ -40,13 +40,13 @@ def _linha_vibracao(m):
 
 
 def _linha_termografia(m):
-    ponto = f"{m.equipamento.tag} — {m.ponto_medicao} ({m.get_sistema_display()})"
+    ponto = f"{m.equipamento.rotulo_curto} — {m.ponto_medicao} ({m.get_sistema_display()})"
     valor = f"ΔT {m.delta_t}°C"
     return ponto, valor, m.criticidade, _diagnostico_rastreavel(m)
 
 
 def _linha_tecnica(m):
-    ponto = f"{m.equipamento.tag} — {m.ponto_medicao} ({m.grandeza})"
+    ponto = f"{m.equipamento.rotulo_curto} — {m.ponto_medicao} ({m.grandeza})"
     if m.tipo == "SENSITIVA":
         valor = "Parecer qualitativo"
     else:

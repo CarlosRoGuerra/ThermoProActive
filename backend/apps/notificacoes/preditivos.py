@@ -59,7 +59,7 @@ def processar_medicao(medicao):
             destinatarios.append(medicao.inspecao.tecnico)
         notificar(
             EventoNotificacao.EQUIPAMENTO_CRITICO if atual == "CRITICO" else EventoNotificacao.ALERTA_PREDITIVO,
-            destinatarios, titulo=f"{atual.title()}: {medicao.equipamento.tag}",
+            destinatarios, titulo=f"{atual.title()}: {medicao.equipamento.rotulo_curto}",
             mensagem=f"Evento preditivo #{evento.pk}. {medicao.diagnostico_sugerido} {orientacao}",
             url=f"/inspecoes/{medicao.inspecao_id}",
             nivel=Nivel.CRITICO if atual == "CRITICO" else Nivel.ALERTA, evento_preditivo=evento,

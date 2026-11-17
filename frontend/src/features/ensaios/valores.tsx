@@ -160,7 +160,7 @@ export function valoresParaApi(ensaio: EnsaioCatalogo, campos: CamposValores) {
 }
 
 /* --------------------------------- Peças --------------------------------- */
-function Conformidade({ conforme }: { conforme: boolean | null | undefined }) {
+export function Conformidade({ conforme }: { conforme: boolean | null | undefined }) {
   if (conforme == null) return <span className="inline-block w-4" aria-hidden="true" />;
   return conforme ? (
     <CircleCheck className="h-4 w-4 shrink-0 text-success" aria-label="Dentro da referência" />

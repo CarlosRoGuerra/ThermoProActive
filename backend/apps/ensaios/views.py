@@ -27,6 +27,9 @@ from .models import (
     ResultadoEnsaio,
     SolicitacaoPadraoEnsaio,
     TipoFluido,
+    DadosPlacaSubestacao,
+    MODULOS_SUBESTACAO,
+    RegistroEnsaioSubestacao,
 )
 from .serializers import (
     ColetaFluidoSerializer,
@@ -41,6 +44,9 @@ from .serializers import (
     ProdutoFluidoSerializer,
     ReferenciaParametroSerializer,
     RegistroEnsaioEletricoSerializer,
+    DadosPlacaSubestacaoSerializer,
+    RegistroEnsaioSubestacaoSerializer,
+    ItemEnsaioSerializer,
     ResultadoEnsaioSerializer,
     SolicitacaoPadraoEnsaioSerializer,
     TipoFluidoSerializer,
@@ -49,6 +55,7 @@ from .serializers import (
 
 CAMPO_CLIENTE = "item__carregamento__cliente"
 MODULOS_TRANSFORMADOR = (ModuloTecnico.OLEO_ISOLANTE, ModuloTecnico.ENSAIO_ELETRICO)
+CAMPO_CLIENTE_SUBESTACAO = "equipamento__setor__area__cliente"
 FLUIDO = ModuloTecnico.FLUIDO_LUBRIFICANTE
 
 
@@ -179,14 +186,42 @@ class RegistroEnsaioEletricoViewSet(_DadoDeEnsaioViewSet):
     serializer_class = RegistroEnsaioEletricoSerializer
 
 
+class DadosPlacaSubestacaoViewSet(viewsets.ModelViewSet):
+    """
+    Dados de placa dos equipamentos de subestação (TC, TP, DJ, CS, RP). Dado do cliente:
+    a equipe interna edita; o cliente vê só os equipamentos da própria empresa.
+    """
+
+    permission_classes = [InternoEditaClienteVisualiza]
+    campo_cliente = CAMPO_CLIENTE_SUBESTACAO
+    queryset = DadosPlacaSubestacao.objects.ativos().select_related("equipamento__setor__area")
+    serializer_class = DadosPlacaSubestacaoSerializer
+    filterset_fields = ["equipamento"]
+
+    def get_queryset(self):
+        qs = escopo_cliente(super().get_queryset(), self.request.user, campo_cliente=self.campo_cliente)
+        return restringe_setor(qs, self.request.user, "equipamento__setor")
+
+
+class RegistroEnsaioSubestacaoViewSet(_DadoDeEnsaioViewSet):
+    queryset = (
+        RegistroEnsaioSubestacao.objects.ativos()
+        .select_related("item__carregamento__tecnologia")
+        .prefetch_related("ensaios")
+    )
+    serializer_class = RegistroEnsaioSubestacaoSerializer
+
+
 class ResultadoEnsaioViewSet(_DadoDeEnsaioViewSet):
-    # `avaliacao` lê a placa do transformador, o registro de campo e os parâmetros
-    # do ensaio — tudo carregado aqui, sem consulta por resultado.
+    # `avaliacao` lê a placa do transformador ou do equipamento de subestação, o registro de
+    # campo e os parâmetros do ensaio — tudo carregado aqui, sem consulta por resultado.
     queryset = (
         ResultadoEnsaio.objects.ativos()
         .select_related("item__carregamento__tecnologia", "ensaio", "instrumento",
                         "item__equipamento__dados_transformador", "item__equipamento__setor__area",
-                        "item__coleta_oleo", "item__registro_eletrico", "item__coleta_fluido")
+                        "item__equipamento__dados_placa_subestacao",
+                        "item__coleta_oleo", "item__registro_eletrico", "item__coleta_fluido",
+                        "item__registro_subestacao")
         .prefetch_related("valores__parametro", "ensaio__parametros", "revisoes")
     )
     serializer_class = ResultadoEnsaioSerializer
@@ -226,6 +261,36 @@ class TransformadorInspecaoViewSet(viewsets.ReadOnlyModelViewSet):
                 "condicao", "coleta_oleo", "registro_eletrico",
             )
             .prefetch_related("resultados_ensaio", "coleta_oleo__ensaios", "registro_eletrico__ensaios")
+            .order_by("-carregamento__data_coleta", "equipamento__setor__area__nome", "equipamento__setor__nome",
+                      "equipamento__tag", "ordem")
+        )
+        return escopo_cliente(qs, self.request.user, campo_cliente="carregamento__cliente")
+
+
+class SubestacaoInspecaoViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Equipamentos das rotas de ensaios elétricos de subestação (TC, TP, DJ, CS, RP): a fila
+    do lançamento no campo e no escritório. Só leitura — registro e resultados são gravados
+    nos próprios endpoints.
+    """
+
+    permission_classes = [InternoEditaClienteVisualiza]
+    serializer_class = ItemEnsaioSerializer
+    pagination_class = CatalogoPagination
+    filterset_fields = ["carregamento", "carregamento__cliente", "carregamento__status", "carregamento__relatorio",
+                        "equipamento"]
+    search_fields = ["equipamento__tag", "equipamento__nome", "carregamento__relatorio__numero"]
+
+    def get_queryset(self):
+        qs = (
+            ItemInspecao.objects.ativos()
+            .filter(carregamento__tecnologia__modulo_tecnico__in=MODULOS_SUBESTACAO)
+            .exclude(carregamento__status=StatusCarregamento.DESCARTADA)
+            .select_related(
+                "carregamento__cliente", "carregamento__tecnologia", "carregamento__relatorio",
+                "carregamento__analista", "equipamento__setor__area", "condicao", "registro_subestacao",
+            )
+            .prefetch_related("resultados_ensaio", "registro_subestacao__ensaios")
             .order_by("-carregamento__data_coleta", "equipamento__setor__area__nome", "equipamento__setor__nome",
                       "equipamento__tag", "ordem")
         )

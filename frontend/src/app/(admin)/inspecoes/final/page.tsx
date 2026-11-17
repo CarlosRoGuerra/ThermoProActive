@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardCheck, Droplets, Eye, FileCheck2, FlaskConical, Trash2 } from "lucide-react";
+import { ClipboardCheck, Droplets, Eye, FileCheck2, FlaskConical, Trash2, Zap } from "lucide-react";
 import {
   Badge,
   ConfirmDialog,
@@ -32,12 +32,13 @@ import { data as fmtData, plural, texto } from "@/lib/format";
 import { ExigeClienteAtivo } from "@/features/clientes/exige-cliente-ativo";
 import { FilaEnsaiosTransformador } from "@/features/ensaios/fila";
 import { FilaEnsaiosFluido } from "@/features/ensaios/fila-fluidos";
+import { FilaEnsaiosSubestacao } from "@/features/ensaios/fila-subestacao";
 import type { Achado } from "@/lib/types";
 
 type Tecnologia = { id: number; nome: string };
 type Situacao = "nao" | "sim" | "todas";
 /** Análises/OSPs das inspeções por rota × laudos dos ensaios de transformador × de fluidos. */
-type Visao = "analises" | "ensaios" | "fluidos";
+type Visao = "analises" | "ensaios" | "fluidos" | "subestacao";
 
 /**
  * Análise final — o refino no escritório do que veio do campo.
@@ -64,7 +65,9 @@ function AnaliseFinalConteudo() {
   );
   // Ao voltar de um editor de ensaios, a URL pede a visão de onde ele saiu.
   const visaoUrl = parametros?.get("visao");
-  const [visao, setVisao] = useState<Visao>(visaoUrl === "ensaios" || visaoUrl === "fluidos" ? visaoUrl : "analises");
+  const [visao, setVisao] = useState<Visao>(
+    visaoUrl === "ensaios" || visaoUrl === "fluidos" || visaoUrl === "subestacao" ? visaoUrl : "analises"
+  );
 
   const tecnologias = useLista<Tecnologia>("/tecnologias-analise/?page_size=500", "tecnologias");
   const lista = useLista<Achado>(
@@ -219,6 +222,7 @@ function AnaliseFinalConteudo() {
             { id: "analises", label: "Análises e OSPs", icon: FileCheck2, contador: naoConfirmadas || undefined },
             { id: "ensaios", label: "Ensaios de transformador", icon: FlaskConical },
             { id: "fluidos", label: "Ensaios de fluidos", icon: Droplets },
+            { id: "subestacao", label: "Ensaios de subestação", icon: Zap },
           ]}
           ativa={visao}
           onMudar={setVisao}
@@ -227,6 +231,8 @@ function AnaliseFinalConteudo() {
             <FilaEnsaiosTransformador clienteId={clienteAtivo.id} />
           ) : visao === "fluidos" ? (
             <FilaEnsaiosFluido clienteId={clienteAtivo.id} />
+          ) : visao === "subestacao" ? (
+            <FilaEnsaiosSubestacao clienteId={clienteAtivo.id} />
           ) : (
             <div className="space-y-4">
               <Toolbar

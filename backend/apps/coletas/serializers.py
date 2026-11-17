@@ -510,10 +510,25 @@ class AchadoSerializer(serializers.ModelSerializer):
     # (`osp_sequencial`/`osp_codigo` acima) só existe quando a OSP nasceu desta
     # própria análise.
     osp_intervencao_numero = serializers.SerializerMethodField()
+    # Como a correção pela carga saiu (ou por que não saiu): o formulário mostra ao analista.
+    correcao_carga = serializers.SerializerMethodField()
 
     class Meta:
         model = Achado
         exclude = ["ativo"]
+
+    def get_correcao_carga(self, obj) -> dict:
+        from .correcao_carga import calcular_do_achado
+
+        c = calcular_do_achado(obj)
+        return {
+            "carga_calculada": c.carga_calculada,
+            # Texto, como os demais decimais da API (no JSON, Decimal cru viraria float).
+            "corrente_trabalho": None if c.corrente_trabalho is None else str(c.corrente_trabalho),
+            "fase": c.fase,
+            "fator": None if c.fator is None else str(round(c.fator, 4)),
+            "pendencia": c.pendencia,
+        }
 
     def _servico_corretivo(self, obj):
         # Memoiza na própria instância: os dois métodos abaixo usam o mesmo serviço,

@@ -33,6 +33,8 @@ export type Cabecalho = {
   analistas: { nome: string; assinatura: string | null }[];
   definicao_tecnica: string; definicao_fluxo_trabalho: string; definicao_legenda_imagem: string; pontos_medicao_imagem: string | null;
   data_inicio: string | null; data_termino: string | null; data_finalizacao: string | null;
+  /** Data "Upload das OSP´s" informada à mão (ausente em laudos emitidos antes do campo existir). */
+  data_upload_osps?: string | null;
   instrumentos: Instrumento[]; normas: Norma[]; glossario: GlossTerm[]; consideracoes_finais: string;
 };
 export type LinhaC = { tag: string; equipamento: string; condicao: string };
@@ -48,6 +50,14 @@ export type TermoGlossario = { n: string; sigla: string; texto: string };
 export type TextosCarta = {
   conteudo: string[]; glossario: TermoGlossario[]; quebras_glossario: string[]; consideracoes: string[];
   paragrafos: string[];
+  /** Estrutura da carta. Ausentes (laudos já emitidos, outros módulos) = modelo padrão:
+   *  item 7 "Definição da Técnica", instrumentação em lista e sem a data das OSPs.
+   *  A termografia elétrica segue o RT.TE do cliente (ver relatorio_tecnico/modulos.py). */
+  definicao_tecnica?: boolean;
+  instrumentacao_numerada?: boolean;
+  mostra_data_osps?: boolean;
+  /** Data "Upload das OSP´s" já resolvida (informada ou a de geração das OSPs). */
+  data_upload_osps?: string | null;
   /** Vibração/balanceamento: critério de severidade vigente por classe e as notas do que não é da norma. */
   tabela_severidade?: LinhaSeveridade[];
   notas_severidade?: string[];
@@ -85,7 +95,9 @@ export type SecaoB = {
   taxa_acerto_diagnostico: number | null; diagnosticos_avaliados: number;
   mtbf_dias: number | null; cobertura_ativos_criticos: number | null;
 };
-export type AvalLinha = { rotulo: string; pred_q: string | null; pred_v: string | null; emerg_q: string | null; emerg_v: string | null };
+/** Valores numéricos: o dossiê os entrega como número JSON (Decimal → float no DRF); laudos antigos, como texto. */
+type ValorNum = string | number | null;
+export type AvalLinha = { rotulo: string; pred_q: ValorNum; pred_v: ValorNum; emerg_q: ValorNum; emerg_v: ValorNum };
 export type Avaliacao = { linhas: AvalLinha[]; total_preditiva: string; total_emergencial: string; retorno: string };
 export type ImagemOsp = { tipo: string; arquivo: string; legenda: string };
 export type OspD = {
@@ -117,6 +129,16 @@ export type OspD = {
   qualidade_energia?: Record<string, QualidadeLeituraOsp | null> | null;
   /** Alinhamento a laser (2.3.2.8.1.1–2): último serviço até o fim do relatório; null = sem serviço. */
   alinhamento?: AlinhamentoOsp | null;
+  /** Termografia mecânica/processos: condição do ΔT pelo critério validado (null nos outros módulos). */
+  termografia_criterio?: TermografiaCriterioOsp | null;
+};
+
+/** Condição do ΔT (sistema mecânico ou de processo). Sem critério validado: PENDENTE, com o que falta. */
+export type TermografiaCriterioOsp = {
+  condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
+  limites: Record<string, string>;
+  criterio: CriterioOrigemOsp;
+  pendencia: string;
 };
 
 /** Um serviço de alinhamento, antes ou depois da correção. Números chegam como texto. */
@@ -124,12 +146,18 @@ export type AlinhamentoFaseOsp = { medicao_id: number; data: string; rpm: string
   angular_mm_100mm: string | null; paralelo_mm: string | null;
   correcao_pe_vertical_mm: string | null; correcao_pe_horizontal_mm: string | null };
 
+/** Origem de um critério validado (LimiteAlarmeSerie) — o relatório mostra de onde vem o limite. */
+export type CriterioOrigemOsp = { id: number; origem: string; origem_display: string; fonte: string; validacao: string } | null;
+
 export type AlinhamentoOsp = {
   data: string; ponto: string;
   antes: AlinhamentoFaseOsp | null; depois: AlinhamentoFaseOsp | null;
   reducao_angular_pct: string | null; reducao_paralelo_pct: string | null;
   condicao: "NORMAL" | "ALERTA" | "CRITICO" | "PENDENTE";
   criterio_validado: boolean;
+  criterio: { angular: CriterioOrigemOsp; paralelo: CriterioOrigemOsp };
+  limites: { angular: Record<string, string>; paralelo: Record<string, string> };
+  pendencias: string[];
 };
 
 /** Última leitura de uma grandeza de qualidade de energia. Números chegam como texto. */

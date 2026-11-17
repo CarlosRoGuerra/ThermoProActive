@@ -585,6 +585,9 @@ class Relatorio(BaseModel):
     data_termino = models.DateField("Data de término (auditoria)")
     # Data em que o relatório completo foi finalizado/entregue (Seção A da carta).
     data_finalizacao = models.DateField("Data de finalização do relatório", null=True, blank=True)
+    # Data em que as OSPs ficaram disponíveis para o cliente ("Upload das OSP´s" da carta
+    # da termografia). Vazia = a carta usa a data em que as OSPs foram geradas no sistema.
+    data_upload_osps = models.DateField("Data de disponibilização das OSPs", null=True, blank=True)
     # Considerações finais / conclusões (texto livre) impressas ao fim do relatório.
     consideracoes_finais = models.TextField("Considerações finais", blank=True)
 
@@ -754,18 +757,31 @@ class Achado(BaseModel):
     delta_t = models.DecimalField(
         "ΔT (°C)", max_digits=6, decimal_places=1, null=True, blank=True, editable=False
     )
+    # Digitada quando as correntes não foram medidas; com a nominal e a de trabalho, é
+    # calculada (I1 ÷ In) em `save()` e o que foi digitado deixa de valer.
     carga_percentual = models.DecimalField(
         "Carga (%)", max_digits=5, decimal_places=1, null=True, blank=True
     )
-    # Temperaturas corrigidas em função da carga (fórmula a definir com o cliente).
+    # Base da correção pela carga: a elevação é medida sobre o ambiente (ΔT1 = TM − TA).
+    temperatura_ambiente = models.DecimalField(
+        "Temperatura ambiente (°C)", max_digits=6, decimal_places=1, null=True, blank=True
+    )
+    # Fase em que está a anomalia: diz qual corrente é a de trabalho (I1) na correção.
+    fase_anomalia = models.CharField(
+        "Fase da anomalia", max_length=5, blank=True,
+        choices=[("R", "R (A)"), ("S", "S (B)"), ("T", "T (C)"), ("MAIOR", "Todas as fases (maior corrente)")],
+        help_text="Qual corrente usar na correção pela carga. Vazio com uma fase só medida = ela.",
+    )
+    # Correção da temperatura pela carga (C.T.M., glossário 6.1.5): calculadas em `save()`
+    # pela fórmula do cliente — ver `correcao_carga.py`.
     temperatura_medida_corrigida = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+        "T. medida corrigida (°C)", max_digits=6, decimal_places=1, null=True, blank=True, editable=False
     )
     temperatura_referencia_corrigida = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+        "T. referência corrigida (°C)", max_digits=6, decimal_places=1, null=True, blank=True, editable=False
     )
     delta_t_corrigido = models.DecimalField(
-        max_digits=6, decimal_places=1, null=True, blank=True, editable=False
+        "ΔT corrigido (°C)", max_digits=6, decimal_places=1, null=True, blank=True, editable=False
     )
 
     # --- Termografia: grandezas elétricas (nominal + fases A/B/C ou R/S/T) ---
@@ -799,12 +815,33 @@ class Achado(BaseModel):
     def __str__(self):
         return f"Achado #{self.pk} — {self.item.equipamento.tag}"
 
+    # Entradas do ΔT e da correção pela carga; os campos derivados vão junto num save parcial.
+    CAMPOS_CORRECAO = (
+        "temperatura_medida", "temperatura_referencia", "temperatura_ambiente", "carga_percentual",
+        "corrente_nominal", "corrente_a", "corrente_b", "corrente_c", "fase_anomalia",
+    )
+    CAMPOS_DERIVADOS = (
+        "delta_t", "carga_percentual", "temperatura_medida_corrigida",
+        "temperatura_referencia_corrigida", "delta_t_corrigido",
+    )
+
     def save(self, *args, **kwargs):
+        from .correcao_carga import calcular_do_achado
+
         # ΔT é sempre derivado da medida e da referência.
         if self.temperatura_medida is not None and self.temperatura_referencia is not None:
             self.delta_t = self.temperatura_medida - self.temperatura_referencia
         else:
             self.delta_t = None
+        # Carga (quando há correntes) e temperaturas corrigidas: fórmula do cliente.
+        correcao = calcular_do_achado(self)
+        self.carga_percentual = correcao.carga_percentual
+        self.temperatura_medida_corrigida = correcao.temperatura_medida_corrigida
+        self.temperatura_referencia_corrigida = correcao.temperatura_referencia_corrigida
+        self.delta_t_corrigido = correcao.delta_t_corrigido
+        campos = kwargs.get("update_fields")
+        if campos is not None and set(campos) & set(self.CAMPOS_CORRECAO):
+            kwargs["update_fields"] = set(campos) | set(self.CAMPOS_DERIVADOS)
         # Herda a condição do item na criação (reclassificável depois, no escritório).
         if self.condicao_id is None and self.item_id and self.item.condicao_id:
             self.condicao_id = self.item.condicao_id

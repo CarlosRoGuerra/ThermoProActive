@@ -19,6 +19,9 @@ from .views import (
     SolicitacaoPadraoEnsaioViewSet,
     TipoFluidoViewSet,
     TransformadorInspecaoViewSet,
+    DadosPlacaSubestacaoViewSet,
+    RegistroEnsaioSubestacaoViewSet,
+    SubestacaoInspecaoViewSet,
 )
 
 router = DefaultRouter()
@@ -42,6 +45,10 @@ router.register("solicitacoes-padrao-ensaio", SolicitacaoPadraoEnsaioViewSet, ba
 router.register("referencias-parametro", ReferenciaParametroViewSet, basename="referenciaparametro")
 router.register("coletas-fluido", ColetaFluidoViewSet, basename="coletafluido")
 router.register("fluidos-inspecao", FluidoInspecaoViewSet, basename="fluidoinspecao")
+# Ensaios elétricos de subestação (TC, TP, DJ, CS, RP): dados de placa, registro de campo e a fila
+router.register("dados-placa-subestacao", DadosPlacaSubestacaoViewSet, basename="dadosplacasubestacao")
+router.register("registros-ensaio-subestacao", RegistroEnsaioSubestacaoViewSet, basename="registroensaiosubestacao")
+router.register("subestacao-inspecao", SubestacaoInspecaoViewSet, basename="subestacaoinspecao")
 
 urlpatterns = router.urls + [
     path("fluidos-historico/", FluidoHistoricoView.as_view(), name="fluidos-historico"),

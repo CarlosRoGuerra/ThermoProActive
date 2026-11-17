@@ -19,10 +19,10 @@ class RegistroDoModuloTest(SimpleTestCase):
         self.assertEqual(modulo.chave, "ESPESSURA")
         self.assertIs(modulo, MODULO_ESPESSURA)
 
-    def test_planejados_continuam_recusados(self):
-        for chave in ("ENSAIO_ELETRICO_TC", "ENSAIO_ELETRICO_DJ"):
-            with self.subTest(chave=chave), self.assertRaises(ModuloNaoImplementado):
-                modulo_da_tecnologia(TecnologiaAnalise(nome="QA", modulo_tecnico=chave))
+    def test_chave_sem_modulo_continua_recusada(self):
+        # Sem planejados pendentes (docs/25 implementou TC, TP, DJ, CS e RP): só chave desconhecida é recusada.
+        with self.assertRaises(ModuloNaoImplementado):
+            modulo_da_tecnologia(TecnologiaAnalise(nome="QA", modulo_tecnico="CHAVE_INEXISTENTE"))
 
     def test_glossario_e_consideracoes_da_espessura(self):
         siglas = [t[1] for t in MODULO_ESPESSURA.carta_glossario]

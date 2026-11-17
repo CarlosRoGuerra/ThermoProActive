@@ -25,6 +25,7 @@ Uso:  python manage.py seed_relatorios_exemplo
 from datetime import timedelta
 from decimal import Decimal as D
 
+from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -32,19 +33,41 @@ from django.db import transaction
 from apps.cadastros.models import (
     Area,
     Cliente,
+    Condicao,
     DadosTecnicosTransformador,
     Equipamento,
     Instrumento,
     ModuloTecnico,
+    OrigemCriterio,
+    Sensor,
     Setor,
     TecnologiaAnalise,
+    TipoAnomalia,
+    TipoComponente,
     TipoEquipamento,
+    TipoRecomendacao,
 )
-from apps.coletas.models import Carregamento, ItemInspecao, Relatorio, StatusCarregamento
+from apps.preditiva.models import LimiteAlarmeSerie, Validacao
+from apps.coletas.models import (
+    Achado,
+    AchadoImagem,
+    Carregamento,
+    Inspecao,
+    ItemInspecao,
+    MedicaoTecnica,
+    MedicaoTermografia,
+    Relatorio,
+    StatusCarregamento,
+    SistemaTermografia,
+    TipoAnalise,
+)
 from apps.ensaios.contexto import registrar_contexto
+from apps.notificacoes.models import EventoPreditivo, Notificacao
 from apps.ensaios.models import (
+    MODULOS_SUBESTACAO,
     ColetaFluido,
     ColetaOleo,
+    DadosPlacaSubestacao,
     Ensaio,
     InspecaoVisualColeta,
     ItemChecklistVisual,
@@ -53,13 +76,14 @@ from apps.ensaios.models import (
     ProdutoFluido,
     ReferenciaParametro,
     RegistroEnsaioEletrico,
+    RegistroEnsaioSubestacao,
     ResultadoEnsaio,
     TipoFluido,
     ValorOleoNovo,
     ValorParametro,
 )
 
-from .seed_relatorio_completo import CNPJ_DEMO, HOJE, obter_ou_criar
+from .seed_relatorio_completo import CNPJ_DEMO, HOJE, img_real, img_termica, obter_ou_criar
 
 # --- Transformador: valores dos relatórios de referência (ver apps/ensaios/tests.py) ---
 FQ_ANTERIOR = {"VISCOSIDADE": "40.00", "DENSIDADE": "0.85", "FATOR_POTENCIA": "1.20", "NEUTRALIZACAO": "0.02",
@@ -99,12 +123,26 @@ UH_EF = {"FE": ("5", "6"), "CU": ("2", "2"), "CR": ("0", "0"), "AL": ("1", "1"),
 UH_CP = {"P4": ("2000", "4000"), "P6": ("600", "1200"), "P14": ("60", "100")}  # 18/16/13 → 19/17/14
 
 
+# Critérios de DEMONSTRAÇÃO: restritos ao cliente fictício e sempre identificados como tal.
+# Não são tolerâncias de fabricante nem normativas; o responsável técnico substitui antes de uso real.
+FONTE_DEMO = "DEMONSTRAÇÃO — valor fictício do seed de exemplo, sem validade técnica"
+
+
 class Command(BaseCommand):
-    help = "Cria um relatório completo de exemplo por tipo: Análises e OSPs, transformador e fluidos."
+    help = "Cria um relatório completo de exemplo por tipo: Análises e OSPs, transformador, fluidos e alinhamento/termografia mecânica."
 
     def handle(self, *args, **options):
         w = self.stdout.write
-        w(self.style.MIGRATE_HEADING("1/3 · Análises e OSPs (seed_relatorio_completo)"))
+        # Inspeções (medições) do cenário são protegidas contra a exclusão do cliente: saem antes da
+        # limpeza do seed_relatorio_completo, senão a segunda execução para no PROTECT.
+        # Eventos preditivos nascem ao salvar as medições e seguram Inspecao/Equipamento com PROTECT;
+        # as notificações deles seguram o evento com PROTECT. Saem nesta ordem.
+        Notificacao.objects.filter(evento_preditivo__inspecao__cliente__cnpj=CNPJ_DEMO).delete()
+        EventoPreditivo.objects.filter(inspecao__cliente__cnpj=CNPJ_DEMO).delete()
+        Inspecao.objects.filter(cliente__cnpj=CNPJ_DEMO).delete()
+        # Sensores do cliente demo (PROTECT no equipamento): dado do cenário, apagado com ele.
+        Sensor.objects.filter(equipamento__setor__area__cliente__cnpj=CNPJ_DEMO).delete()
+        w(self.style.MIGRATE_HEADING("1/4 · Análises e OSPs (seed_relatorio_completo)"))
         call_command("seed_relatorio_completo", stdout=self.stdout)
 
         cliente = Cliente.objects.get(cnpj=CNPJ_DEMO)
@@ -112,16 +150,21 @@ class Command(BaseCommand):
             Carregamento.objects.filter(cliente=cliente).select_related("analista").order_by("id").first().analista
         )
         with transaction.atomic():
-            w(self.style.MIGRATE_HEADING("2/3 · Ensaios de transformador"))
+            w(self.style.MIGRATE_HEADING("2/4 · Ensaios de transformador"))
             oleo, eletrico = self.transformador(cliente)
-            w(self.style.MIGRATE_HEADING("3/3 · Ensaios de fluidos"))
+            w(self.style.MIGRATE_HEADING("3/4 · Ensaios de fluidos"))
             fluidos = self.fluidos(cliente)
+            w(self.style.MIGRATE_HEADING("4/4 · Alinhamento a laser e termografia mecânica"))
+            alinhamentos = self.alinhamento_e_termografia(cliente)
+            w(self.style.MIGRATE_HEADING("5/5 · Ensaios elétricos de subestação (TC, TP, DJ, CS, RP)"))
+            subestacao = self.subestacao(cliente)
 
         w("")
         w(self.style.SUCCESS("Relatórios de exemplo criados (um por tipo de ensaio):"))
-        for rotulo, rel in (("Óleo isolante", oleo), ("Ensaios elétricos", eletrico), ("Fluidos", fluidos)):
+        for rotulo, rel in (("Óleo isolante", oleo), ("Ensaios elétricos", eletrico), ("Fluidos", fluidos),
+                            *alinhamentos, *subestacao.items()):
             w(f"  {rotulo:18}: {rel.numero}  →  /relatorios-inspecao/{rel.id}   (carta: /carta/{rel.id})")
-        w("  Análises e OSPs   : ver o resumo do bloco 1/3 acima.")
+        w("  Análises e OSPs   : ver o resumo do bloco 1/4 acima.")
 
     # ------------------------------------------------------------------ comum
 
@@ -363,3 +406,337 @@ class Command(BaseCommand):
                 rel_atual = rel
         self.stdout.write(f"  fluidos: {rel_atual.numero} (+ campanha anterior para o histórico)")
         return rel_atual
+
+    # ------------------------------------------- alinhamento e termografia mecânica
+
+    def alinhamento_e_termografia(self, cliente):
+        """Alinhamento de eixos, de polias (ficha antes/depois) e termografia mecânica dinâmica.
+
+        Os relatórios ficam no cliente fictício. Os critérios de classificação são de demonstração
+        (`FONTE_DEMO`), validados só para este cliente; sem eles o relatório sairia PENDENTE.
+        """
+        # Garante os módulos do catálogo (TI-SMD/TI-SME/TI-PI e a tecnologia de polias) antes de usá-los.
+        # A de eixos vem antes: o comando copia dela a análise corretiva da de polias e, num banco
+        # vazio (testes), ela ainda não existe.
+        eixos = self.tecnologia(ModuloTecnico.ALINHAMENTO_EIXOS, "Alinhamento à Laser Entre Eixos", "ALEE")
+        call_command("ajustar_catalogo_termo_alinhamento", stdout=self.stdout)
+        polias = self.tecnologia(ModuloTecnico.ALINHAMENTO_POLIAS, "Alinhamento à Laser Entre Polias", "ALEP")
+        termo_mec = self.tecnologia(
+            ModuloTecnico.TERMOGRAFIA_MECANICA, "Termografia Infravermelha em Sistemas Mecânicos Dinâmicos", "TI-SMD",
+        )
+
+        for modalidade, grandeza, unidade, sistema, alerta, critico in (
+            ("CORRETIVA", "Desalinhamento angular", "mm/100mm", "", D("0.05"), D("0.10")),
+            ("CORRETIVA", "Desalinhamento paralelo", "mm", "", D("0.05"), D("0.10")),
+            ("TERMOGRAFIA", "delta_t", "°C", SistemaTermografia.MEC_DINAMICO, D("10"), D("20")),
+        ):
+            obter_ou_criar(
+                LimiteAlarmeSerie, modalidade=modalidade, grandeza=grandeza, unidade=unidade, sistema=sistema,
+                sentido="SUPERIOR", cliente=cliente,
+                defaults={"valor_alerta": alerta, "valor_critico": critico, "origem": OrigemCriterio.RESPONSAVEL_TECNICO,
+                          "fonte": FONTE_DEMO, "validacao": Validacao.VALIDADA},
+            )
+
+        setor = Setor.objects.create(
+            area=Area.objects.create(cliente=cliente, nome="Utilidades e Processo"), nome="Casa de Máquinas",
+        )
+        bomba = Equipamento.objects.create(
+            setor=setor, tag="BMB-01", nome="Conjunto motor-bomba de água de resfriamento",
+            fabricante="Fabricante Exemplo", modelo="BMC-40",
+        )
+        ventilador = Equipamento.objects.create(
+            setor=setor, tag="VEN-02", nome="Ventilador com transmissão por polias", fabricante="Fabricante Exemplo",
+            modelo="VXP-20",
+        )
+        redutor = Equipamento.objects.create(
+            setor=setor, tag="RED-03", nome="Redutor de transmissão do misturador", fabricante="Fabricante Exemplo",
+            modelo="RTM-200",
+        )
+        laser = obter_ou_criar(Instrumento, tipo="Alinhador a laser", marca="Instrum", modelo="ALX-DEMO",
+                               numero_serie="DEMO-LASER-01")[0]
+        termovisor = obter_ou_criar(Instrumento, tipo="Termovisor", marca="Instrum", modelo="TMV-DEMO",
+                                    numero_serie="DEMO-TERMO-01")[0]
+
+        # Alinhamento de eixos: motor-bomba. Antes fora de tolerância; depois dentro (condição NORMAL).
+        data_eixos = HOJE - timedelta(days=20)
+        rel_eixos, (item,) = self.rota(
+            cliente, eixos, f"RT-ALEE-{data_eixos:%Y-%m-%d}-00120", data_eixos, [bomba],
+            "Alinhamento a laser do conjunto motor-bomba: o desalinhamento angular caiu de 0,45 para 0,04 mm/100 mm "
+            "com correção de calços nos pés. Recomenda-se reverificar o alinhamento após 6 meses de operação.",
+        )
+        self.alinhamento(
+            item, data_eixos, eixos, bomba, "Acoplamento motor-bomba", "ALINHAMENTO_EIXOS", laser,
+            antes={"vertical_paralelo_mm": "0.30", "vertical_angular_mm_100mm": "0.45",
+                   "horizontal_paralelo_mm": "0.18", "horizontal_angular_mm_100mm": "0.22", "rpm": "1780"},
+            depois={"vertical_paralelo_mm": "0.03", "vertical_angular_mm_100mm": "0.04",
+                    "horizontal_paralelo_mm": "0.02", "horizontal_angular_mm_100mm": "-0.03", "rpm": "1780",
+                    "correcao_pe_vertical_mm": "0.25", "correcao_pe_horizontal_mm": "-0.10",
+                    "distancia_pes_mm": "250"},
+            componente="Acoplamento", anomalia="Desalinhamento",
+            recomendacao="Realinhar o conjunto motor-bomba", condicao="GR-0",
+            detalhe="Acoplamento motor-bomba — alinhamento a laser",
+            observacao="Desalinhamento corrigido com calços nos pés do motor. Equipamento liberado para operação.",
+        )
+
+        # Alinhamento de polias: ventilador. Depois da correção ainda em alerta pelo critério cadastrado.
+        data_polias = HOJE - timedelta(days=18)
+        rel_polias, (item,) = self.rota(
+            cliente, polias, f"RT-ALEP-{data_polias:%Y-%m-%d}-00122", data_polias, [ventilador],
+            "Alinhamento de polias da transmissão do ventilador: desalinhamento angular reduzido de 0,60 para "
+            "0,06 mm/100 mm. Permanece em alerta pelo critério cadastrado; programar nova verificação.",
+        )
+        self.alinhamento(
+            item, data_polias, polias, ventilador, "Polia do motor × polia do ventilador", "ALINHAMENTO_POLIAS", laser,
+            antes={"vertical_paralelo_mm": "0.90", "vertical_angular_mm_100mm": "0.60",
+                   "horizontal_paralelo_mm": "0.40", "horizontal_angular_mm_100mm": "-0.35", "rpm": "1190"},
+            depois={"vertical_paralelo_mm": "0.06", "vertical_angular_mm_100mm": "0.06",
+                    "horizontal_paralelo_mm": "0.04", "horizontal_angular_mm_100mm": "0.04", "rpm": "1190"},
+            componente="Correias e polias", anomalia="Desalinhamento",
+            recomendacao="Realinhar as polias e as correias", condicao="GR-3",
+            detalhe="Transmissão por polias e correias do ventilador",
+            observacao="Alinhamento entre as faces das polias melhorado. Ainda em alerta: reajustar as "
+                       "polias e verificar a tensão das correias.",
+        )
+
+        # Termografia mecânica dinâmica: mancais do redutor. Dois pontos, com critérios diferentes.
+        data_termo = HOJE - timedelta(days=15)
+        rel_termo, (item,) = self.rota(
+            cliente, termo_mec, f"RT-TMEC-{data_termo:%Y-%m-%d}-00121", data_termo, [redutor],
+            "Inspeção termográfica dos mancais do redutor de transmissão. O mancal do lado do acionamento "
+            "apresentou ΔT acima do critério de demonstração e foi encaminhado para lubrificação e inspeção.",
+        )
+        inspecao_termo = Inspecao.objects.create(
+            cliente=cliente, tipo_analise=TipoAnalise.TERMOGRAFIA, tecnico=self.analista, data=data_termo,
+        )
+        pontos = (
+            ("Mancal lado acionamento (LA)", D("62.0"), D("28.0"), "GR-2",
+             "Lubrificar e inspecionar o mancal", "Aquecimento anormal de mancal",
+             "ΔT de 34,0 °C acima da referência do mesmo ponto em operação comparável."),
+            ("Mancal lado oposto ao acionamento (LOA)", D("41.0"), D("29.0"), "GR-3",
+             "Monitorar na próxima rota", "Aquecimento anormal de mancal",
+             "ΔT de 12,0 °C. Dentro da faixa de alerta; acompanhar na próxima rota."),
+        )
+        for ponto, tmed, tref, grau, recomendacao, anomalia, obs in pontos:
+            MedicaoTermografia.objects.create(
+                inspecao=inspecao_termo, equipamento=redutor, instrumento=termovisor, ponto_medicao=ponto,
+                sistema=SistemaTermografia.MEC_DINAMICO, temperatura_ponto=tmed, temperatura_referencia=tref,
+            )
+            achado = Achado.objects.create(
+                item=item, tipo_componente=self.catalogo(TipoComponente, "Mancal", termo_mec),
+                detalhe=ponto, tipo_anomalia=self.catalogo(TipoAnomalia, anomalia, termo_mec),
+                recomendacao=self.catalogo(TipoRecomendacao, recomendacao, termo_mec),
+                observacoes=obs, condicao=self.condicao(grau), temperatura_medida=tmed,
+                temperatura_referencia=tref, confirmada=True, visivel_cliente=True,
+            )
+            termica = img_termica(float(tmed), float(tref), f"{redutor.tag} — {ponto}")
+            if termica:
+                AchadoImagem.objects.create(
+                    achado=achado, tipo="TERMICA", legenda=f"Termograma — {redutor.tag} ({ponto})",
+                    arquivo=ContentFile(termica, name=f"termica_{redutor.tag}_{tmed}.png"),
+                )
+        self.stdout.write(f"  alinhamento e termografia: {rel_eixos.numero}, {rel_polias.numero}, {rel_termo.numero}")
+        return [("Alinhamento eixos", rel_eixos), ("Alinhamento polias", rel_polias),
+                ("Termografia mecânica", rel_termo)]
+
+    def alinhamento(self, item, data, tecnologia, equipamento, ponto, subtipo, laser, *, antes, depois,
+                    componente, anomalia, recomendacao, condicao, detalhe, observacao):
+        """Uma análise de alinhamento: ficha antes e depois na mesma inspeção, e o Achado do relatório."""
+        inspecao = Inspecao.objects.create(
+            cliente=item.carregamento.cliente, tipo_analise=TipoAnalise.CORRETIVA, tecnico=self.analista, data=data,
+        )
+        for fase, ficha in (("antes", antes), ("depois", depois)):
+            # `valor` = maior desalinhamento angular dos dois planos (mesma regra da ficha da tela).
+            angular = max(abs(D(ficha["vertical_angular_mm_100mm"])), abs(D(ficha["horizontal_angular_mm_100mm"])))
+            MedicaoTecnica.objects.create(
+                inspecao=inspecao, equipamento=equipamento, tipo=TipoAnalise.CORRETIVA, subtipo=subtipo,
+                ponto_medicao=ponto, grandeza="Desalinhamento angular", valor=angular, unidade="mm/100mm",
+                parametros={"fase": fase, **ficha}, instrumento=laser,
+            )
+        Achado.objects.create(
+            item=item, tipo_componente=self.catalogo(TipoComponente, componente, tecnologia),
+            detalhe=detalhe, tipo_anomalia=self.catalogo(TipoAnomalia, anomalia, tecnologia),
+            recomendacao=self.catalogo(TipoRecomendacao, recomendacao, tecnologia),
+            observacoes=observacao, condicao=self.condicao(condicao), confirmada=True, visivel_cliente=True,
+        )
+
+    @staticmethod
+    def catalogo(modelo, nome, tecnologia):
+        """Item de catálogo ligado à tecnologia (sem duplicar por nome: `obter_ou_criar`)."""
+        obj, _ = obter_ou_criar(modelo, nome=nome)
+        obj.tecnologias.add(tecnologia)
+        return obj
+
+    @staticmethod
+    def condicao(sigla):
+        """Grau de risco do catálogo base (criado por `seed_relatorio_completo`)."""
+        return Condicao.objects.filter(sigla=sigla).order_by("id").first()
+
+    # ------------------------------------------------------------- subestação
+
+    def subestacao(self, cliente):
+        """
+        Um relatório de exemplo por tipo de equipamento de subestação (docs/25): TC, TP, DJ, CS e RP.
+        Os dados são de exemplo, não de um cliente real. Cada ensaio é lançado como na tela: valores
+        por série e depois o contexto técnico (placa e registro do momento).
+        """
+        ensaio = {(e.modulo, e.sigla): e for e in Ensaio.objects.filter(modulo__in=MODULOS_SUBESTACAO)}
+        param = {(p.ensaio.modulo, p.ensaio.sigla, p.codigo): p
+                 for p in ParametroEnsaio.objects.select_related("ensaio").filter(ensaio__modulo__in=MODULOS_SUBESTACAO)}
+        setor = Setor.objects.create(area=Area.objects.create(cliente=cliente, nome="Subestação de Distribuição"),
+                                     nome="SE-02 — Pátio de Manobras")
+        analista = self.analista.nome
+        ttr = obter_ou_criar(Instrumento, tipo="TTR", marca="Instrum", modelo="TTR-2000i",
+                             numero_serie="IN-811721-24984")[0]
+        megometro = obter_ou_criar(Instrumento, tipo="Megôhmetro", marca="Instrum", modelo="DMG-5Ki",
+                                   numero_serie="IN-811172-24990")[0]
+        micro = obter_ou_criar(Instrumento, tipo="Microhmímetro", marca="Instrum", modelo="MicroHM 10i",
+                               numero_serie="IN-811172-24988")[0]
+        data = HOJE - timedelta(days=20)
+        rels = {}
+
+        def equipamento(tag, nome, tipo, **placa):
+            eq = Equipamento.objects.create(
+                setor=setor, tag=tag, nome=nome, fabricante="Fabricante Exemplo", numero_serie=f"EX-{tag}",
+                tipo_equipamento=obter_ou_criar(TipoEquipamento, nome=tipo)[0],
+            )
+            DadosPlacaSubestacao.objects.create(equipamento=eq, **placa)
+            return eq
+
+        def rota(modulo, nome, sigla, eq, consideracoes):
+            tec = self.tecnologia(modulo, nome, sigla)
+            rel, (item,) = self.rota(cliente, tec, f"RT-{sigla}-{data:%Y-%m-%d}-00120", data, [eq], consideracoes)
+            rels[nome] = rel
+            return item
+
+        def registro(item, ensaios, **campos):
+            reg = RegistroEnsaioSubestacao.objects.create(item=item, data_ensaio=data, analista=analista, **campos)
+            reg.ensaios.set([ensaio[(item.carregamento.tecnologia.modulo_tecnico, s)] for s in ensaios])
+
+        def lancar(item, sigla, valores, **campos):
+            modulo = item.carregamento.tecnologia.modulo_tecnico
+            r = ResultadoEnsaio.objects.create(
+                item=item, ensaio=ensaio[(modulo, sigla)], situacao="REALIZADO", criticidade="ROTINA",
+                data_analise=data + timedelta(days=7), data_proxima=data + timedelta(days=365), **campos,
+            )
+            for codigo, serie, posicao, valor in valores:
+                numero = D(valor) if valor.replace(".", "", 1).isdigit() else None
+                ValorParametro.objects.create(
+                    resultado=r, parametro=param[(modulo, sigla, codigo)], serie=serie,
+                    posicao=None if posicao is None else D(posicao), valor=numero,
+                    valor_texto="" if numero is not None else valor,
+                )
+            registrar_contexto(r, autor=self.analista, origem="MANUAL")
+            return r
+
+        # TC: relação com polaridade, curva de excitação, isolação e ôhmica (2 núcleos).
+        tc = equipamento("TC-01", "Transformador de corrente 600/5 A", "Transformador de corrente",
+                         tensao_nominal_kv=D("13.8"), corrente_nominal_a=D("600"), relacao_texto="600/5 A",
+                         relacao_transformacao=D("120"), classe_exatidao="0,5", polaridade="Subtrativa",
+                         numero_nucleos=2, carga_nominal_va=D("15"))
+        item = rota(ModuloTecnico.ENSAIO_ELETRICO_TC, "Ensaios de TC", "ETC", tc,
+                    "Relação do Núcleo 2 acima da classe 0,5 da placa; a curva de excitação do Núcleo 1 está "
+                    "normal. Repetir a relação do Núcleo 2 após verificar as conexões do secundário.")
+        registro(item, ("RELA", "EXC", "ISO", "OHM"), temperatura_equipamento_c=D("35.0"),
+                 temperatura_ambiente_c=D("30.0"), umidade_relativa_pct=D("60.0"))
+        lancar(item, "RELA", [
+            ("RELACAO_MEDIDA", "Núcleo 1", None, "120.40"), ("POLARIDADE", "Núcleo 1", None, "Subtrativa"),
+            ("RELACAO_MEDIDA", "Núcleo 2", None, "121.00"), ("POLARIDADE", "Núcleo 2", None, "Subtrativa"),
+        ], numero_laudo=f"{data:%Y%m%d}021", instrumento=ttr,
+            recomendacao="Relação do Núcleo 2 fora da classe 0,5: verificar as conexões e repetir o ensaio.")
+        lancar(item, "EXC", [
+            ("CORRENTE_EXCITACAO", "Núcleo 1", t, i) for t, i in
+            (("50", "0.9"), ("100", "1.8"), ("150", "3.0"), ("200", "5.2"), ("250", "12.5"), ("300", "40.0"))
+        ], numero_laudo=f"{data:%Y%m%d}022", instrumento=ttr)
+        lancar(item, "ISO", [
+            ("TENSAO_ENSAIO", "Primário – massa", None, "5000"), ("RESISTENCIA", "Primário – massa", None, "2500"),
+            ("TENSAO_ENSAIO", "Secundário – massa", None, "1000"), ("RESISTENCIA", "Secundário – massa", None, "1800"),
+        ], numero_laudo=f"{data:%Y%m%d}023", instrumento=megometro)
+        lancar(item, "OHM", [
+            ("RESISTENCIA", "Secundário Núcleo 1", None, "0.5732"),
+            ("RESISTENCIA", "Secundário Núcleo 2", None, "0.5810"),
+        ], numero_laudo=f"{data:%Y%m%d}024", instrumento=micro)
+
+        # TP: relação com polaridade, isolação e ôhmica.
+        tp = equipamento("TP-01", "Transformador de potencial 13,8 kV", "Transformador de potencial",
+                         tensao_nominal_kv=D("13.8"), relacao_texto="13800/115 V", relacao_transformacao=D("120"),
+                         classe_exatidao="0,5", polaridade="Subtrativa", carga_nominal_va=D("100"))
+        item = rota(ModuloTecnico.ENSAIO_ELETRICO_TP, "Ensaios de TP", "ETP", tp,
+                    "Transformador de potencial dentro da classe 0,5 em todas as medições lançadas.")
+        registro(item, ("RELA", "ISO", "OHM"), temperatura_equipamento_c=D("33.0"),
+                 temperatura_ambiente_c=D("30.0"), umidade_relativa_pct=D("60.0"))
+        lancar(item, "RELA", [
+            ("RELACAO_MEDIDA", "Fase A", None, "120.05"), ("POLARIDADE", "Fase A", None, "Subtrativa"),
+        ], numero_laudo=f"{data:%Y%m%d}031", instrumento=ttr)
+        lancar(item, "ISO", [
+            ("TENSAO_ENSAIO", "Primário – massa", None, "5000"), ("RESISTENCIA", "Primário – massa", None, "3100"),
+        ], numero_laudo=f"{data:%Y%m%d}032", instrumento=megometro)
+        lancar(item, "OHM", [("RESISTENCIA", "Primário", None, "41.2300")],
+               numero_laudo=f"{data:%Y%m%d}033", instrumento=micro)
+
+        # DJ: resistência de contatos, isolação e tempos por polo (simultaneidade entre polos).
+        dj = equipamento("DJ-01", "Disjuntor 15 kV 1250 A", "Disjuntor",
+                         tensao_nominal_kv=D("15"), corrente_nominal_a=D("1250"),
+                         capacidade_interrupcao_ka=D("25"), numero_polos=3, mecanismo="Mola")
+        item = rota(ModuloTecnico.ENSAIO_ELETRICO_DJ, "Ensaios de DJ", "EDJ", dj,
+                    "Resistência de contatos e isolação dentro do esperado para o equipamento. Tempos de operação "
+                    "com simultaneidade de 0,8 ms entre os polos na abertura.")
+        registro(item, ("RCON", "ISO", "TEMP"), temperatura_equipamento_c=D("30.0"),
+                 temperatura_ambiente_c=D("29.0"), umidade_relativa_pct=D("62.0"))
+        lancar(item, "RCON", [
+            ("RESISTENCIA", "Polo A", None, "38"), ("RESISTENCIA", "Polo B", None, "41"),
+            ("RESISTENCIA", "Polo C", None, "39"),
+        ], numero_laudo=f"{data:%Y%m%d}041", instrumento=micro)
+        lancar(item, "ISO", [
+            ("TENSAO_ENSAIO", "Polo A", None, "5000"), ("RESISTENCIA", "Polo A", None, "3200"),
+            ("TENSAO_ENSAIO", "Polo B", None, "5000"), ("RESISTENCIA", "Polo B", None, "3050"),
+            ("TENSAO_ENSAIO", "Polo C", None, "5000"), ("RESISTENCIA", "Polo C", None, "3300"),
+        ], numero_laudo=f"{data:%Y%m%d}042", instrumento=megometro)
+        lancar(item, "TEMP", [
+            ("TEMPO_ABERTURA", "Polo A", None, "31.2"), ("TEMPO_ABERTURA", "Polo B", None, "31.8"),
+            ("TEMPO_ABERTURA", "Polo C", None, "31.0"),
+            ("TEMPO_FECHAMENTO", "Polo A", None, "62.1"), ("TEMPO_FECHAMENTO", "Polo B", None, "62.4"),
+            ("TEMPO_FECHAMENTO", "Polo C", None, "62.0"),
+        ], numero_laudo=f"{data:%Y%m%d}043", instrumento=ttr)
+
+        # CS: resistência de contatos e isolação por fase.
+        cs_eq = equipamento("CS-01", "Chave seccionadora 13,8 kV 600 A", "Chave seccionadora",
+                            tensao_nominal_kv=D("13.8"), corrente_nominal_a=D("600"), numero_polos=3,
+                            mecanismo="Manual com motor")
+        item = rota(ModuloTecnico.ENSAIO_ELETRICO_CS, "Ensaios de CS", "ECS", cs_eq,
+                    "Contatos e isolação das três fases, sem limite universal: valores para comparação nas próximas "
+                    "campanhas.")
+        registro(item, ("RCON", "ISO"), temperatura_equipamento_c=D("31.0"),
+                 temperatura_ambiente_c=D("29.0"), umidade_relativa_pct=D("62.0"))
+        lancar(item, "RCON", [
+            ("RESISTENCIA", "Fase A", None, "210"), ("RESISTENCIA", "Fase B", None, "215"),
+            ("RESISTENCIA", "Fase C", None, "208"),
+        ], numero_laudo=f"{data:%Y%m%d}051", instrumento=micro)
+        lancar(item, "ISO", [
+            ("TENSAO_ENSAIO", "Fase A", None, "5000"), ("RESISTENCIA", "Fase A", None, "4200"),
+            ("TENSAO_ENSAIO", "Fase B", None, "5000"), ("RESISTENCIA", "Fase B", None, "4000"),
+            ("TENSAO_ENSAIO", "Fase C", None, "5000"), ("RESISTENCIA", "Fase C", None, "4400"),
+        ], numero_laudo=f"{data:%Y%m%d}052", instrumento=megometro)
+
+        # RP: pickup e tempo por função; a tolerância de cada linha é a informada no lançamento.
+        rele = equipamento("RL-01", "Relé de proteção do alimentador", "Relé de proteção",
+                           funcoes_protecao="50/51 — fase A\n50/51 — fase B\n50N/51N — neutro")
+        item = rota(ModuloTecnico.ENSAIO_ELETRICO_RP, "Ensaios de relé", "ERP", rele,
+                    "Pickup e tempo de atuação das funções 50/51 e 50N/51N. A função 51 da fase B está fora da "
+                    "tolerância informada no lançamento.")
+        registro(item, ("PICK", "TEMP"), temperatura_ambiente_c=D("28.0"), umidade_relativa_pct=D("58.0"))
+        lancar(item, "PICK", [
+            ("ESPERADO", "50 — fase A", None, "500"), ("MEDIDO", "50 — fase A", None, "507"),
+            ("TOLERANCIA", "50 — fase A", None, "5"),
+            ("ESPERADO", "51 — fase B", None, "500"), ("MEDIDO", "51 — fase B", None, "530"),
+            ("TOLERANCIA", "51 — fase B", None, "5"),
+            ("ESPERADO", "50N — neutro", None, "100"), ("MEDIDO", "50N — neutro", None, "101"),
+            ("TOLERANCIA", "50N — neutro", None, "5"),
+        ], numero_laudo=f"{data:%Y%m%d}061", instrumento=ttr,
+            recomendacao="Função 51 da fase B fora da tolerância: revisar o ajuste e repetir o ensaio.")
+        lancar(item, "TEMP", [
+            ("ESPERADO", "51 — fase A", None, "1.20"), ("MEDIDO", "51 — fase A", None, "1.24"),
+            ("TOLERANCIA", "51 — fase A", None, "10"),
+            ("ESPERADO", "51 — fase B", None, "1.20"), ("MEDIDO", "51 — fase B", None, "1.46"),
+            ("TOLERANCIA", "51 — fase B", None, "10"),
+        ], numero_laudo=f"{data:%Y%m%d}062", instrumento=ttr)
+        return rels

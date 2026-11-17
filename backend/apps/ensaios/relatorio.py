@@ -127,12 +127,19 @@ class _Campanha:
             self.registro = (restaurar(RegistroEnsaioEletrico, contexto["registro_eletrico"])
                              if contexto["registro_eletrico"] else None)
         self.coleta_fluido = _um(item, "coleta_fluido")
+        self.registro_subestacao = _um(item, "registro_subestacao")
+        if "registro_subestacao" in contexto:
+            from .models import RegistroEnsaioSubestacao
+            self.registro_subestacao = (restaurar(RegistroEnsaioSubestacao, contexto["registro_subestacao"])
+                                        if contexto["registro_subestacao"] else None)
         if self.coleta:
             base = self.coleta.data_coleta
         elif self.registro:
             base = self.registro.data_ensaio
         elif self.coleta_fluido:
             base = self.coleta_fluido.data_coleta
+        elif self.registro_subestacao:
+            base = self.registro_subestacao.data_ensaio
         else:
             base = None
         self.data = base or item.carregamento.data_coleta

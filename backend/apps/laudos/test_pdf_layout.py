@@ -10,6 +10,7 @@ import hashlib
 import io
 import os
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from unittest import skipUnless
 
@@ -20,6 +21,7 @@ from PIL import Image, ImageDraw, ImageStat
 
 from apps.cadastros.models import Equipamento
 from apps.coletas.models import Achado, AchadoImagem, Inspecao, ItemInspecao, MedicaoTermografia
+from apps.osp.models import OrdemServico
 
 from . import test_conformidade_documentos as qa
 from .models import AnexoLaudo, Laudo
@@ -127,6 +129,12 @@ class PDFLayoutRealTest(TestCase):
     def test_layout_modular_unicode_medicoes_fotografia_e_muitas_paginas(self):
         origem, achado = qa.ConformidadeDocumentosTest.origem_por_rota(self)
         carregamento = achado.item.carregamento
+        # OSP com o "Retorno de Informação" preenchido: os custos chegam ao front como NÚMERO
+        # (Decimal → float no JSON) e a folha da OSP quebrava inteira ao tratá-los como texto.
+        osp = OrdemServico.gerar_de_achado(achado)
+        osp.pred_mao_obra_h, osp.pred_mao_obra_valor = Decimal("4"), Decimal("520")
+        osp.emerg_mao_obra_h, osp.emerg_mao_obra_valor = Decimal("20"), Decimal("2900")
+        osp.save()
         for indice in range(1, 65):
             equipamento = Equipamento.objects.create(setor=self.equipamento.setor,
                 tag=f"TAG-ROTA-QA-{indice:03d}", nome=f"Máquina de inspeção QA {indice}")
@@ -146,3 +154,5 @@ class PDFLayoutRealTest(TestCase):
         texto = self.validar_pdf_e_gravar("qa-laudo-modular", snapshot, minimo_paginas=6)
         self.assertIn("TAG-ROTA-QA-064", texto)
         self.assertIn("Imagem da medição QA", texto)
+        self.assertIn("2.900,00", texto)  # custo emergencial da OSP
+        self.assertIn("2.380,00", texto)  # retorno = emergencial − preditiva

@@ -35,6 +35,14 @@ class ConfiguracaoTendenciaSerializer(CadastroPreditivoSerializer):
 
 
 class LimiteAlarmeSerieSerializer(CadastroPreditivoSerializer):
+    # Rótulos e nome do cliente para a tabela de cadastro (a tela lista esses campos).
+    modalidade_display = serializers.CharField(source="get_modalidade_display", read_only=True)
+    sistema_display = serializers.CharField(source="get_sistema_display", read_only=True)
+    sentido_display = serializers.CharField(source="get_sentido_display", read_only=True)
+    origem_display = serializers.CharField(source="get_origem_display", read_only=True)
+    validacao_display = serializers.CharField(source="get_validacao_display", read_only=True)
+    cliente_nome = serializers.CharField(source="cliente.nome", read_only=True, default=None)
+
     class Meta:
         model = LimiteAlarmeSerie
         exclude = CAMPOS_AUDITORIA

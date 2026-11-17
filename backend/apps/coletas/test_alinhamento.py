@@ -114,7 +114,7 @@ class AlinhamentoApiTest(TestCase):
         self.assertIs(modulo_da_tecnologia(TecnologiaAnalise(nome="AP", modulo_tecnico="ALINHAMENTO_POLIAS")),
                       MODULO_ALINHAMENTO_POLIAS)
         with self.assertRaises(ModuloNaoImplementado):
-            modulo_da_tecnologia(TecnologiaAnalise(nome="ENS", modulo_tecnico="ENSAIO_ELETRICO_TC"))
+            modulo_da_tecnologia(TecnologiaAnalise(nome="X", modulo_tecnico="MODULO_FUTURO"))
         self.registro(ficha("antes", 0.40, 0.10), 0.40, minutos=0)
         self.registro(ficha("depois", 0.10, 0.05), 0.10, minutos=60)
         r = ultimo_alinhamento(self.cliente.pk, self.eq.pk, date(2026, 12, 31), "ALINHAMENTO_EIXOS")

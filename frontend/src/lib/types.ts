@@ -285,9 +285,15 @@ export interface Achado {
   temperatura_referencia: string | null;
   delta_t: string | null;
   carga_percentual: string | null;
+  temperatura_ambiente?: string | null;
+  fase_anomalia?: "" | "R" | "S" | "T" | "MAIOR";
+  /** Calculadas no backend pela fórmula do cliente (apps/coletas/correcao_carga.py). */
   temperatura_medida_corrigida: string | null;
   temperatura_referencia_corrigida: string | null;
   delta_t_corrigido: string | null;
+  correcao_carga?: {
+    carga_calculada: boolean; corrente_trabalho: string | null; fase: string; fator: string | null; pendencia: string;
+  };
   // Termografia — grandezas elétricas (nominal + fases A/B/C · R/S/T)
   corrente_nominal: string | null;
   corrente_a: string | null;

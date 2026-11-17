@@ -25,9 +25,14 @@ from .models import (
     TipoFluido,
     TipoReferencia,
     ValorParametro,
+    DadosPlacaSubestacao,
+    FormaEnsaio,
+    MODULOS_SUBESTACAO,
+    RegistroEnsaioSubestacao,
 )
 from .relatorio import avaliar_resultado
 from .relatorio_fluidos import avaliar_resultado_fluido, ensaios_padrao
+from .relatorio_subestacao import avaliar_resultado_subestacao
 
 FLUIDO = ModuloTecnico.FLUIDO_LUBRIFICANTE
 
@@ -332,6 +337,40 @@ class RegistroEnsaioEletricoSerializer(serializers.ModelSerializer):
 
 
 # -------------------------------- Resultados --------------------------------
+class DadosPlacaSubestacaoSerializer(serializers.ModelSerializer):
+    """Dados de placa de um equipamento de subestação (usados pela avaliação e pela carta)."""
+
+    equipamento_tag = serializers.CharField(source="equipamento.tag", read_only=True)
+
+    class Meta:
+        model = DadosPlacaSubestacao
+        exclude = ["ativo"]
+
+    def validate(self, attrs):
+        relacao = attrs.get("relacao_transformacao", getattr(self.instance, "relacao_transformacao", None))
+        if relacao is not None and relacao <= 0:
+            raise serializers.ValidationError({"relacao_transformacao": "A relação nominal deve ser positiva."})
+        return attrs
+
+
+class RegistroEnsaioSubestacaoSerializer(serializers.ModelSerializer):
+    """Registro de campo de um equipamento de subestação: os ensaios solicitados são do próprio equipamento."""
+
+    class Meta:
+        model = RegistroEnsaioSubestacao
+        exclude = ["ativo"]
+
+    def validate(self, attrs):
+        item = attrs.get("item") or getattr(self.instance, "item", None)
+        modulo = item.carregamento.tecnologia.modulo_tecnico
+        if modulo not in MODULOS_SUBESTACAO:
+            raise serializers.ValidationError({"item": "Este equipamento não está numa rota de ensaios de subestação."})
+        for ensaio in attrs.get("ensaios", []):
+            if ensaio.modulo != modulo:
+                raise serializers.ValidationError({"ensaios": f"{ensaio.sigla} não é um ensaio deste equipamento."})
+        return attrs
+
+
 class ValorParametroSerializer(serializers.ModelSerializer):
     parametro_codigo = serializers.CharField(source="parametro.codigo", read_only=True)
 
@@ -383,6 +422,8 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
     def get_avaliacao(self, obj) -> dict:
         if obj.ensaio.modulo == FLUIDO:
             return avaliar_resultado_fluido(obj)
+        if obj.ensaio.modulo in MODULOS_SUBESTACAO:
+            return avaliar_resultado_subestacao(obj)
         return avaliar_resultado(obj)
 
     def validate(self, attrs):
@@ -404,6 +445,14 @@ class ResultadoEnsaioSerializer(serializers.ModelSerializer):
             if chave in chaves:
                 raise serializers.ValidationError({"valores": f"{parametro.codigo}: parâmetro, série e posição repetidos."})
             chaves.add(chave)
+        if ensaio.modulo in MODULOS_SUBESTACAO:
+            # Medição por série: a série (fase, polo, núcleo, função) identifica a linha; a curva
+            # precisa da tensão de cada ponto.
+            for v in attrs.get("valores", []):
+                if not (v.get("serie") or "").strip():
+                    raise serializers.ValidationError({"valores": "Informe a série (fase, polo, núcleo ou função) de cada valor."})
+                if ensaio.forma == FormaEnsaio.CURVA and v.get("posicao") is None:
+                    raise serializers.ValidationError({"valores": "Informe a tensão de cada ponto da curva."})
         data_analise = attrs.get("data_analise", getattr(self.instance, "data_analise", None))
         data_proxima = attrs.get("data_proxima", getattr(self.instance, "data_proxima", None))
         if data_analise and data_proxima and data_proxima < data_analise:
@@ -458,7 +507,7 @@ class ItemEnsaioSerializer(serializers.ModelSerializer):
     ensaio do módulo (`pendentes` = solicitados ainda sem laudo).
     """
 
-    REGISTROS = ("coleta_oleo", "registro_eletrico", "coleta_fluido")
+    REGISTROS = ("coleta_oleo", "registro_eletrico", "coleta_fluido", "registro_subestacao")
 
     carregamento_status = serializers.CharField(source="carregamento.status", read_only=True)
     relatorio = serializers.IntegerField(source="carregamento.relatorio_id", read_only=True)

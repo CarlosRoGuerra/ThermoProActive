@@ -21,6 +21,8 @@ import {
   CRITICIDADES,
   SITUACOES,
   ehAvaliacaoFluido,
+  ehAvaliacaoSubestacao,
+  ehModuloSubestacao,
   type Criticidade,
   type EnsaioCatalogo,
   type InstrumentoOpcao,
@@ -28,6 +30,12 @@ import {
 } from "./tipos";
 import { EditorValores, camposIniciais, valoresParaApi, type CamposValores } from "./valores";
 import { EditorValoresFluido, valoresFluidoParaApi, type BaseContagem } from "./valores-fluido";
+import {
+  EditorValoresSubestacao,
+  camposSubestacaoIniciais,
+  valoresSubestacaoParaApi,
+  type CamposSubestacao,
+} from "./valores-subestacao";
 
 /* ==========================================================================
    Um ensaio (transformador: FQ, CR, PCB, 2-FAL, R×T, R×I, R×O; fluidos: FQ,
@@ -97,6 +105,7 @@ export function CartaoEnsaio({
   onSalvo: (r: ResultadoApi) => void;
 }) {
   const fluido = ensaio.modulo === "FLUIDO_LUBRIFICANTE";
+  const subestacao = ehModuloSubestacao(ensaio.modulo);
   const [base, setBase] = useState<BaseContagem>("ML");
   const toast = useToast();
   // Aberto quando há resultado ou o registro de campo pediu o ensaio (inclusive se
@@ -105,6 +114,7 @@ export function CartaoEnsaio({
   const aberto = abertoManual || !!resultado || solicitado;
   const [laudo, setLaudo] = useState<Laudo>(() => laudoDe(resultado));
   const [campos, setCampos] = useState<CamposValores>(() => camposIniciais(ensaio, resultado?.valores ?? []));
+  const [camposSub, setCamposSub] = useState<CamposSubestacao>(() => camposSubestacaoIniciais(ensaio, resultado?.valores ?? []));
   const [erros, setErros] = useState<Record<string, string>>({});
   const [alterado, setAlterado] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -123,6 +133,7 @@ export function CartaoEnsaio({
   async function salvar() {
     const { valores, erros: errosValores } = semValores
       ? { valores: [], erros: {} }
+      : subestacao ? valoresSubestacaoParaApi(ensaio, camposSub)
       : fluido ? valoresFluidoParaApi(ensaio, campos, base) : valoresParaApi(ensaio, campos);
     setErros(errosValores);
     if (Object.keys(errosValores).length) {
@@ -217,6 +228,18 @@ export function CartaoEnsaio({
                     setAlterado(true);
                   }}
                 />
+              ) : subestacao ? (
+                <EditorValoresSubestacao
+                  ensaio={ensaio}
+                  campos={camposSub}
+                  onMudar={(c) => {
+                    setCamposSub(c);
+                    setAlterado(true);
+                  }}
+                  erros={erros}
+                  avaliacao={ehAvaliacaoSubestacao(avaliacao) ? avaliacao : null}
+                  disabled={bloqueado}
+                />
               ) : (
                 <EditorValores
                   ensaio={ensaio}
@@ -226,7 +249,7 @@ export function CartaoEnsaio({
                     setAlterado(true);
                   }}
                   erros={erros}
-                  avaliacao={ehAvaliacaoFluido(avaliacao) ? null : avaliacao}
+                  avaliacao={ehAvaliacaoFluido(avaliacao) || ehAvaliacaoSubestacao(avaliacao) ? null : avaliacao}
                   disabled={bloqueado}
                 />
               )}

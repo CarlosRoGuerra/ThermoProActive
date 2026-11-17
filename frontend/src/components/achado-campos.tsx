@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Paginated } from "@/lib/types";
-import { type AchadoForm, type TecnologiaTipo, deltaTPreview } from "@/lib/inspecoes";
+import { type AchadoForm, type TecnologiaTipo, correcaoCargaPreview, deltaTPreview } from "@/lib/inspecoes";
 import { Field, Input, Select, Textarea } from "@/components/ds";
 import { SugestoesAchado } from "@/features/preditiva/sugestoes-achado";
 
@@ -79,6 +79,8 @@ export function AchadoCampos({
 
   const set = (campo: keyof AchadoForm, valor: string) => setForm({ ...form, [campo]: valor });
   const deltaT = deltaTPreview(form.temperatura_medida, form.temperatura_referencia);
+  const correcao = correcaoCargaPreview(form);
+  const fmt1 = (v: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 
   return (
     <div className="space-y-5">
@@ -238,14 +240,28 @@ export function AchadoCampos({
               <Field label="ΔT (°C) — calculado">
                 <Input value={deltaT ?? "—"} disabled readOnly />
               </Field>
-              <Field label="Carga (%)">
+              <Field label="Temperatura ambiente (°C)" hint="Base da correção pela carga.">
                 <Input
                   type="number"
                   inputMode="decimal"
-                  value={form.carga_percentual}
-                  onChange={(e) => set("carga_percentual", e.target.value)}
+                  value={form.temperatura_ambiente}
+                  onChange={(e) => set("temperatura_ambiente", e.target.value)}
                 />
               </Field>
+              {correcao.cargaCalculada ? (
+                <Field label="Carga (%) — calculada" hint="Corrente de trabalho ÷ corrente nominal.">
+                  <Input value={fmt1(correcao.carga)} disabled readOnly />
+                </Field>
+              ) : (
+                <Field label="Carga (%)" hint="Com a corrente nominal e a de trabalho, é calculada.">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    value={form.carga_percentual}
+                    onChange={(e) => set("carga_percentual", e.target.value)}
+                  />
+                </Field>
+              )}
             </div>
           </div>
 
@@ -266,6 +282,15 @@ export function AchadoCampos({
               <Field label="Corrente C/T">
                 <Input type="number" inputMode="decimal" value={form.corrente_c} onChange={(e) => set("corrente_c", e.target.value)} />
               </Field>
+              <Field label="Fase da anomalia" hint="Qual corrente vale na correção pela carga.">
+                <Select value={form.fase_anomalia} onChange={(e) => set("fase_anomalia", e.target.value)}>
+                  <option value="">— automática (uma fase medida) —</option>
+                  <option value="R">A / R</option>
+                  <option value="S">B / S</option>
+                  <option value="T">C / T</option>
+                  <option value="MAIOR">Todas as fases (maior corrente)</option>
+                </Select>
+              </Field>
               <Field label="Tensão nominal (V)">
                 <Input type="number" inputMode="decimal" value={form.tensao_nominal} onChange={(e) => set("tensao_nominal", e.target.value)} />
               </Field>
@@ -279,6 +304,32 @@ export function AchadoCampos({
                 <Input type="number" inputMode="decimal" value={form.tensao_c} onChange={(e) => set("tensao_c", e.target.value)} />
               </Field>
             </div>
+          </div>
+
+          {/* Correção da temperatura pela carga (C.T.M.) — fórmula do cliente, calculada pelo
+              sistema (apps/coletas/correcao_carga.py). Aqui é só a prévia do que vai para a OSP. */}
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+              Correção pela carga (C.T.M.) — calculada
+            </h3>
+            <p className="mb-3 text-xs text-fg-subtle">
+              Temperatura na carga de 90 % da nominal: ΔT1 = medida − ambiente; ΔT2 = ΔT1 × (I2 ÷ I1)²; corrigida = ambiente + ΔT2.
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <Field label="T. medida corrigida (°C)">
+                <Input value={fmt1(correcao.medidaCorrigida)} disabled readOnly />
+              </Field>
+              <Field label="ΔT corrigido (°C)">
+                <Input value={fmt1(correcao.deltaCorrigido)} disabled readOnly />
+              </Field>
+              <Field label="Fator (I2 ÷ I1)²">
+                <Input value={correcao.fator == null ? "—" : correcao.fator.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} disabled readOnly />
+              </Field>
+              <Field label="Corrente de trabalho (I1)">
+                <Input value={correcao.corrente == null ? "—" : `${correcao.corrente.toLocaleString("pt-BR")} A${correcao.fase ? ` · fase ${correcao.fase}` : ""}`} disabled readOnly />
+              </Field>
+            </div>
+            {correcao.pendencia && <p className="mt-2 text-xs text-warning-fg">{correcao.pendencia}</p>}
           </div>
         </div>
       )}

@@ -89,14 +89,15 @@ class RelatorioTecnicoModularTest(TestCase):
         r = self.api.get(f"/api/relatorios-inspecao/{rel.pk}/carta-docx/")
         self.assertEqual(r.status_code, 409)
 
-    def test_modulo_planejado_avisa_que_nao_foi_implementado(self):
-        # Só módulos ainda sem relatório: alinhamento, termografia mecânica e RxI/QE já foram implementados.
-        for modulo in (ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_DJ):
+    def test_subestacao_tem_relatorio_proprio(self):
+        # TC, TP, DJ, CS e RP saíram dos planejados (docs/25): cada um tem o seu módulo de relatório.
+        for modulo in (ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_TP,
+                       ModuloTecnico.ENSAIO_ELETRICO_DJ, ModuloTecnico.ENSAIO_ELETRICO_CS,
+                       ModuloTecnico.ENSAIO_ELETRICO_RP):
             with self.subTest(modulo=modulo):
                 r = self.api.get(f"/api/relatorios-inspecao/{self.relatorio(modulo).pk}/dossie/")
-                self.assertEqual(r.status_code, 409)
-                self.assertEqual(r.data["codigo"], "modulo_nao_implementado")
-                self.assertIn("ainda não foi implementado", r.data["detail"])
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data["modulo"], modulo)
 
     def test_inspecao_generica_e_neutra(self):
         rel = self.relatorio(ModuloTecnico.INSPECAO_GENERICA, nome="Análise Sensitiva Sensorial")
@@ -210,7 +211,10 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertNotIn(marca, termo)
         # O resto da carta (conteúdo da inspeção por rota) continua igual.
         self.assertIn("Seção D – Ordens de Serviços Preditivos", termo)
-        self.assertIn("foi diagnosticada 1 anomalia", termo)
+        # O parágrafo das anomalias é do item "Definição da Técnica", que a carta da termografia
+        # elétrica não tem (segue o RT.TE — ver test_termografia_eletrica_modelo.py).
+        self.assertNotIn("foi diagnosticada 1 anomalia", termo)
+        self.assertIn("foi diagnosticada 1 anomalia", self.carta_xml(self.relatorio(ModuloTecnico.INSPECAO_GENERICA)))
 
     def test_carta_da_termografia_usa_o_glossario_do_relatorio_de_referencia(self):
         rel = self.relatorio(ModuloTecnico.TERMOGRAFIA)
@@ -222,8 +226,9 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertIn("ΔT > 100,0°C", gr1["texto"])
         # Título de grupo não tem texto — e a carta .docx não imprime travessão nele.
         self.assertEqual(textos["glossario"][0], {"n": "6.1", "sigla": "Temperaturas", "texto": ""})
-        # 23 termos não cabem numa folha A4 da carta em PDF: segue em outra a partir do 6.3.
-        self.assertEqual(textos["quebras_glossario"], ["6.3"])
+        # 31 termos (com o fluxo de trabalho, 6.11) não cabem numa folha A4 da carta em PDF:
+        # seguem em outras a partir do 6.3 e do 6.8.
+        self.assertEqual(textos["quebras_glossario"], ["6.3", "6.8"])
         xml = self.carta_xml(rel)
         self.assertIn("Máxima Temperatura Admissível", xml)
         self.assertNotIn("Lado Oposto ao Acoplamento", xml)

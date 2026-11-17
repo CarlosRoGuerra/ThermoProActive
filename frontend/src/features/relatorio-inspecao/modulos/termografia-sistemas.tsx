@@ -16,13 +16,33 @@ function Linha({ rotulo, v }: { rotulo: string; v: string }) {
   return <div style={LINHA_MEDICAO}><span style={{ fontWeight: 700 }}>{rotulo}:</span> {v}</div>;
 }
 
+const CONDICAO_DELTA: Record<string, string> = {
+  NORMAL: "Normal",
+  ALERTA: "Alerta",
+  CRITICO: "Crítico",
+  PENDENTE: "Pendente (sem critério validado)",
+};
+
 export function MedicoesTermografiaSistema({ o }: { o: OspD }) {
+  const c = o.termografia_criterio;
   return (
     <>
       <div style={{ ...LINHA_MEDICAO, fontWeight: 700 }}>Medições</div>
       <Linha rotulo="Temp. Medida [°C]" v={valor(o.temperatura_medida, 1)} />
       <Linha rotulo="Temp. Referência [°C]" v={valor(o.temperatura_referencia, 1)} />
       <Linha rotulo="Temp. Delta [°C]" v={valor(o.delta_t, 1)} />
+      {c && (
+        <>
+          <Linha rotulo="Condição pelo ΔT" v={CONDICAO_DELTA[c.condicao] ?? c.condicao} />
+          {c.criterio ? (
+            <Linha
+              rotulo="Critério do ΔT"
+              v={`${c.criterio.origem_display} — ${c.criterio.fonte || "fonte não informada"}${c.limites.ALERTA ? ` · alerta ≥ ${c.limites.ALERTA}` : ""}${c.limites.CRITICO ? ` · crítico ≥ ${c.limites.CRITICO}` : ""}`}
+            />
+          ) : null}
+          {c.pendencia ? <Linha rotulo="Pendente" v={c.pendencia} /> : null}
+        </>
+      )}
     </>
   );
 }

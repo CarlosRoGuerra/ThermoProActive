@@ -27,12 +27,16 @@ MODULO_ALINHAMENTO_EIXOS = ModuloInspecaoRota(
     chave="ALINHAMENTO_EIXOS",
     carta_glossario=GLOSSARIO_ALINHAMENTO,
     carta_consideracoes=CONSIDERACOES_ALINHAMENTO,
+    # 12 termos não cabem numa A4 (medido no PDF): os do alinhamento (6.8–6.12) abrem a segunda folha.
+    carta_quebras_glossario=("6.8",),
 )
 
 MODULO_ALINHAMENTO_POLIAS = ModuloInspecaoRota(
     chave="ALINHAMENTO_POLIAS",
     carta_glossario=GLOSSARIO_ALINHAMENTO,
     carta_consideracoes=CONSIDERACOES_ALINHAMENTO,
+    # 12 termos não cabem numa A4 (medido no PDF): os do alinhamento (6.8–6.12) abrem a segunda folha.
+    carta_quebras_glossario=("6.8",),
 )
 
 SUBTIPO_POR_CHAVE = {"ALINHAMENTO_EIXOS": "ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS": "ALINHAMENTO_POLIAS"}
@@ -53,6 +57,10 @@ def ultimo_alinhamento(cliente_id, equipamento_id, ate, chave):
     if medicao is None:
         return None
     analise = analise_par(medicao)
+    faltando = [nome for nome, ok in (
+        ("tolerância de desalinhamento angular (mm/100 mm)", analise["criterio_angular_validado"]),
+        ("tolerância de desalinhamento paralelo (mm)", analise["criterio_paralelo_validado"]),
+    ) if not ok]
     return {
         "data": medicao.inspecao.data.isoformat(),
         "ponto": medicao.ponto_medicao,
@@ -61,5 +69,11 @@ def ultimo_alinhamento(cliente_id, equipamento_id, ate, chave):
         "reducao_angular_pct": analise["reducao_angular_pct"],
         "reducao_paralelo_pct": analise["reducao_paralelo_pct"],
         "condicao": analise["condicao"],
+        "condicao_angular": analise["condicao_angular"],
+        "condicao_paralelo": analise["condicao_paralelo"],
         "criterio_validado": analise["criterio_angular_validado"] or analise["criterio_paralelo_validado"],
+        # Origem do critério que classificou (o angular é o da condição; o paralelo complementa).
+        "criterio": {"angular": analise["criterio_angular"], "paralelo": analise["criterio_paralelo"]},
+        "limites": {"angular": analise["limites_angular"], "paralelo": analise["limites_paralelo"]},
+        "pendencias": [f"Cadastrar e validar a {nome} para este equipamento." for nome in faltando],
     }

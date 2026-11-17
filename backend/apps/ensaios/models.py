@@ -27,7 +27,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
-from apps.cadastros.models import Catalogo, Instrumento, ModuloTecnico
+from apps.cadastros.models import Catalogo, Equipamento, Instrumento, ModuloTecnico
 from apps.coletas.models import ItemInspecao
 from apps.core.models import BaseModel, TimeStampedModel
 
@@ -35,6 +35,12 @@ PERCENTUAL = [MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))
 
 
 # ------------------------------- Catálogos ----------------------------------
+class FormaEnsaio(models.TextChoices):
+    TABELA = "TABELA", "Tabela de parâmetros"
+    MEDICAO = "MEDICAO", "Medições por série (fase, polo, núcleo, função)"
+    CURVA = "CURVA", "Curva (tensão × corrente, por núcleo)"
+
+
 class TipoFluido(Catalogo):
     """Fluido isolante do transformador (ex.: Óleo Mineral B [Parafínico])."""
 
@@ -81,6 +87,10 @@ class Ensaio(Catalogo):
     modulo = models.CharField("Módulo do relatório", max_length=20, choices=ModuloTecnico.choices)
     titulo_ficha = models.CharField("Título da ficha", max_length=120)
     ordem = models.PositiveSmallIntegerField("Ordem", default=0)
+    # Como o lançamento e a ficha organizam as medições: tabela de parâmetros (óleo, fluidos,
+    # R×T/R×I/R×O têm as próprias telas), medições por série (uma linha por fase/polo/núcleo)
+    # ou curva (pontos de tensão × corrente, por série). Ver docs/25.
+    forma = models.CharField("Forma da ficha", max_length=10, choices=FormaEnsaio.choices, default=FormaEnsaio.TABELA)
     # Os rótulos mudam entre as fichas de referência (óleo × elétricos).
     rotulo_conclusao = models.CharField("Rótulo da conclusão", max_length=40, default="Conclusão")
     rotulo_informacoes = models.CharField("Rótulo das informações", max_length=40, default="Informações Adicionais")
@@ -212,6 +222,85 @@ class RegistroEnsaioEletrico(BaseModel):
 
     def __str__(self):
         return f"Ensaios elétricos {self.data_ensaio} — {self.item.equipamento.tag}"
+
+
+# ------------------- Ensaios elétricos de subestação (TC, TP, DJ, CS, RP) -------------------
+# Mesmo motor dos transformadores (ResultadoEnsaio, ValorParametro, ensaios e parâmetros
+# catalogados). O que muda é o equipamento: os dados de placa usados nos cálculos (relação,
+# classe de exatidão, polos, funções do relé) e o registro de campo, sem TAP nem óleo.
+MODULOS_SUBESTACAO = (
+    ModuloTecnico.ENSAIO_ELETRICO_TC.value, ModuloTecnico.ENSAIO_ELETRICO_TP.value,
+    ModuloTecnico.ENSAIO_ELETRICO_DJ.value, ModuloTecnico.ENSAIO_ELETRICO_CS.value,
+    ModuloTecnico.ENSAIO_ELETRICO_RP.value,
+)
+
+
+class DadosPlacaSubestacao(BaseModel):
+    """
+    Dados de placa do equipamento de subestação usados pelos cálculos e pela carta.
+    Extensão 1-para-1 de `Equipamento`, como os dados técnicos de motor e transformador;
+    cada campo é opcional e só é usado pelo ensaio que precisa dele (ex.: a relação
+    nominal só entra nos ensaios de TC e TP).
+    """
+
+    equipamento = models.OneToOneField(Equipamento, on_delete=models.CASCADE, related_name="dados_placa_subestacao")
+    tensao_nominal_kv = models.DecimalField("Tensão nominal (kV)", max_digits=9, decimal_places=3, null=True, blank=True,
+                                            validators=[MinValueValidator(Decimal("0"))])
+    corrente_nominal_a = models.DecimalField("Corrente nominal (A)", max_digits=10, decimal_places=2, null=True,
+                                             blank=True, validators=[MinValueValidator(Decimal("0"))])
+    relacao_texto = models.CharField("Relação de placa", max_length=40, blank=True,
+                                     help_text="Como está na placa (ex.: 600/5 A, 13800/115 V).")
+    relacao_transformacao = models.DecimalField(
+        "Relação nominal (primário ÷ secundário)", max_digits=14, decimal_places=4, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Número da relação: 600/5 A → 120; 13800/115 V → 120. Base do erro de relação.",
+    )
+    classe_exatidao = models.CharField(
+        "Classe de exatidão", max_length=10, blank=True,
+        help_text="Ex.: 0,2 · 0,5 · 1 · 3 (medição) ou 5P · 10P (proteção, TC) · 3P · 6P (proteção, TP).",
+    )
+    carga_nominal_va = models.DecimalField("Carga nominal (VA)", max_digits=10, decimal_places=2, null=True, blank=True,
+                                           validators=[MinValueValidator(Decimal("0"))])
+    numero_nucleos = models.PositiveSmallIntegerField("Número de núcleos", null=True, blank=True)
+    polaridade = models.CharField("Polaridade declarada", max_length=20, blank=True,
+                                  help_text="Ex.: Subtrativa, Aditiva.")
+    numero_polos = models.PositiveSmallIntegerField("Número de polos", null=True, blank=True)
+    capacidade_interrupcao_ka = models.DecimalField("Capacidade de interrupção (kA)", max_digits=8, decimal_places=2,
+                                                    null=True, blank=True, validators=[MinValueValidator(Decimal("0"))])
+    mecanismo = models.CharField("Mecanismo de operação", max_length=60, blank=True)
+    funcoes_protecao = models.TextField(
+        "Funções de proteção do relé", blank=True,
+        help_text="Só para relé de proteção: uma função por linha, com o código ANSI (ex.: 50/51 — fase).",
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Dados de placa — equipamento de subestação"
+        verbose_name_plural = "Dados de placa — equipamentos de subestação"
+
+    def __str__(self):
+        return f"Dados de placa — {self.equipamento.tag}"
+
+
+class RegistroEnsaioSubestacao(BaseModel):
+    """Registro de campo dos ensaios de subestação (condições do ensaio e ensaios solicitados)."""
+
+    item = models.OneToOneField(ItemInspecao, on_delete=models.CASCADE, related_name="registro_subestacao")
+    data_ensaio = models.DateField("Data do ensaio")
+    analista = models.CharField("Analista", max_length=120, blank=True)
+    temperatura_equipamento_c = models.DecimalField("Temperatura do equipamento (°C)", max_digits=6, decimal_places=1,
+                                                    null=True, blank=True)
+    temperatura_ambiente_c = models.DecimalField("Temperatura ambiente (°C)", max_digits=6, decimal_places=1,
+                                                 null=True, blank=True)
+    umidade_relativa_pct = models.DecimalField("Umidade relativa (%)", max_digits=5, decimal_places=1,
+                                               null=True, blank=True, validators=PERCENTUAL)
+    ensaios = models.ManyToManyField(Ensaio, blank=True, related_name="+", verbose_name="Ensaios solicitados")
+
+    class Meta(BaseModel.Meta):
+        verbose_name = "Registro de ensaios de subestação"
+        verbose_name_plural = "Registros de ensaios de subestação"
+
+    def __str__(self):
+        return f"Ensaios de subestação {self.data_ensaio} — {self.item.equipamento.tag}"
 
 
 # -------------------------------- Resultados --------------------------------

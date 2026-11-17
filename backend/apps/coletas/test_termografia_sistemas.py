@@ -22,9 +22,10 @@ class RegistroTest(SimpleTestCase):
         self.assertIs(modulo_da_tecnologia(TecnologiaAnalise(nome="TP", modulo_tecnico="TERMO_PROCESSOS")),
                       MODULO_TERMO_PROCESSOS)
 
-    def test_ensaio_eletrico_tc_continua_planejado(self):
+    def test_modulo_sem_implementacao_recusa_sem_layout_alheio(self):
+        # Chave que não existe no registro: nunca cai no layout de outra técnica.
         with self.assertRaises(ModuloNaoImplementado):
-            modulo_da_tecnologia(TecnologiaAnalise(nome="TC", modulo_tecnico="ENSAIO_ELETRICO_TC"))
+            modulo_da_tecnologia(TecnologiaAnalise(nome="X", modulo_tecnico="MODULO_FUTURO"))
 
     def test_modulos_sem_bloco_eletrico(self):
         for modulo in (MODULO_TERMOGRAFIA_MECANICA, MODULO_TERMO_PROCESSOS):

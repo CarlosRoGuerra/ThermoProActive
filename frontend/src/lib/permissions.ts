@@ -79,7 +79,9 @@ export type Habilidade =
   | "relatorios:ver"
   | "relatorios:exportar"
   /* Prestadores de serviço terceirizados */
-  | "prestadores:gerenciar";
+  | "prestadores:gerenciar"
+  /* Chaves de API de IA e ativação por recurso: só Master interno (backend: apps/ia + IsMaster). */
+  | "ia:gerenciar";
 
 const NIVEIS_QUE_EXCLUEM: Nivel[] = ["MASTER", "SENIOR"];
 
@@ -161,6 +163,9 @@ export function can(user: User | null | undefined, habilidade: Habilidade): bool
     case "prestadores:gerenciar":
       return interno;
 
+    case "ia:gerenciar":
+      return interno && master;
+
     default:
       return false;
   }
@@ -233,6 +238,7 @@ const REGRAS_ROTA: RegraRota[] = [
   { prefixo: "/cadastros", exige: "dados-sistema:ver" },
   { prefixo: "/clientes", exige: "clientes:gerenciar" },
   { prefixo: "/prestadores", exige: "prestadores:gerenciar" },
+  { prefixo: "/ia", exige: "ia:gerenciar" },
   { prefixo: "/equipamentos", exige: "clientes:gerenciar" },
   { prefixo: "/rotas", exige: "clientes:gerenciar" },
   { prefixo: "/inspecoes", exige: "operacional:ver" },

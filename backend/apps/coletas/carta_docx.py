@@ -598,6 +598,12 @@ def construir_carta_docx(rel, prestador) -> Document:
     _titulo(doc, "2. Data(s) da(s) Execução(ões) da(s) Atividade(s)")
     _p(doc, f"Finalização das medições em campo – {_dt(rel.data_termino)}",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
+    if getattr(modulo, "carta_data_osps", False):
+        from .relatorio_tecnico.inspecao import data_upload_osps
+
+        data_osps = data_upload_osps(rel)
+        if data_osps:
+            _p(doc, f"Upload das OSP´s – {_dt(data_osps)}", align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _p(doc, f"Finalização das análises – {_dt(rel.data_finalizacao)}",
        align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10)
     _blank(doc)
@@ -610,7 +616,30 @@ def construir_carta_docx(rel, prestador) -> Document:
 
     # ---- 4. Instrumentação (sub-itens a 22,51 mm, conforme XML do modelo) ----
     _titulo(doc, "4. Instrumentação Utilizada")
-    if instrumentos:
+    if instrumentos and getattr(modulo, "carta_instrumentacao_numerada", False):
+        # Como no RT.TE: "4.1. <instrumento>" com Marca | Modelo na mesma linha, a
+        # calibração em mês/ano e os softwares num subitem próprio, no fim.
+        esq = WD_ALIGN_PARAGRAPH.JUSTIFY
+        for k, ins in enumerate(instrumentos, start=1):
+            _p(doc, f"4.{k}. {ins.tipo or 'Instrumento'}", align=esq, left=10)
+            marca_modelo = " | ".join(
+                x for x in (f"Marca: {ins.marca}" if ins.marca else "", f"Modelo: {ins.modelo}" if ins.modelo else "") if x
+            )
+            if marca_modelo:
+                _p(doc, marca_modelo, align=esq, left=22.51)
+            if ins.numero_serie:
+                _p(doc, f"Serial #: {ins.numero_serie}", align=esq, left=22.51)
+            if ins.data_ultima_calibracao:
+                _p(doc, f"Data da última calibração: {ins.data_ultima_calibracao:%m/%Y}", align=esq, left=22.51)
+                if ins.periodicidade_calibracao:
+                    _p(doc, f"Validade: {ins.get_periodicidade_calibracao_display()}", align=esq, left=22.51)
+            if ins.entidade_calibracao:
+                _p(doc, f"Entidade Calibração: {ins.entidade_calibracao}", align=esq, left=22.51)
+        softwares = list(dict.fromkeys(ins.software_analise.strip() for ins in instrumentos if (ins.software_analise or "").strip()))
+        if softwares:
+            _p(doc, f"4.{len(instrumentos) + 1}. Softwares de Análises:", align=esq, left=10)
+            _p(doc, " | ".join(softwares), align=esq, left=22.51)
+    elif instrumentos:
         for ins in instrumentos:
             if ins.tipo:
                 _p(doc, ins.tipo, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=22.51)
@@ -660,35 +689,43 @@ def construir_carta_docx(rel, prestador) -> Document:
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after = Pt(0)
         # Sem override de line_spacing: herda 1,0 do estilo SemEspaamento.
-        _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
-        if texto:  # sem texto = título de grupo (ex.: "6.1. Temperaturas")
-            _fmt_run(p.add_run(f" – {texto}"))
+        if sigla:
+            _fmt_run(p.add_run(f"{n}. {sigla}"), bold=True)
+            if texto:  # sem texto = título de grupo (ex.: "6.1. Temperaturas")
+                _fmt_run(p.add_run(f" – {texto}"))
+        else:  # sem sigla = passo numerado (ex.: "6.11.1. Contratada realiza…")
+            _fmt_run(p.add_run(f"{n}. "), bold=True)
+            _fmt_run(p.add_run(texto))
         if i < len(glossario) - 1:
             _blank(doc, style="SemEspaamento")
     _blank(doc, style="SemEspaamento")
 
     # ---- 7. Definição da Técnica (GERADO dos dados do relatório + texto da técnica) ----
-    # Mesmo padrão do item 6: título 1,15 + after=12 pt; corpo simples (1,0).
-    _titulo(doc, "7. Definição da Técnica", style="SemEspaamento", space_after=12, line_spacing=1.15)
+    # Só nos módulos que a têm: a termografia elétrica segue o RT.TE, em que o fluxo de
+    # trabalho está no glossário (6.11) e as Considerações são o item 7.
+    com_definicao = getattr(modulo, "carta_definicao_tecnica", True)
+    if com_definicao:
+        # Mesmo padrão do item 6: título 1,15 + after=12 pt; corpo simples (1,0).
+        _titulo(doc, "7. Definição da Técnica", style="SemEspaamento", space_after=12, line_spacing=1.15)
 
-    # Alcance do relatório (comum) + o que o módulo apurou (na inspeção por rota:
-    # anomalias e OSPs), seguidos do texto fixo cadastrado na tecnologia.
-    definicao_paragrafos = [_paragrafo_escopo(rel), *modulo.paragrafos_carta(rel)]
-    for campo in ((tec.definicao_tecnica or ""), (getattr(tec, "definicao_fluxo_trabalho", "") or "")):
-        for par in campo.strip().splitlines():
-            if par.strip():
-                definicao_paragrafos.append(par.strip())
+        # Alcance do relatório (comum) + o que o módulo apurou (na inspeção por rota:
+        # anomalias e OSPs), seguidos do texto fixo cadastrado na tecnologia.
+        definicao_paragrafos = [_paragrafo_escopo(rel), *modulo.paragrafos_carta(rel)]
+        for campo in ((tec.definicao_tecnica or ""), (getattr(tec, "definicao_fluxo_trabalho", "") or "")):
+            for par in campo.strip().splitlines():
+                if par.strip():
+                    definicao_paragrafos.append(par.strip())
 
-    for i, par in enumerate(definicao_paragrafos):
-        _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10,
-           style="SemEspaamento", line_spacing=None)
-        if i < len(definicao_paragrafos) - 1:
-            _blank(doc, style="SemEspaamento")
-    _blank(doc, style="SemEspaamento")
+        for i, par in enumerate(definicao_paragrafos):
+            _p(doc, par, align=WD_ALIGN_PARAGRAPH.JUSTIFY, left=10,
+               style="SemEspaamento", line_spacing=None)
+            if i < len(definicao_paragrafos) - 1:
+                _blank(doc, style="SemEspaamento")
+        _blank(doc, style="SemEspaamento")
 
-    # ---- 8. Considerações + assinatura ----
-    # O título 8 força 1,15, mas NÃO tem after=12; o modelo usa uma linha em branco após o título.
-    _titulo(doc, "8. Considerações Importantes", style="SemEspaamento", line_spacing=1.15)
+    # ---- Considerações + assinatura (item 8; item 7 sem a Definição da Técnica) ----
+    # O título força 1,15, mas NÃO tem after=12; o modelo usa uma linha em branco após o título.
+    _titulo(doc, f"{8 if com_definicao else 7}. Considerações Importantes", style="SemEspaamento", line_spacing=1.15)
     _blank(doc, style="SemEspaamento")
 
     consideracoes = list(modulo.carta_consideracoes)

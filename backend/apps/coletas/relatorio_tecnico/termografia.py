@@ -1,11 +1,15 @@
 """
-Conteúdo da Carta ao Cliente da Termografia — transcrito do relatório de
-referência do cliente RT.TE-2026.02.12.02307 (Acco Brands – Foroni), itens 6 e 7.
+Conteúdo da Carta ao Cliente da Termografia em Sistemas Elétricos — transcrito do
+relatório de referência do cliente (RT.TE-2026.05.18.02326, Acco Brands – Foroni),
+itens 6 e 7. A carta segue a estrutura do RT.TE: o Fluxo de Trabalho é o 6.11 do
+glossário e o item 7 são as Considerações Importantes (não há "Definição da Técnica").
 
-O item 6.11 (Fluxo de Trabalho) do relatório antigo não entra aqui: cita o
-e-MasterSys e, no modelo novo, o fluxo sai no item 7 (Definição da Técnica),
-cadastrado na tecnologia. Entradas sem texto são títulos de grupo (6.1, 6.2).
+No 6.11 o RT.TE cita o e-MasterSys, o sistema anterior do cliente; aqui entra o nome
+desta plataforma (`PLATAFORMA`). Entradas sem texto são títulos de grupo (6.1, 6.2, 6.11).
 """
+
+# Onde a contratada disponibiliza as OSPs e a contratante devolve as informações.
+PLATAFORMA = "Pred Ativos"
 
 GLOSSARIO_TERMOGRAFIA = (
     ("6.1", "Temperaturas", ""),
@@ -31,6 +35,14 @@ GLOSSARIO_TERMOGRAFIA = (
     ("6.8", "OK", "Normalidade Operacional: Carga maior que 70,0%. Os circuitos carregados não apresentam anomalias térmicas. Recomenda-se nova inspeção em período máximo de 90 dias."),
     ("6.9", "PDM", "Parado Devido à Manutenção: Equipamento encontra-se parado devido algum tipo de intervenção da equipe de manutenção."),
     ("6.10", "PDP", "Parado Devido ao Processo: Equipamento encontra-se parado devido o processo produtivo."),
+    ("6.11", "Fluxo de Trabalho", ""),
+    ("6.11.1", "", "Contratada realiza as coletas de dados em campo e disponibiliza à Contratante informações referente a tudo que for avaliado em campo como GR-1;"),
+    ("6.11.2", "", f"Contratada analisa os dados coletados e disponibiliza as OSP´s no {PLATAFORMA} até o 6º dia útil; emissão de laudos técnicos;"),
+    ("6.11.3", "", f"Contratante [PCM] acessa a plataforma do {PLATAFORMA} e realiza o planejamento das OSP´s gerando ordens de serviços corretivas baseadas nas OSP´s;"),
+    ("6.11.4", "", "Contratante [PCM] distribui as OS’s para execução das correções;"),
+    ("6.11.5", "", "Contratante [manutentores] executam as correções dos defeitos apontados;"),
+    ("6.11.6", "", f"Contratante [PCM] retorna as informações referente às execuções na plataforma {PLATAFORMA};"),
+    ("6.11.7", "", "Contratada analisa as informações retornadas a fim de aprimorar futuros diagnósticos."),
 )
 
 CONSIDERACOES_TERMOGRAFIA = (

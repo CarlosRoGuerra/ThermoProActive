@@ -27,6 +27,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [dataFim, setDataFim] = useState("");
+  const [dataOsps, setDataOsps] = useState("");
   const [consideracoes, setConsideracoes] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [gerandoLaudo, setGerandoLaudo] = useState(false);
@@ -37,6 +38,7 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       const dossie = await api<DossieShell>(`/relatorios-inspecao/${relatorioId}/dossie/`);
       setD(dossie);
       setDataFim(dossie.cabecalho.data_finalizacao ?? "");
+      setDataOsps(dossie.cabecalho.data_upload_osps ?? "");
       setConsideracoes(dossie.cabecalho.consideracoes_finais ?? "");
     } catch (e) {
       setErro(mensagemErroDossie(e, "Não foi possível carregar o relatório."));
@@ -52,7 +54,12 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
     try {
       await api(`/relatorios-inspecao/${relatorioId}/`, {
         method: "PATCH",
-        body: { data_finalizacao: dataFim || null, consideracoes_finais: consideracoes },
+        body: {
+          data_finalizacao: dataFim || null,
+          consideracoes_finais: consideracoes,
+          // Só os módulos cuja carta mostra a data das OSPs (termografia elétrica) editam o campo.
+          ...(d?.carta.mostra_data_osps ? { data_upload_osps: dataOsps || null } : {}),
+        },
       });
       await carregar();
     } finally {
@@ -144,9 +151,19 @@ export function RelatorioDossie({ relatorioId }: { relatorioId: number }) {
       <Card className="no-print">
         <h2 className="mb-3 text-sm font-semibold text-fg">Finalização do relatório</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Data de finalização do relatório">
-            <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
-          </Field>
+          <div className="space-y-4">
+            <Field label="Data de finalização do relatório">
+              <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+            </Field>
+            {d.carta.mostra_data_osps && (
+              <Field
+                label="Data de disponibilização das OSPs"
+                hint="Linha “Upload das OSP´s” da carta. Em branco, sai a data em que as OSPs foram geradas."
+              >
+                <Input type="date" value={dataOsps} onChange={(e) => setDataOsps(e.target.value)} />
+              </Field>
+            )}
+          </div>
           <Field label="Considerações finais / conclusões" className="sm:col-span-2">
             <Textarea rows={3} value={consideracoes} onChange={(e) => setConsideracoes(e.target.value)} placeholder="Conclusões da análise que saem no fim do relatório…" />
           </Field>

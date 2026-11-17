@@ -5,7 +5,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import FileField
 from django.utils import timezone
 
-from .models import ParametroEnsaio, ReferenciaParametro
+from .models import MODULOS_SUBESTACAO, ParametroEnsaio, ReferenciaParametro
 
 
 def serializavel(dados):
@@ -41,7 +41,7 @@ class ReferenciasRegistradas:
 
 def registrar_contexto(resultado, autor=None, origem="API"):
     from apps.cadastros.models import ModuloTecnico
-    from .relatorio import _Campanha
+    from .relatorio import _Campanha, _um
     from .relatorio_fluidos import (ResolvedorReferencias, _contexto_referencia, _oleo_novo,
                                     _oleo_novo_rotulos, contexto_comparacao_fluido)
 
@@ -56,6 +56,12 @@ def registrar_contexto(resultado, autor=None, origem="API"):
     trafo = _um(resultado.item.equipamento, "dados_transformador")
     contexto["registro_eletrico"] = campos(registro) if registro else None
     contexto["dados_transformador"] = campos(trafo) if trafo else None
+    if resultado.ensaio.modulo in MODULOS_SUBESTACAO:
+        # Subestação: registro de campo e placa do momento do lançamento (o laudo não muda depois).
+        registro_sub = _um(resultado.item, "registro_subestacao")
+        placa = _um(resultado.item.equipamento, "dados_placa_subestacao")
+        contexto["registro_subestacao"] = campos(registro_sub) if registro_sub else None
+        contexto["dados_placa"] = campos(placa) if placa else None
     if resultado.ensaio.modulo == ModuloTecnico.FLUIDO_LUBRIFICANTE:
         # O contexto anterior já foi arquivado na revisão pelo serializer.
         escopo = _contexto_referencia(campanha, resultado.item.equipamento)

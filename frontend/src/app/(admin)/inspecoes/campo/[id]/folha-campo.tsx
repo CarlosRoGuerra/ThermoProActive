@@ -24,7 +24,8 @@ import type { Achado, Carregamento, Condicao, ItemInspecao, Paginated } from "@/
 import { AnaliseBalanceamento } from "@/components/analise-balanceamento";
 import { EditorTransformador } from "@/features/ensaios/editor";
 import { EditorFluido } from "@/features/ensaios/editor-fluido";
-import { ehModuloEnsaio, ehModuloFluido, type ItemEnsaio } from "@/features/ensaios/tipos";
+import { EditorSubestacao } from "@/features/ensaios/editor-subestacao";
+import { ehModuloEnsaio, ehModuloFluido, ehModuloSubestacao, type ItemEnsaio } from "@/features/ensaios/tipos";
 import {
   Badge,
   Button,
@@ -270,7 +271,8 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   // ao voltar do lançamento de um equipamento, que é onde ele muda.
   useEffect(() => {
     if (!moduloEnsaio || itemId) return;
-    const fila = ehModuloFluido(moduloEnsaio) ? "fluidos-inspecao" : "transformadores-inspecao";
+    const fila = ehModuloFluido(moduloEnsaio) ? "fluidos-inspecao"
+      : ehModuloSubestacao(moduloEnsaio) ? "subestacao-inspecao" : "transformadores-inspecao";
     api<Paginated<ItemEnsaio>>(`/${fila}/?carregamento=${carregamentoId}&page_size=500`)
       .then((r) => setResumoEnsaios(new Map(r.results.map((t) => [t.id, t]))))
       .catch(() => setResumoEnsaios(new Map()));
@@ -541,6 +543,9 @@ export function FolhaCampo({ carregamentoId }: { carregamentoId: number }) {
   // (registro de campo e laudos), o mesmo editor da Análise final.
   if (moduloEnsaio && itemId) {
     const voltar = { href: `/inspecoes/campo/${carregamentoId}`, label: "Voltar para equipamentos da rota" };
+    if (ehModuloSubestacao(moduloEnsaio)) {
+      return <EditorSubestacao key={itemId} itemId={Number(itemId)} podeEditar={podeEditar} voltar={voltar} />;
+    }
     return ehModuloFluido(moduloEnsaio) ? (
       <EditorFluido key={itemId} itemId={Number(itemId)} podeEditar={podeEditar} voltar={voltar} />
     ) : (

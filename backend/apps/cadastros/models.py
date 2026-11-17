@@ -222,7 +222,12 @@ class Equipamento(BaseModel):
         verbose_name="Equipamento principal",
         help_text="Preencha apenas se este for um sub-item (ex.: exaustor de uma caldeira).",
     )
-    tag = models.CharField("TAG", max_length=60, help_text="Identificação no campo (ex.: BBA-101)")
+    # TAG opcional: na termografia elétrica a maioria dos painéis não tem TAG e os
+    # painéis de uma mesma máquina repetem a TAG dela (RT.TE de referência do cliente).
+    tag = models.CharField(
+        "TAG", max_length=60, blank=True, default="",
+        help_text="Identificação no campo (ex.: BBA-101). Opcional — painéis elétricos podem não ter.",
+    )
     nome = models.CharField("Nome/Descrição", max_length=160)
     # Tipo vem do catálogo "Tipos de equipamento" (Dados de sistema). O campo texto
     # `tipo` é mantido sincronizado com o nome, para leitores antigos e relatórios.
@@ -276,7 +281,11 @@ class Equipamento(BaseModel):
     class Meta(BaseModel.Meta):
         verbose_name = "Equipamento"
         verbose_name_plural = "Equipamentos"
-        unique_together = [("setor", "tag")]
+        # Sem TAG, ou com a TAG da máquina repetida nos seus painéis, o que distingue
+        # dois equipamentos do mesmo setor é o nome.
+        constraints = [
+            models.UniqueConstraint(fields=["setor", "tag", "nome"], name="uniq_equipamento_setor_tag_nome"),
+        ]
 
     def save(self, *args, **kwargs):
         # Espelha o nome do tipo no campo texto (compatibilidade/relatórios).
@@ -285,7 +294,12 @@ class Equipamento(BaseModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.tag} — {self.nome}"
+        return " — ".join(x for x in (self.tag, self.nome) if x)
+
+    @property
+    def rotulo_curto(self) -> str:
+        """Como citar o equipamento numa frase: a TAG; sem TAG, o nome."""
+        return self.tag or self.nome
 
     @property
     def is_subitem(self) -> bool:
@@ -602,11 +616,11 @@ class ModuloTecnico(models.TextChoices):
     ALINHAMENTO_EIXOS = "ALINHAMENTO_EIXOS", "Alinhamento a laser entre eixos"
     ALINHAMENTO_POLIAS = "ALINHAMENTO_POLIAS", "Alinhamento a laser entre polias"
     TERMOGRAFIA_MECANICA = "TERMOGRAFIA_MECANICA", "Termografia — sistemas mecânicos"
-    ENSAIO_ELETRICO_TC = "ENSAIO_ELETRICO_TC", "Ensaios elétricos — TC (não implementado)"
-    ENSAIO_ELETRICO_TP = "ENSAIO_ELETRICO_TP", "Ensaios elétricos — TP (não implementado)"
-    ENSAIO_ELETRICO_DJ = "ENSAIO_ELETRICO_DJ", "Ensaios elétricos — disjuntor (não implementado)"
-    ENSAIO_ELETRICO_CS = "ENSAIO_ELETRICO_CS", "Ensaios elétricos — chave seccionadora (não implementado)"
-    ENSAIO_ELETRICO_RP = "ENSAIO_ELETRICO_RP", "Ensaios elétricos — relé de proteção (não implementado)"
+    ENSAIO_ELETRICO_TC = "ENSAIO_ELETRICO_TC", "Ensaios elétricos — TC"
+    ENSAIO_ELETRICO_TP = "ENSAIO_ELETRICO_TP", "Ensaios elétricos — TP"
+    ENSAIO_ELETRICO_DJ = "ENSAIO_ELETRICO_DJ", "Ensaios elétricos — disjuntor"
+    ENSAIO_ELETRICO_CS = "ENSAIO_ELETRICO_CS", "Ensaios elétricos — chave seccionadora"
+    ENSAIO_ELETRICO_RP = "ENSAIO_ELETRICO_RP", "Ensaios elétricos — relé de proteção"
     # Coleta técnica (Anexo I 2.3) — chaves acrescentadas de uma vez; sai de MODULOS_PLANEJADOS
     # quando o relatório do módulo estiver pronto.
     ESPESSURA = "ESPESSURA", "Medição de espessura"
@@ -617,10 +631,8 @@ class ModuloTecnico(models.TextChoices):
 
 
 #: Módulos já cadastráveis cujo relatório ainda não existe.
-MODULOS_PLANEJADOS = frozenset({
-    ModuloTecnico.ENSAIO_ELETRICO_TC, ModuloTecnico.ENSAIO_ELETRICO_TP, ModuloTecnico.ENSAIO_ELETRICO_DJ,
-    ModuloTecnico.ENSAIO_ELETRICO_CS, ModuloTecnico.ENSAIO_ELETRICO_RP,
-})
+# Ensaios elétricos de subestação (TC, TP, DJ, CS, RP) saíram daqui: têm relatório (apps.ensaios).
+MODULOS_PLANEJADOS = frozenset()
 
 
 class TecnologiaAnalise(Catalogo):

@@ -813,6 +813,8 @@ class Command(BaseCommand):
                 temperatura_medida=Decimal(tmed),
                 temperatura_referencia=Decimal(tref),
                 carga_percentual=Decimal(carga),
+                # Base da correção pela carga (C.T.M.): sem ela só sai o ΔT corrigido.
+                temperatura_ambiente=Decimal("32.0"),
                 corrente_a=Decimal(ca), corrente_b=Decimal(cb), corrente_c=Decimal(cc),
                 tensao_a=Decimal(ta), tensao_b=Decimal(tb), tensao_c=Decimal(tc),
                 confirmada=True,

@@ -9,6 +9,17 @@ def serializavel(valor):
     return json.loads(json.dumps(valor, cls=DjangoJSONEncoder))
 
 
+def como_na_api(valor):
+    """Mesmo JSON que a API entrega à tela (o DRF emite Decimal como número).
+
+    O layout impresso é o da tela e lê o dossiê do snapshot no lugar da API. Com o
+    `DjangoJSONEncoder`, Decimal vira texto ("51.700000") e as fichas de ensaio saem
+    com as células numéricas em branco no PDF emitido.
+    """
+    from rest_framework.utils.encoders import JSONEncoder
+    return json.loads(json.dumps(valor, cls=JSONEncoder))
+
+
 def hash_snapshot(snapshot):
     return hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":"),
                                       ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest()
@@ -39,7 +50,7 @@ def montar_snapshot(laudo, request=None):
                     "historico_classificacao": m.historico_classificacao})
                 analise = (m.criterio_aplicado or {}).get("analise_preditiva") or {}
                 if analise.get("entradas") and analise.get("atual") is not None:
-                    graficos.append({"titulo": f"{m.equipamento.tag} — {m.ponto_medicao}",
+                    graficos.append({"titulo": f"{m.equipamento.rotulo_curto} — {m.ponto_medicao}",
                         "unidade": analise.get("unidade", ""), "regra": analise.get("versao"),
                         "pontos": [{"data": p["data_hora"], "valor": p["valor"]} for p in analise["entradas"]]
                             + [{"data": analise["instante"], "valor": analise["atual"]}]})
@@ -92,5 +103,5 @@ def montar_snapshot(laudo, request=None):
         "template": {"id": template.pk if template else None, "nome": template.nome if template else "Padrão",
                      "versao": template.versao if template else 1,
                      "configuracao": configuracao},
-        "relatorio": relatorio, "medicoes": medicoes, "evidencias": evidencias, "graficos": graficos,
+        "relatorio": como_na_api(relatorio), "medicoes": medicoes, "evidencias": evidencias, "graficos": graficos,
     })

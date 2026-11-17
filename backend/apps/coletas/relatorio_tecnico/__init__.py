@@ -28,7 +28,7 @@ def montar_dossie(rel, request) -> dict:
     return {
         "modulo": modulo.chave,
         "cabecalho": montar_cabecalho(rel, request, modulo.instrumentos_adicionais(ctx)),
-        "secao_c": montar_secao_c(ctx, condicoes),
+        "secao_c": montar_secao_c(ctx, condicoes, ordem=getattr(modulo, "secao_c_ordem", "tag")),
         "carta": carta,
         **tecnico,
     }

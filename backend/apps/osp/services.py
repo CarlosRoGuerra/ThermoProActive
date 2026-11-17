@@ -96,7 +96,7 @@ def gerar_osp_de_medicao(medicao, tipo_label: str, *, retornar_existente=False) 
                 cliente=inspecao.cliente,
                 equipamento=equipamento,
                 inspecao=inspecao,
-                titulo=f"OSP automática — {equipamento.tag} ({tipo_label})",
+                titulo=f"OSP automática — {equipamento.rotulo_curto} ({tipo_label})",
                 descricao=(
                     f"Gerada automaticamente a partir de medição crítica em "
                     f"{medicao.ponto_medicao}. {medicao.diagnostico_sugerido}"
@@ -323,7 +323,7 @@ def _notificar_transicao(osp, de, para, ator, motivo, tipo, historico_id):
             destinatarios += list(aprovadores_do_cliente(osp.cliente))
         evento, nivel = EventoNotificacao.APROVACAO_PENDENTE, Nivel.ALERTA
         titulo = f"Aprovação pendente: OSP {osp.numero}"
-        mensagem = f"A OSP {osp.numero} ({osp.equipamento.tag}) aguarda aprovação da execução."
+        mensagem = f"A OSP {osp.numero} ({osp.equipamento.rotulo_curto}) aguarda aprovação da execução."
     else:
         destinatarios = list(pcm_do_cliente(osp.cliente))
         if osp.responsavel_id:
@@ -333,7 +333,7 @@ def _notificar_transicao(osp, de, para, ator, motivo, tipo, historico_id):
         evento = EventoNotificacao.OSP_STATUS
         nivel = Nivel.ALERTA if tipo in MOTIVO_OBRIGATORIO_TIPOS else Nivel.INFO
         titulo = f"OSP {osp.numero}: {rotulo}"
-        mensagem = f"A OSP {osp.numero} ({osp.equipamento.tag}) passou de {de.label} para {rotulo}."
+        mensagem = f"A OSP {osp.numero} ({osp.equipamento.rotulo_curto}) passou de {de.label} para {rotulo}."
         if motivo:
             mensagem += f" Motivo: {motivo}"
     ator_pk = getattr(ator, "pk", None)
@@ -448,7 +448,7 @@ def verificar_slas(dias=2, hoje=None) -> dict:
                 destinatarios,
                 titulo=f"SLA {'vencido' if vencido else 'vencendo'}: OSP {osp.numero}",
                 mensagem=(
-                    f"A OSP {osp.numero} ({osp.equipamento.tag}) tem SLA em {osp.sla_data}. "
+                    f"A OSP {osp.numero} ({osp.equipamento.rotulo_curto}) tem SLA em {osp.sla_data}. "
                     f"Status atual: {osp.get_status_display()}."
                 ),
                 url="/osps",

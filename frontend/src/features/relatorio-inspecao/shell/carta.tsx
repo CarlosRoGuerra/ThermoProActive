@@ -90,6 +90,38 @@ function CBlank() {
   return <div aria-hidden style={{ height: "12mm" }} />;
 }
 
+/* Item 4 no formato do RT.TE (termografia elétrica): "4.1. <instrumento>" com Marca |
+   Modelo na mesma linha, calibração em mês/ano e os softwares num subitem próprio.
+   Mesma regra da carta .docx (carta_docx.py). */
+function InstrumentacaoNumerada({ instrumentos }: { instrumentos: DossieShell["cabecalho"]["instrumentos"] }) {
+  const mesAno = (d: string) => { const [a, m] = d.split("-"); return `${m}/${a}`; };
+  const softwares = Array.from(new Set(instrumentos.map((i) => (i.software_analise || "").trim()).filter(Boolean)));
+  return (
+    <>
+      {instrumentos.map((i, k) => (
+        <div key={k} style={{ marginBottom: "1mm" }}>
+          <p style={{ margin: 0, marginLeft: "10mm" }}>4.{k + 1}. {i.tipo || "Instrumento"}</p>
+          <div style={{ marginLeft: "22.5mm" }}>
+            {(i.marca || i.modelo) && (
+              <p style={{ margin: 0 }}>{[i.marca && `Marca: ${i.marca}`, i.modelo && `Modelo: ${i.modelo}`].filter(Boolean).join(" | ")}</p>
+            )}
+            {i.numero_serie && <p style={{ margin: 0 }}>Serial #: {i.numero_serie}</p>}
+            {i.data_ultima_calibracao && <p style={{ margin: 0 }}>Data da última calibração: {mesAno(i.data_ultima_calibracao)}</p>}
+            {i.periodicidade && i.data_ultima_calibracao && <p style={{ margin: 0 }}>Validade: {i.periodicidade}</p>}
+            {i.entidade_calibracao && <p style={{ margin: 0 }}>Entidade Calibração: {i.entidade_calibracao}</p>}
+          </div>
+        </div>
+      ))}
+      {softwares.length > 0 && (
+        <div>
+          <p style={{ margin: 0, marginLeft: "10mm" }}>4.{instrumentos.length + 1}. Softwares de Análises:</p>
+          <p style={{ margin: 0, marginLeft: "22.5mm" }}>{softwares.join(" | ")}</p>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ------------------------------ Documento --------------------------------- */
 export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta }) {
   const cab = d.cabecalho;
@@ -115,6 +147,8 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
     ...textos.paragrafos,
     ...carta.paragrafosDefinicao,
   ];
+  // A termografia elétrica segue o RT.TE: sem a Definição da Técnica (Considerações = item 7).
+  const comDefinicao = textos.definicao_tecnica !== false;
   // Cada folha é uma A4 fixa: um glossário longo (ex.: termografia) segue em
   // outra folha a partir dos termos que o módulo marca em `quebras_glossario`.
   const folhasGlossario: TermoGlossario[][] = [[]];
@@ -143,6 +177,7 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
 
         <CItem n="2.">Data(s) da(s) Execução(ões) da(s) Atividade(s)</CItem>
         <CP>Medições em Campo – {rangeMedicao}</CP>
+        {textos.data_upload_osps && <CP>Upload das OSP´s – {ddmmaaaa(textos.data_upload_osps)}</CP>}
         <CP>Upload Relatório Completo – {ddmmaaaa(cab.data_finalizacao)}</CP>
         <CBlank />
 
@@ -151,7 +186,9 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
         <CBlank />
 
         <CItem n="4.">Instrumentação Utilizada</CItem>
-        {cab.instrumentos.length ? cab.instrumentos.map((i, k) => (
+        {cab.instrumentos.length && textos.instrumentacao_numerada ? (
+          <InstrumentacaoNumerada instrumentos={cab.instrumentos} />
+        ) : cab.instrumentos.length ? cab.instrumentos.map((i, k) => (
           <div key={k} style={{ marginLeft: "22.5mm", marginBottom: "2mm" }}>
             {i.tipo && <p style={{ margin: 0 }}>{i.tipo}</p>}
             {i.marca && <p style={{ margin: 0 }}>Marca: {i.marca}</p>}
@@ -184,24 +221,29 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
           {f === 0 && <CItem n="6." gap="7mm">Glossário Técnico</CItem>}
           {termos.map((g) => (
             // Sem texto = título de grupo (ex.: "6.1. Temperaturas"), sem travessão.
-            <CP key={g.n} solto><b>{g.n}. {g.sigla}</b>{g.texto ? <> – {g.texto}</> : null}</CP>
+            // Sem sigla = passo numerado (ex.: "6.11.1. Contratada realiza…").
+            <CP key={g.n} solto>
+              {g.sigla ? <><b>{g.n}. {g.sigla}</b>{g.texto ? <> – {g.texto}</> : null}</> : <><b>{g.n}.</b> {g.texto}</>}
+            </CP>
           ))}
         </Folha>
       ))}
 
-      {/* ---- Folha 4: item 7 (Definição da Técnica) ---- */}
-      <Folha p={p}>
-        <CItem n="7." gap="7mm">Definição da Técnica</CItem>
-        {/* Parágrafos gerados a partir dos dados do relatório (banco) */}
-        {paragrafosGerados.map((t, k) => <CP key={`g${k}`} solto>{t}</CP>)}
-        {/* Descrição fixa da técnica (cadastro da tecnologia), quando houver */}
-        {introDef.map((t, k) => <CP key={`i${k}`} solto>{t}</CP>)}
-        {fluxoDef.map((t, k) => <CP key={`f${k}`} solto>{t}</CP>)}
-      </Folha>
+      {/* ---- Folha 4: item 7 (Definição da Técnica) — só nos módulos que a têm ---- */}
+      {comDefinicao && (
+        <Folha p={p}>
+          <CItem n="7." gap="7mm">Definição da Técnica</CItem>
+          {/* Parágrafos gerados a partir dos dados do relatório (banco) */}
+          {paragrafosGerados.map((t, k) => <CP key={`g${k}`} solto>{t}</CP>)}
+          {/* Descrição fixa da técnica (cadastro da tecnologia), quando houver */}
+          {introDef.map((t, k) => <CP key={`i${k}`} solto>{t}</CP>)}
+          {fluxoDef.map((t, k) => <CP key={`f${k}`} solto>{t}</CP>)}
+        </Folha>
+      )}
 
-      {/* ---- Folha 5: item 8 (Considerações) + assinatura ---- */}
+      {/* ---- Folha 5: Considerações (item 8; item 7 sem a Definição da Técnica) + assinatura ---- */}
       <Folha p={p}>
-        <CItem n="8." gap="7mm">Considerações Importantes</CItem>
+        <CItem n={comDefinicao ? "8." : "7."} gap="7mm">Considerações Importantes</CItem>
         {textos.consideracoes.map((t, k) => <CP key={k} solto>{t}</CP>)}
         {cab.consideracoes_finais.trim() && <CP solto><span style={{ whiteSpace: "pre-line" }}>{cab.consideracoes_finais}</span></CP>}
         <p style={{ margin: "10mm 0 0 10mm" }}>Atenciosamente,</p>

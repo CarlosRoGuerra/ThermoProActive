@@ -19,8 +19,11 @@ import type {
 
 export type ModuloTransformador = "OLEO_ISOLANTE" | "ENSAIO_ELETRICO";
 export type ModuloFluido = "FLUIDO_LUBRIFICANTE";
+/** Ensaios elétricos de subestação: TC, TP, disjuntor, chave seccionadora e relé de proteção (docs/25). */
+export type ModuloSubestacao =
+  | "ENSAIO_ELETRICO_TC" | "ENSAIO_ELETRICO_TP" | "ENSAIO_ELETRICO_DJ" | "ENSAIO_ELETRICO_CS" | "ENSAIO_ELETRICO_RP";
 /** Tecnologias cujo lançamento é por equipamento (registro de campo + laudos por ensaio). */
-export type ModuloEnsaio = ModuloTransformador | ModuloFluido;
+export type ModuloEnsaio = ModuloTransformador | ModuloFluido | ModuloSubestacao;
 
 export function ehModuloTransformador(modulo: string | null | undefined): modulo is ModuloTransformador {
   return modulo === "OLEO_ISOLANTE" || modulo === "ENSAIO_ELETRICO";
@@ -30,8 +33,13 @@ export function ehModuloFluido(modulo: string | null | undefined): modulo is Mod
   return modulo === "FLUIDO_LUBRIFICANTE";
 }
 
+export function ehModuloSubestacao(modulo: string | null | undefined): modulo is ModuloSubestacao {
+  return modulo === "ENSAIO_ELETRICO_TC" || modulo === "ENSAIO_ELETRICO_TP" || modulo === "ENSAIO_ELETRICO_DJ"
+    || modulo === "ENSAIO_ELETRICO_CS" || modulo === "ENSAIO_ELETRICO_RP";
+}
+
 export function ehModuloEnsaio(modulo: string | null | undefined): modulo is ModuloEnsaio {
-  return ehModuloTransformador(modulo) || ehModuloFluido(modulo);
+  return ehModuloTransformador(modulo) || ehModuloFluido(modulo) || ehModuloSubestacao(modulo);
 }
 
 /* ------------------------------ Catálogos ------------------------------- */
@@ -60,6 +68,8 @@ export type EnsaioCatalogo = {
   nome: string;
   modulo: ModuloEnsaio;
   titulo_ficha: string;
+  /** Como o lançamento organiza o ensaio: tabela de parâmetros, medições por série ou curva. */
+  forma: "TABELA" | "MEDICAO" | "CURVA";
   ordem: number;
   rotulo_conclusao: string;
   rotulo_informacoes: string;
@@ -171,7 +181,7 @@ export type AvaliacaoFluido = Pick<
   "campanhas" | "linhas" | "grupos" | "codigos" | "meta" | "situacao_meta" | "excesso_meta"
 >;
 
-export function ehAvaliacaoFluido(a: Avaliacao | AvaliacaoFluido | null | undefined): a is AvaliacaoFluido {
+export function ehAvaliacaoFluido(a: Avaliacao | AvaliacaoFluido | AvaliacaoSubestacao | null | undefined): a is AvaliacaoFluido {
   return !!a && "linhas" in a;
 }
 
@@ -204,7 +214,64 @@ export type ResultadoApi = {
   laboratorio: string;
   origem: string;
   valores: ValorApi[];
-  avaliacao: Avaliacao | AvaliacaoFluido;
+  avaliacao: Avaliacao | AvaliacaoFluido | AvaliacaoSubestacao;
+};
+
+/** Subestação: a ficha por série (linhas = fase, polo, núcleo ou função), a curva e os cálculos. */
+export type CelulaSubestacao = { valor: number | null; texto: string; conforme: boolean | null };
+export type LinhaSubestacao = { serie: string; celulas: Record<string, CelulaSubestacao> };
+export type ColunaSubestacao = {
+  codigo: string; nome: string; unidade: string; casas: number; calculado: boolean; tipo_limite: TipoLimite; norma: string;
+};
+export type AvaliacaoSubestacao = {
+  tipo: "MEDICAO" | "CURVA";
+  status: StatusEnsaio;
+  status_rotulo: string;
+  avaliados: number;
+  fora: number;
+  colunas?: ColunaSubestacao[];
+  linhas?: LinhaSubestacao[];
+  indicadores?: Record<string, number | null>;
+  /** Erro de relação: norma, classe da placa e erro admissível (null = sem critério para a classe). */
+  criterio?: { norma: string; classe: string; relacao_nominal: number | null; admissivel: number | null } | null;
+  series?: string[];
+  tabela?: { tensao: number; correntes: Record<string, number | null> }[];
+  joelhos?: Record<string, number | null>;
+  grafico?: { nome: string; pontos: { tensao: number; corrente: number }[] }[];
+};
+
+export function ehAvaliacaoSubestacao(a: Avaliacao | AvaliacaoFluido | AvaliacaoSubestacao | null | undefined): a is AvaliacaoSubestacao {
+  return !!a && (a.tipo === "MEDICAO" || a.tipo === "CURVA");
+}
+
+export type RegistroSubestacaoApi = {
+  id: number;
+  item: number;
+  data_ensaio: string;
+  analista: string;
+  temperatura_equipamento_c: string | null;
+  temperatura_ambiente_c: string | null;
+  umidade_relativa_pct: string | null;
+  ensaios: number[];
+};
+
+/** Dados de placa do equipamento de subestação (os campos que cada tipo usa). */
+export type DadosPlacaApi = {
+  id: number;
+  equipamento: number;
+  equipamento_tag: string;
+  tensao_nominal_kv: string | null;
+  corrente_nominal_a: string | null;
+  relacao_texto: string;
+  relacao_transformacao: string | null;
+  classe_exatidao: string;
+  carga_nominal_va: string | null;
+  numero_nucleos: number | null;
+  polaridade: string;
+  numero_polos: number | null;
+  capacidade_interrupcao_ka: string | null;
+  mecanismo: string;
+  funcoes_protecao: string;
 };
 
 /* ------------------------- Fila do lançamento --------------------------- */

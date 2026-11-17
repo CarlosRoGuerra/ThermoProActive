@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/", include("apps.notificacoes.urls")),
     path("api/", include("apps.relatorios.urls")),
     path("api/", include("apps.preditiva.urls")),
+    path("api/", include("apps.ia.urls")),
     path("api/", include("apps.core.urls")),
     # --- Documentação OpenAPI/Swagger ---
     # Em DEBUG (dev) aberta; com DEBUG=False exige login de usuário interno.

@@ -1,4 +1,4 @@
-import type { AlinhamentoOsp, OspD } from "../tipos";
+import type { AlinhamentoOsp, CriterioOrigemOsp, OspD } from "../tipos";
 import { LINHA_MEDICAO, criarModuloInspecao } from "./inspecao/modulo";
 
 /* Alinhamento a laser entre eixos e polias (Anexo I 2.3.2.8.1.1–2): a folha da OSP mostra o último
@@ -23,34 +23,71 @@ function Linha({ rotulo, v }: { rotulo: string; v: string }) {
   return <div style={LINHA_MEDICAO}><span style={{ fontWeight: 700 }}>{rotulo}:</span> {v}</div>;
 }
 
-function Fase({ rotulo, f }: { rotulo: string; f: AlinhamentoOsp["antes"] }) {
-  if (!f) return <Linha rotulo={rotulo} v="— (não registrado)" />;
+/* Sem quebra de linha nas células: cada linha a mais (5 mm) empurra o "Retorno de Informação" para outra folha. */
+const CELULA_TABELA = {
+  padding: "0 1mm", textAlign: "right" as const, fontVariantNumeric: "tabular-nums" as const,
+  whiteSpace: "nowrap" as const, lineHeight: "5mm",
+};
+
+/* Origem do critério que classificou: nunca um acordo sai como norma (ver OrigemCriterio). */
+const textoCriterio = (c: CriterioOrigemOsp | undefined) => (c ? `${c.origem_display} — ${c.fonte || "fonte não informada"}` : null);
+
+/* Antes × depois e os limites numa tabela: a lista corrida (uma linha por valor) não cabia na folha da OSP. */
+function TabelaAntesDepois({ a }: { a: AlinhamentoOsp }) {
+  const limite = (l: Record<string, string> | undefined, k: string) => (l?.[k] ? numero(l[k], 2) : "—");
+  const linhas: [string, string, string, string, string, string][] = [
+    ["Angular [mm/100 mm]", numero(a.antes?.angular_mm_100mm, 3), numero(a.depois?.angular_mm_100mm, 3),
+      numero(a.reducao_angular_pct, 1), limite(a.limites?.angular, "ALERTA"), limite(a.limites?.angular, "CRITICO")],
+    ["Paralelo [mm]", numero(a.antes?.paralelo_mm, 3), numero(a.depois?.paralelo_mm, 3),
+      numero(a.reducao_paralelo_pct, 1), limite(a.limites?.paralelo, "ALERTA"), limite(a.limites?.paralelo, "CRITICO")],
+    ["Rotação [rpm]", numero(a.antes?.rpm, 0), numero(a.depois?.rpm, 0), "", "", ""],
+  ];
   return (
-    <>
-      <Linha rotulo={`${rotulo} — angular [mm/100 mm]`} v={numero(f.angular_mm_100mm, 3)} />
-      <Linha rotulo={`${rotulo} — paralelo [mm]`} v={numero(f.paralelo_mm, 3)} />
-      <Linha rotulo={`${rotulo} — rpm`} v={numero(f.rpm, 0)} />
-    </>
+    <table style={{ ...LINHA_MEDICAO, borderCollapse: "collapse", width: "90mm" }}>
+      <thead>
+        <tr>
+          <th style={{ ...CELULA_TABELA, textAlign: "left", paddingLeft: 0 }} />
+          {["Antes", "Depois", "Red. [%]", "Alerta ≥", "Crítico ≥"].map((t) => <th key={t} style={{ ...CELULA_TABELA, fontWeight: 700 }}>{t}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {linhas.map(([rotulo, ...valores]) => (
+          <tr key={rotulo}>
+            <td style={{ ...CELULA_TABELA, textAlign: "left", paddingLeft: 0, fontWeight: 700 }}>{rotulo}</td>
+            {valores.map((v, i) => <td key={i} style={CELULA_TABELA}>{v}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 export function MedicoesAlinhamento({ o }: { o: OspD }) {
   const a = o.alinhamento;
+  if (!a) {
+    return (
+      <>
+        <div style={{ ...LINHA_MEDICAO, fontWeight: 700 }}>Alinhamento a laser</div>
+        <Linha rotulo="Serviço" v="— (sem alinhamento até o fim do relatório)" />
+      </>
+    );
+  }
+  const angular = textoCriterio(a.criterio?.angular);
+  const paralelo = textoCriterio(a.criterio?.paralelo);
   return (
     <>
-      <div style={{ ...LINHA_MEDICAO, fontWeight: 700 }}>Alinhamento a laser</div>
-      {!a ? (
-        <Linha rotulo="Serviço" v="— (sem alinhamento até o fim do relatório)" />
+      <div style={{ ...LINHA_MEDICAO, fontWeight: 700 }}>Alinhamento a laser — {new Date(a.data).toLocaleDateString("pt-BR")}</div>
+      <TabelaAntesDepois a={a} />
+      <Linha rotulo="Condição" v={CONDICAO[a.condicao] ?? a.condicao} />
+      {angular && angular === paralelo ? (
+        <Linha rotulo="Critério" v={angular} />
       ) : (
         <>
-          <Linha rotulo="Data" v={new Date(a.data).toLocaleDateString("pt-BR")} />
-          <Fase rotulo="Antes" f={a.antes} />
-          <Fase rotulo="Depois" f={a.depois} />
-          <Linha rotulo="Redução angular [%]" v={numero(a.reducao_angular_pct, 1)} />
-          <Linha rotulo="Redução paralelo [%]" v={numero(a.reducao_paralelo_pct, 1)} />
-          <Linha rotulo="Condição" v={CONDICAO[a.condicao] ?? a.condicao} />
+          {angular && <Linha rotulo="Critério angular" v={angular} />}
+          {paralelo && <Linha rotulo="Critério paralelo" v={paralelo} />}
         </>
       )}
+      {(a.pendencias ?? []).map((p) => <Linha key={p} rotulo="Pendente" v={p} />)}
     </>
   );
 }

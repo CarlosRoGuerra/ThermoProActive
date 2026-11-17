@@ -49,8 +49,9 @@ def carregar_contexto(rel, request) -> ContextoRelatorio:
         qs
         .select_related("equipamento__setor__area", "condicao", "carregamento")
         .prefetch_related("achados__condicao", "achados__tipo_componente")
-        .order_by("equipamento__setor__area__nome", "equipamento__setor__nome",
-                  "equipamento__tag", "ordem")
+        # Área pelo código ("001", "004"…), como no cadastro; sem código, pelo nome.
+        .order_by("equipamento__setor__area__codigo", "equipamento__setor__area__nome",
+                  "equipamento__setor__nome", "equipamento__tag", "ordem")
     )
     return ContextoRelatorio(
         rel=rel, request=request, itens=itens,
@@ -169,6 +170,8 @@ def montar_cabecalho(rel, request, instrumentos_extras=()) -> dict:
         "data_inicio": rel.data_inicio,
         "data_termino": rel.data_termino,
         "data_finalizacao": rel.data_finalizacao,
+        # Informada à mão; sem ela a carta da termografia usa a data de geração das OSPs.
+        "data_upload_osps": rel.data_upload_osps,
         "instrumentos": instrumentos,
         "normas": normas,
         "glossario": glossario,
@@ -176,7 +179,7 @@ def montar_cabecalho(rel, request, instrumentos_extras=()) -> dict:
     }
 
 
-def montar_secao_c(ctx: ContextoRelatorio, condicoes=None) -> dict:
+def montar_secao_c(ctx: ContextoRelatorio, condicoes=None, ordem="tag") -> dict:
     """
     Relação de Equipamentos Monitorados, por Área → Setor.
 
@@ -186,6 +189,10 @@ def montar_secao_c(ctx: ContextoRelatorio, condicoes=None) -> dict:
 
     `condicoes` (item → rótulo): quando o módulo calcula a condição (ex.: o grau de
     risco dos fluidos), ela substitui a marcada em campo. Só os itens presentes.
+
+    `ordem`: "tag" mantém a ordem do contexto (TAG e ordem da rota); "nome" ordena as
+    linhas de cada setor pelo nome do equipamento (painéis elétricos quase não têm TAG).
+    A Área sai como no cadastro: "001 - SP1930 [Matriz]" (código - nome [complemento]).
     """
     condicoes = condicoes or {}
     grupos: dict = {}
@@ -194,13 +201,16 @@ def montar_secao_c(ctx: ContextoRelatorio, condicoes=None) -> dict:
         eq = item.equipamento
         setor = eq.setor
         area = setor.area if setor else None
-        chave = (area.nome if area else "—", setor.nome if setor else "—")
+        chave = (area.identificacao if area else "—", setor.nome if setor else "—")
         if condicoes and item.id not in condicoes:
             continue  # o módulo recortou (ex.: só as amostras com desvio)
         grupos.setdefault(chave, []).append(
             {"tag": eq.tag, "equipamento": eq.nome, "condicao": condicoes.get(item.id) or rotulo_condicao(item.condicao)}
         )
         total += 1
+    if ordem == "nome":
+        for linhas in grupos.values():
+            linhas.sort(key=lambda linha: linha["equipamento"].casefold())  # estável: mantém a ordem da rota
     return {
         "total": total,
         # Equipamentos distintos ("adicionar linha" repete o equipamento na rota).

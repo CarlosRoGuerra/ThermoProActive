@@ -21,7 +21,7 @@ def notif_nova_osp(sender, instance, created, **kwargs):
         destinatarios,
         titulo=f"Nova OSP {instance.numero}",
         mensagem=(
-            f"OSP gerada para o equipamento {instance.equipamento.tag} "
+            f"OSP gerada para o equipamento {instance.equipamento.rotulo_curto} "
             f"(prioridade {instance.get_prioridade_display()}, SLA {instance.sla_data})."
         ),
         url="/osps",

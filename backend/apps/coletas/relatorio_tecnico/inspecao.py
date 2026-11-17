@@ -141,6 +141,16 @@ class ModuloInspecaoRota:
     # Termos do glossário que abrem uma folha nova na carta em PDF (cada folha é uma
     # A4 fixa); o .docx ignora — o Word pagina sozinho.
     carta_quebras_glossario: tuple = ()
+    # Estrutura da carta. O padrão é o do modelo Word da vibração (VB_Carta_Foroni):
+    # item 7 "Definição da Técnica", item 8 "Considerações". A termografia elétrica
+    # segue o RT.TE do cliente: sem a Definição da Técnica (as Considerações são o
+    # item 7), instrumentação numerada (4.1, 4.2…) e a data "Upload das OSP´s".
+    carta_definicao_tecnica: bool = True
+    carta_instrumentacao_numerada: bool = False
+    carta_data_osps: bool = False
+    # Ordem das linhas da Seção C dentro do setor: "tag" (TAG e ordem da rota) ou
+    # "nome" (painéis elétricos, em que a TAG é rara — como no RT.TE).
+    secao_c_ordem: str = "tag"
 
     def montar(self, ctx: ContextoRelatorio) -> dict:
         """Parte técnica do payload: `secao_b` (KPIs) e `secao_d` (folhas de OSP)."""
@@ -159,6 +169,12 @@ class ModuloInspecaoRota:
             "quebras_glossario": list(self.carta_quebras_glossario),
             "consideracoes": list(self.carta_consideracoes),
             "paragrafos": [],
+            "definicao_tecnica": self.carta_definicao_tecnica,
+            "instrumentacao_numerada": self.carta_instrumentacao_numerada,
+            "mostra_data_osps": self.carta_data_osps,
+            "data_upload_osps": (
+                data_upload_osps(ctx.rel) if self.carta_data_osps and ctx is not None else None
+            ),
         }
         if "ISO_10816" in self.tabelas_normativas and ctx is not None:
             from apps.cadastros.criterios import notas_tabela_severidade, tabela_severidade
@@ -175,6 +191,35 @@ class ModuloInspecaoRota:
     def paragrafos_carta(self, rel) -> list:
         """Parágrafo do item 7 da carta sobre as anomalias e as OSPs deste relatório."""
         return [_paragrafo_anomalias(rel)]
+
+
+def data_upload_osps(rel):
+    """
+    Data "Upload das OSP´s" da carta: a informada no relatório ou, sem ela, o dia em
+    que a última OSP deste relatório foi gerada no sistema (quando ficou disponível
+    para o cliente). Sem OSP e sem data informada, a carta não mostra a linha.
+    """
+    if rel.data_upload_osps:
+        return rel.data_upload_osps
+    from django.db.models import Max
+    from django.utils import timezone
+
+    from apps.osp.models import OrdemServico
+
+    ultima = OrdemServico.objects.filter(
+        achado__item__carregamento__relatorio=rel
+    ).aggregate(m=Max("criado_em"))["m"]
+    return timezone.localtime(ultima).date() if ultima else None
+
+
+def _criterio_termografia(cliente_id, equipamento_id, ate, chave, delta_t):
+    """Só nos módulos de termografia mecânica e de processos; nos demais, None (sem bloco)."""
+    # Importação tardia: `termografia_sistemas.py` depende deste módulo.
+    from .termografia_sistemas import SISTEMAS_POR_MODULO, criterio_delta_t
+
+    if chave not in SISTEMAS_POR_MODULO:
+        return None
+    return criterio_delta_t(cliente_id, equipamento_id, ate, chave, delta_t)
 
 
 def _ultima_espessura(cliente_id, equipamento_id, ate):
@@ -261,8 +306,8 @@ def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict
             "item__equipamento__setor__area", "item__carregamento__analista", "osp",
         )
         .prefetch_related("imagens")
-        .order_by("item__equipamento__setor__area__nome", "item__equipamento__setor__nome",
-                  "item__equipamento__tag", "id")
+        .order_by("item__equipamento__setor__area__codigo", "item__equipamento__setor__area__nome",
+                  "item__equipamento__setor__nome", "item__equipamento__tag", "id")
     )
     comp_tally, anom_tally, alarme_tally = {}, {}, {}
     somas = {m.chave: Decimal("0") for m in modulo.medias}
@@ -320,7 +365,7 @@ def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict
         ]
         secao_d.append({
             "osp": osp_num,
-            "area": area.nome if area else "—",
+            "area": area.identificacao if area else "—",
             "setor": setor.nome if setor else "—",
             "tag": eq.tag,
             "equipamento": eq.nome,
@@ -361,6 +406,10 @@ def _montar_inspecao(ctx: ContextoRelatorio, modulo: ModuloInspecaoRota) -> dict
             "alinhamento": (
                 _ultimo_alinhamento(cliente.pk, eq.pk, rel.data_termino, modulo.chave)
                 if modulo.chave in ("ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS") else None
+            ),
+            # Termografia mecânica/processos: condição do ΔT pelo critério VALIDADO do sistema (ou pendente).
+            "termografia_criterio": (
+                _criterio_termografia(cliente.pk, eq.pk, rel.data_termino, modulo.chave, a.delta_t)
             ),
             "espessura": (
                 _ultima_espessura(cliente.pk, eq.pk, rel.data_termino) if modulo.chave == "ESPESSURA" else None

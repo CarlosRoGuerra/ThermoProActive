@@ -25,13 +25,20 @@ export type TecnologiaInspecao = {
   quadros: QuadroImagem[];
   /** Tabela normativa do item 5 da carta, montada com os critérios que vêm no payload. */
   Normatizacao?: ComponentType<{ d: DossieShell }>;
+  /** Disposição do RT.TE (termografia elétrica): a imagem da técnica no quadro da
+   * ESQUERDA, a foto do equipamento no da direita e as medições na largura da folha,
+   * abaixo das duas. Usa os mesmos quadros de 80×60 mm do gabarito, nas mesmas posições. */
+  imagensLadoALado?: boolean;
 };
 
 /** Linha do bloco de medições — módulo de 5mm do gabarito. */
 export const LINHA_MEDICAO = { minHeight: "5mm", lineHeight: "5mm" } as const;
 
 /* -------------------------- Normalizações de saída ------------------------- */
-const temTexto = (v: string | null | undefined) => !!v?.trim();
+/* As medições e os custos do payload chegam como NÚMERO (o JSON do DRF converte Decimal em
+   float), apesar dos tipos dizerem string: comparar sempre pelo texto, nunca chamar .trim()
+   direto no valor — com número, a folha inteira quebrava (tela e PDF). */
+const temTexto = (v: string | number | null | undefined) => v != null && String(v).trim() !== "";
 
 /**
  * Número da OSP no relatório: "sequencial do cliente / sequencial global do BD"
@@ -174,8 +181,8 @@ function TabelaRetorno({ aval }: { aval: Avaliacao | null }) {
             const l = aval?.linhas.find((x) => x.rotulo === rot);
             const ret = l ? num(l.emerg_v) - num(l.pred_v) : 0;
             // Célula vazia deve sair EM BRANCO (não "—"), como no modelo.
-            const cq = (v: string | null | undefined) => (v && v.trim() ? qtd(v) : "");
-            const cv = (v: string | null | undefined) => (v && v.trim() ? moeda(v) : "");
+            const cq = (v: string | number | null | undefined) => (temTexto(v) ? qtd(String(v)) : "");
+            const cv = (v: string | number | null | undefined) => (temTexto(v) ? moeda(v ?? null) : "");
             return (
               <tr key={rot}>
                 <td style={{ fontWeight: 700 }}>{rot}:</td>
@@ -216,6 +223,26 @@ function FolhaOsp({ cab, o, tecnologia }: { cab: Cabecalho; o: OspD; tecnologia:
         foto={foto}
       />
     ) : null;
+  const planejamento = (
+    <table style={{ marginTop: "3mm", width: "90mm", fontSize: "9pt", borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          <th />
+          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
+          <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
+        </tr>
+      </thead>
+      <tbody>
+        {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
+          <tr key={e}>
+            <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
+            <td style={{ borderBottom: "0.2mm solid #64748b", width: "25mm" }} />
+            <td style={{ borderBottom: "0.2mm solid #64748b" }} />
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
   return (
     <PaginaInterna cab={cab} evitarQuebra conteudoTopMm={23.5}>
       <p style={{ fontSize: "14pt", fontWeight: 700, color: "#1d4ed8", marginBottom: "0.5mm" }}>OSP nº. {numeroOsp(o.osp)}</p>
@@ -273,6 +300,22 @@ function FolhaOsp({ cab, o, tecnologia }: { cab: Cabecalho; o: OspD; tecnologia:
 
       {corpoCorretivo ? (
         corpoCorretivo
+      ) : tecnologia.imagensLadoALado ? (
+        <>
+          {/* Mesmo grid físico do gabarito (10 + 80 + 10 + 80 + 10 = 190mm), com a
+              imagem da técnica à esquerda e a foto à direita, como no RT.TE. */}
+          <div style={{ width: "190mm", display: "grid", gridTemplateColumns: "10mm 80mm 10mm 80mm 10mm", alignItems: "start", marginTop: "14.2mm" }}>
+            <div />
+            <SlotImagem img={imgs.find((im) => im.tipo === tecnologia.quadros[0]?.tipo)} label={tecnologia.quadros[0]?.rotulo ?? "Imagem"} />
+            <div />
+            {foto}
+            <div />
+          </div>
+          <div style={{ height: "10mm" }} />
+          <Medicoes o={o} />
+          {planejamento}
+          <TabelaRetorno aval={o.avaliacao} />
+        </>
       ) : (
         <>
           {/* GRID físico 90 + 10 + 80 + 10 = 190mm.
@@ -285,24 +328,7 @@ function FolhaOsp({ cab, o, tecnologia }: { cab: Cabecalho; o: OspD; tecnologia:
               <div style={{ marginLeft: "10mm", width: "80mm" }}>{foto}</div>
               <div style={{ height: "10mm" }} />
               <Medicoes o={o} />
-              <table style={{ marginTop: "3mm", width: "90mm", fontSize: "9pt", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th />
-                    <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Data</th>
-                    <th style={{ fontWeight: 700, textAlign: "center", paddingBottom: "1mm" }}>Responsável</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {["Planejamento", "Corretiva Prog.", "Finalização OSP"].map((e) => (
-                    <tr key={e}>
-                      <td style={{ fontWeight: 700, whiteSpace: "nowrap", paddingRight: "2mm", paddingTop: "2mm" }}>{e}:</td>
-                      <td style={{ borderBottom: "0.2mm solid #64748b", width: "25mm" }} />
-                      <td style={{ borderBottom: "0.2mm solid #64748b" }} />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {planejamento}
             </div>
             <div />
             <div style={{ width: "80mm" }}>

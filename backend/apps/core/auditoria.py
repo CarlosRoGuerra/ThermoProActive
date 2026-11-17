@@ -38,7 +38,7 @@ _contexto = threading.local()
 
 # Apps de negócio rastreados. accounts entra só pelos modelos não sensíveis.
 APPS_RASTREADOS = {"cadastros", "coletas", "ensaios", "servicos", "osp", "laudos", "relatorios",
-                   "notificacoes", "preditiva", "accounts"}
+                   "notificacoes", "preditiva", "accounts", "ia"}
 MODELOS_EXCLUIDOS = {
     "accounts.SessaoAutenticacao", "accounts.EventoSeguranca", "accounts.DispositivoMFA",
     "accounts.CodigoRecuperacaoMFA", "accounts.DadosPessoaisUsuario", "accounts.SolicitacaoAcesso",

@@ -304,7 +304,8 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
     }
   }
 
-  const podeSalvar = form.tag.trim() !== "" && form.nome.trim() !== "" && setor !== "";
+  // TAG é opcional: painéis elétricos costumam não ter (ou repetem a da máquina).
+  const podeSalvar = form.nome.trim() !== "" && setor !== "";
 
   if (carregando) {
     return <LoadingState variante="formulario" linhas={4} label="Carregando o equipamento…" />;
@@ -399,7 +400,7 @@ export function EquipamentoForm({ equipamentoId }: { equipamentoId?: number }) {
       <Card>
         <Secao icon={Activity} titulo="Identificação" descricao="TAG e número de série são usados na busca em campo." />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="TAG" obrigatorio>
+          <Field label="TAG" hint="Opcional. Sem TAG, o equipamento é identificado pelo nome.">
             <Input value={form.tag} maxLength={60} placeholder="Ex.: BBA-101" onChange={(e) => set("tag", e.target.value)} />
           </Field>
           <Field label="Nome / Descrição" obrigatorio className="lg:col-span-3">

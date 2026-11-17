@@ -13,6 +13,7 @@ import { MODULO_ULTRASSOM } from "./ultrassom";
 import { MODULO_OLEO_ISOLANTE } from "./oleo";
 import { MODULO_TERMOGRAFIA } from "./termografia";
 import { MODULO_BALANCEAMENTO, MODULO_VIBRACAO } from "./vibracao";
+import { MODULO_ENSAIO_CS, MODULO_ENSAIO_DJ, MODULO_ENSAIO_RP, MODULO_ENSAIO_TC, MODULO_ENSAIO_TP } from "./subestacao/modulo";
 
 export type { ConteudoCarta, ModuloRelatorio } from "./contrato";
 
@@ -51,6 +52,11 @@ const MODULOS: Record<string, ModuloRelatorio> = Object.fromEntries(
     registrar(MODULO_OLEO_ISOLANTE),
     registrar(MODULO_ENSAIO_ELETRICO),
     registrar(MODULO_FLUIDO_LUBRIFICANTE),
+    registrar(MODULO_ENSAIO_TC),
+    registrar(MODULO_ENSAIO_TP),
+    registrar(MODULO_ENSAIO_DJ),
+    registrar(MODULO_ENSAIO_CS),
+    registrar(MODULO_ENSAIO_RP),
   ].map((m) => [m.chave, m]),
 );
 

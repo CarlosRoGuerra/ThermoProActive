@@ -11,6 +11,12 @@ import type { ItemEnsaio, ModuloEnsaio } from "./tipos";
  * (transformador ou fluidos): o que já foi lançado (registro e laudos) e a
  * entrada para o lançamento completo.
  */
+const SUBESTACAO = {
+  titulo: "Ensaios elétricos de subestação",
+  vazio: "Registre as condições do ensaio, os dados de placa, os ensaios solicitados e as medições por série.",
+  feito: "Ensaios registrados", registrar: "Registrar ensaios",
+};
+
 const TEXTOS: Record<ModuloEnsaio, { titulo: string; vazio: string; feito: string; registrar: string }> = {
   OLEO_ISOLANTE: {
     titulo: "Coleta de óleo e ensaios",
@@ -27,6 +33,11 @@ const TEXTOS: Record<ModuloEnsaio, { titulo: string; vazio: string; feito: strin
     vazio: "Registre a coleta da amostra: fluido, ponto de coleta, condição e os ensaios solicitados.",
     feito: "Coleta registrada", registrar: "Registrar coleta",
   },
+  ENSAIO_ELETRICO_TC: SUBESTACAO,
+  ENSAIO_ELETRICO_TP: SUBESTACAO,
+  ENSAIO_ELETRICO_DJ: SUBESTACAO,
+  ENSAIO_ELETRICO_CS: SUBESTACAO,
+  ENSAIO_ELETRICO_RP: SUBESTACAO,
 };
 
 export function ResumoEnsaiosCampo({

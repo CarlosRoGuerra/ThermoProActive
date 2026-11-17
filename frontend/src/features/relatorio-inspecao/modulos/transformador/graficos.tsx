@@ -232,3 +232,74 @@ function CurvaIsolacao({ serie, tempos, cor }: { serie: SerieIsolacao; tempos: n
     </figure>
   );
 }
+
+/* ------------------------------ Curva de excitação ------------------------------ */
+
+export type SerieExcitacao = { nome: string; pontos: { tensao: number; corrente: number }[] };
+
+/**
+ * Curva de excitação (tensão × corrente), uma linha por núcleo. Mesma tinta, grade, fonte e
+ * espessuras das curvas de isolação acima; o viewBox está em milímetros da folha.
+ */
+export function CurvaExcitacao({ series }: { series: SerieExcitacao[] }) {
+  const pontos = series.flatMap((g) => g.pontos);
+  if (pontos.length === 0) return null;
+  const W = 180;
+  const H = 52;
+  const x0 = 11;
+  const x1 = W - 9;
+  const yTopo = 3;
+  const yBase = H - 8;
+  const fonte = 2.3;
+  const eixoX = escala(Math.max(...pontos.map((p) => p.tensao)), 6);
+  const eixoY = escala(Math.max(...pontos.map((p) => p.corrente)), 4);
+  const x = (v: number) => x0 + (v / eixoX.topo) * (x1 - x0);
+  const y = (i: number) => yBase - (i / eixoY.topo) * (yBase - yTopo);
+  return (
+    <figure style={{ margin: 0 }}>
+      <figcaption style={{ display: "flex", flexWrap: "wrap", gap: "4mm", fontSize: "7.5pt", color: TXT.primaria, marginBottom: "0.5mm" }}>
+        {series.map((g, k) => (
+          <span key={g.nome} style={{ display: "inline-flex", alignItems: "center", gap: "1.5mm" }}>
+            <span style={{ width: "4.5mm", height: "0.6mm", background: CATEGORICAS_KPI[k % CATEGORICAS_KPI.length], borderRadius: "0.3mm" }} />
+            {g.nome} [mA]
+          </span>
+        ))}
+      </figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
+        aria-label="Curva de excitação: corrente de excitação em função da tensão aplicada, por núcleo"
+        style={{ display: "block", fontFamily: FONTE }}>
+        {eixoY.ticks.map((v) => (
+          <g key={v}>
+            <line x1={x0} x2={x1} y1={y(v)} y2={y(v)} stroke={GRADE} strokeWidth={0.2} />
+            <text x={x0 - 1} y={y(v) + 0.8} textAnchor="end" fontSize={fonte} fill={TXT.secundaria}
+              style={{ fontVariantNumeric: "tabular-nums" }}>{numero(v, eixoY.topo < 10 ? 1 : 0)}</text>
+          </g>
+        ))}
+        <line x1={x0} x2={x1} y1={yBase} y2={yBase} stroke={BASE} strokeWidth={0.25} />
+        {eixoX.ticks.map((v) => (
+          <text key={v} x={x(v)} y={yBase + 3.2} textAnchor="middle" fontSize={fonte} fill={TXT.secundaria}>{numero(v, 0)}</text>
+        ))}
+        <text x={(x0 + x1) / 2} y={H - 0.8} textAnchor="middle" fontSize={fonte} fill={TXT.suave}>Tensão [V]</text>
+        {series.map((g, k) => {
+          const cor = CATEGORICAS_KPI[k % CATEGORICAS_KPI.length];
+          const ordenados = [...g.pontos].sort((a, b) => a.tensao - b.tensao);
+          const ultimo = ordenados[ordenados.length - 1];
+          return (
+            <g key={g.nome}>
+              <polyline points={ordenados.map((p) => `${x(p.tensao)},${y(p.corrente)}`).join(" ")} fill="none" stroke={cor}
+                strokeWidth={0.53} strokeLinejoin="round" strokeLinecap="round" />
+              {ordenados.map((p) => (
+                <circle key={p.tensao} cx={x(p.tensao)} cy={y(p.corrente)} r={0.9} fill={cor} stroke="#fff" strokeWidth={0.4}>
+                  <title>{`${numero(p.tensao, 0)} V: ${numero(p.corrente, 2)} mA`}</title>
+                </circle>
+              ))}
+              {ultimo && (
+                <text x={x(ultimo.tensao) + 1.6} y={y(ultimo.corrente) + 0.8} fontSize={fonte} fill={TXT.primaria}>{numero(ultimo.corrente, 1)}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </figure>
+  );
+}

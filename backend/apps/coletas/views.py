@@ -746,7 +746,7 @@ class PortalVisaoGeralView(APIView):
             historico.append({
                 "tipo": "osp",
                 "titulo": f"OSP {osp.numero}",
-                "descricao": f"{osp.equipamento.tag} — {osp.titulo}",
+                "descricao": f"{osp.equipamento.rotulo_curto} — {osp.titulo}",
                 "data": osp.criado_em,
                 "status": osp.get_status_display(),
                 "criticidade": osp.criticidade_origem or "",

@@ -28,6 +28,11 @@ CAMPOS_MEDIDOS = ("vertical_paralelo_mm", "vertical_angular_mm_100mm", "horizont
                   "horizontal_angular_mm_100mm")
 
 
+def texto_limite(valor) -> str:
+    """Limite do cadastro sem zeros à direita: o banco devolve 4 casas (0.0500 → "0.05", 10.0000 → "10")."""
+    return format(Decimal(valor).quantize(Decimal("0.0001")).normalize(), "f")
+
+
 def _decimal(valor):
     if valor is None or isinstance(valor, bool):
         return None
@@ -90,7 +95,11 @@ def reducao_percentual(antes, depois):
 
 
 def criterio_superior(grandeza, unidade, cliente_id, equipamento_id, data):
-    """{"ALERTA": x, "CRITICO": y} do `LimiteAlarmeSerie` VALIDADO (sentido superior) mais específico, ou {}."""
+    """(limites, origem) do `LimiteAlarmeSerie` VALIDADO (sentido superior) mais específico.
+
+    `limites` = {"ALERTA": x, "CRITICO": y}; `origem` = {id, origem, origem_display, fonte, validacao}
+    para o relatório dizer de onde vem o critério. Sem critério validado: ({}, None).
+    """
     from django.db.models import Q
     from django.utils import timezone
 
@@ -111,14 +120,16 @@ def criterio_superior(grandeza, unidade, cliente_id, equipamento_id, data):
         -(c.vigencia_inicio.toordinal() if c.vigencia_inicio else 0), -c.pk,
     ))
     if not escolhido:
-        return {}
+        return {}, None
     c = escolhido[0]
     limites = {}
     if c.valor_alerta is not None:
         limites["ALERTA"] = c.valor_alerta
     if c.valor_critico is not None:
         limites["CRITICO"] = c.valor_critico
-    return limites
+    origem = {"id": c.pk, "origem": c.origem, "origem_display": c.get_origem_display(), "fonte": c.fonte,
+              "validacao": c.validacao}
+    return limites, origem
 
 
 def par_de(medicao):
@@ -147,8 +158,8 @@ def analise_par(medicao):
     cliente_id = medicao.inspecao.cliente_id
     data = medicao.inspecao.data
     eq = medicao.equipamento_id
-    lim_ang = criterio_superior(GRANDEZA_ANGULAR, UNIDADE_ANGULAR, cliente_id, eq, data)
-    lim_par = criterio_superior(GRANDEZA_PARALELO, UNIDADE_PARALELO, cliente_id, eq, data)
+    lim_ang, crit_ang = criterio_superior(GRANDEZA_ANGULAR, UNIDADE_ANGULAR, cliente_id, eq, data)
+    lim_par, crit_par = criterio_superior(GRANDEZA_PARALELO, UNIDADE_PARALELO, cliente_id, eq, data)
 
     def trio(m):
         if m is None:
@@ -184,4 +195,8 @@ def analise_par(medicao):
         "condicao": condicao,
         "criterio_angular_validado": bool(lim_ang),
         "criterio_paralelo_validado": bool(lim_par),
+        "criterio_angular": crit_ang,
+        "criterio_paralelo": crit_par,
+        "limites_angular": {k: texto_limite(v) for k, v in lim_ang.items()},
+        "limites_paralelo": {k: texto_limite(v) for k, v in lim_par.items()},
     }
