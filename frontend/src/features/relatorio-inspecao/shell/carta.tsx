@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
-import type { DossieShell, Prestador, TermoGlossario } from "../tipos";
+"use client";
+
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { DossieShell, Prestador } from "../tipos";
 import type { ConteudoCarta } from "../modulos/contrato";
 import { FONTE_RELATORIO } from "./folhas";
 import { ddmmaaaa } from "./formato";
@@ -46,17 +48,23 @@ function Timbrado({ p }: { p: Prestador | null }) {
   );
 }
 
+/* Texto da carta: Segoe UI 12pt, entrelinha 1,15. A folha e o medidor das folhas
+   em fluxo usam o mesmo estilo — a medida só vale se o texto for igual. */
+const TEXTO_CARTA: CSSProperties = {
+  fontFamily: FONTE_RELATORIO, fontSize: "12pt", color: "#000", lineHeight: 1.15,
+  WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
+};
+
 /* Folha A4 física da carta (210×297mm) — MESMAS margens do gerador .docx
    (carta_docx.py): topo 35 / direita 15 / baixo 10 / esquerda 25mm. Própria da
    carta — as páginas do relatório usam PaginaInterna/Timbrado de `folhas.tsx`. */
 function Folha({ p, children }: { p: Prestador | null; children: ReactNode }) {
   return (
     <section
-      className="pagina"
+      className="pagina pagina-carta"
       style={{
         position: "relative", width: "210mm", minHeight: "297mm", padding: "35mm 15mm 10mm 25mm", boxSizing: "border-box",
-        background: "#fff", fontFamily: FONTE_RELATORIO, fontSize: "12pt", color: "#000", lineHeight: 1.15,
-        WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale",
+        background: "#fff", ...TEXTO_CARTA,
       }}
     >
       <Timbrado p={p} />
@@ -122,6 +130,115 @@ function InstrumentacaoNumerada({ instrumentos }: { instrumentos: DossieShell["c
   );
 }
 
+/* ---------------------------- Folhas em fluxo ----------------------------- */
+/* Itens 5 e 6 correm como no Word (carta .docx e RT.TE): a Normatização e o
+   Glossário seguem um atrás do outro e só passam de folha quando a folha enche.
+   Quebra fixa por termo deixava meia folha em branco, porque a altura do texto
+   depende da fonte de quem imprime. Aqui a altura de cada bloco é medida no
+   próprio navegador e a divisão em folhas sai dessa medida. Um bloco nunca se
+   divide: a tabela normativa que não cabe no resto da folha passa inteira para a
+   seguinte (na carta .docx a quebra antes dela existe só porque o Word partiria a
+   tabela). Enquanto mede, o medidor fica marcado com `data-paginando` e a
+   impressão (paged.js) espera. */
+export type Bloco = {
+  chave: string;
+  conteudo: ReactNode;
+  /** Não fica sozinho no pé da folha: desce junto com o bloco seguinte (títulos). */
+  comOProximo?: boolean;
+  /** Espaço entre itens: some quando cairia no topo de uma folha. */
+  espaco?: boolean;
+};
+
+/* Área útil da Folha (297 − 35 de topo − 10 de pé), com 2 mm de folga para o
+   arredondamento entre a medida e a impressão. */
+const ALTURA_UTIL_MM = 297 - 35 - 10 - 2;
+
+/** Índices dos blocos de cada folha. `altos` = altura de cada bloco com as margens
+ *  (o paged.js conta a margem de baixo do último bloco); `limite` na mesma unidade. */
+export function distribuirBlocos(blocos: Bloco[], altos: number[], limite: number): number[][] {
+  const folhas: number[][] = [[]];
+  let usado = 0;
+  const atual = () => folhas[folhas.length - 1];
+  const temConteudo = () => atual().some((k) => !blocos[k].espaco);
+  const virar = () => {
+    while (atual().length && blocos[atual()[atual().length - 1]].espaco) atual().pop();
+    folhas.push([]);
+    usado = 0;
+  };
+  let i = 0;
+  while (i < blocos.length) {
+    // Bloco que não desenha nada (ex.: tabela normativa sem linhas) não conta.
+    if (altos[i] < 0.5) { i++; continue; }
+    if (blocos[i].espaco && !temConteudo()) { i++; continue; }
+    // Grupo = o bloco e os seguintes que ele segura (título + primeiro termo).
+    let j = i;
+    while (j + 1 < blocos.length && blocos[j].comOProximo) j++;
+    let alto = 0;
+    for (let k = i; k <= j; k++) alto += altos[k];
+    if (usado + alto > limite && temConteudo()) { virar(); continue; }
+    for (let k = i; k <= j; k++) { atual().push(k); usado += altos[k]; }
+    i = j + 1;
+  }
+  return folhas.filter((f) => f.length);
+}
+
+/* Cada bloco numa caixa que contém as próprias margens: a altura medida é a
+   mesma que o bloco ocupa na folha. */
+const CAIXA_BLOCO: CSSProperties = { display: "flow-root" };
+
+function FolhasEmFluxo({ p, blocos }: { p: Prestador | null; blocos: Bloco[] }) {
+  const assinatura = blocos.map((b) => b.chave).join("\u0001");
+  const [estado, setEstado] = useState<{ assinatura: string; folhas: number[][] } | null>(null);
+  const medindo = estado?.assinatura !== assinatura;
+  const regua = useRef<HTMLDivElement>(null);
+  const medidor = useRef<HTMLDivElement>(null);
+  const blocosRef = useRef(blocos);
+  blocosRef.current = blocos;
+
+  useEffect(() => {
+    if (!medindo) return;
+    const caixa = medidor.current;
+    const mm = regua.current;
+    if (!caixa || !mm) return;
+    let vivo = true;
+    const medir = () => {
+      if (!vivo) return;
+      // Sem layout (ex.: dentro de display:none) não há medida: o observer tenta de novo.
+      const pxPorMm = mm.getBoundingClientRect().height / 100;
+      if (!pxPorMm || !caixa.getBoundingClientRect().width) return;
+      // A régua põe o limite na mesma escala das medidas (vale também com zoom/transform na tela).
+      const altos = Array.from(caixa.children).map((el) => el.getBoundingClientRect().height);
+      setEstado({ assinatura, folhas: distribuirBlocos(blocosRef.current, altos, ALTURA_UTIL_MM * pxPorMm) });
+    };
+    // A fonte muda a altura do texto: mede depois que as fontes carregarem.
+    const observador = new ResizeObserver(() => { void document.fonts.ready.then(medir); });
+    observador.observe(caixa);
+    return () => { vivo = false; observador.disconnect(); };
+  }, [assinatura, medindo]);
+
+  return (
+    <>
+      {medindo && (
+        <div
+          aria-hidden
+          data-paginando=""
+          style={{ position: "absolute", left: 0, top: 0, visibility: "hidden", pointerEvents: "none", ...TEXTO_CARTA }}
+        >
+          <div ref={regua} style={{ position: "absolute", width: "1px", height: "100mm" }} />
+          <div ref={medidor} style={{ width: "170mm" }}>
+            {blocos.map((b) => <div key={b.chave} style={CAIXA_BLOCO}>{b.conteudo}</div>)}
+          </div>
+        </div>
+      )}
+      {!medindo && estado.folhas.map((indices, f) => (
+        <Folha key={`fluxo${f}`} p={p}>
+          {indices.map((k) => <div key={blocos[k].chave} style={CAIXA_BLOCO}>{blocos[k].conteudo}</div>)}
+        </Folha>
+      ))}
+    </>
+  );
+}
+
 /* ------------------------------ Documento --------------------------------- */
 export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta }) {
   const cab = d.cabecalho;
@@ -149,13 +266,33 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
   ];
   // A termografia elétrica segue o RT.TE: sem a Definição da Técnica (Considerações = item 7).
   const comDefinicao = textos.definicao_tecnica !== false;
-  // Cada folha é uma A4 fixa: um glossário longo (ex.: termografia) segue em
-  // outra folha a partir dos termos que o módulo marca em `quebras_glossario`.
-  const folhasGlossario: TermoGlossario[][] = [[]];
-  textos.glossario.forEach((g, i) => {
-    if (i > 0 && textos.quebras_glossario.includes(g.n)) folhasGlossario.push([]);
-    folhasGlossario[folhasGlossario.length - 1].push(g);
-  });
+  // Itens 5 (Normatização, com a tabela normativa do módulo) e 6 (Glossário) em fluxo.
+  const blocosFluxo: Bloco[] = [
+    { chave: "item5", conteudo: <CItem n="5.">Normatização</CItem>, comOProximo: true },
+    {
+      chave: `normas|${cab.normas.map((n) => `${n.codigo}|${n.nome}`).join("|")}`,
+      conteudo: cab.normas.length
+        ? cab.normas.map((n, k) => <CP key={k}>{[n.codigo, n.nome].filter(Boolean).join(" - ")}</CP>)
+        : <CP>Não informada.</CP>,
+    },
+    ...(carta.normatizacao ? [
+      { chave: "espaco-tabela", conteudo: <div aria-hidden style={{ height: "6mm" }} />, espaco: true },
+      { chave: "tabela-normativa", conteudo: carta.normatizacao },
+    ] : []),
+    { chave: "espaco6", conteudo: <CBlank />, espaco: true },
+    { chave: "item6", conteudo: <CItem n="6." gap="7mm">Glossário Técnico</CItem>, comOProximo: true },
+    ...textos.glossario.map((g) => ({
+      chave: `${g.n}|${g.sigla}|${g.texto}`,
+      // Sem texto = título de grupo (ex.: "6.1. Temperaturas"), sem travessão: desce com o termo seguinte.
+      // Sem sigla = passo numerado (ex.: "6.11.1. Contratada realiza…").
+      conteudo: (
+        <CP solto>
+          {g.sigla ? <><b>{g.n}. {g.sigla}</b>{g.texto ? <> – {g.texto}</> : null}</> : <><b>{g.n}.</b> {g.texto}</>}
+        </CP>
+      ),
+      comOProximo: !g.texto,
+    })),
+  ];
 
   return (
     <div className="carta-doc">
@@ -202,32 +339,8 @@ export function CartaCorpo({ d, carta }: { d: DossieShell; carta: ConteudoCarta 
         )) : <CP ml="22.5mm">Não informada.</CP>}
       </Folha>
 
-      {/* ---- Folha 2: item 5 (Normatização) ---- */}
-      <Folha p={p}>
-        <CItem n="5.">Normatização</CItem>
-        {cab.normas.length ? cab.normas.map((n, k) => (
-          <CP key={k}>{[n.codigo, n.nome].filter(Boolean).join(" - ")}</CP>
-        )) : <CP>Não informada.</CP>}
-      </Folha>
-
-      {/* ---- Tabela normativa do módulo (ex.: severidade de vibração) em folha
-          própria, como na carta .docx (quebra antes da tabela): com muitas normas
-          cadastradas, lista + tabela não cabem numa A4. ---- */}
-      {carta.normatizacao && <Folha p={p}>{carta.normatizacao}</Folha>}
-
-      {/* ---- Folha 3 (e seguintes, se o módulo quebrar): item 6 (Glossário) ---- */}
-      {folhasGlossario.map((termos, f) => (
-        <Folha key={`glossario${f}`} p={p}>
-          {f === 0 && <CItem n="6." gap="7mm">Glossário Técnico</CItem>}
-          {termos.map((g) => (
-            // Sem texto = título de grupo (ex.: "6.1. Temperaturas"), sem travessão.
-            // Sem sigla = passo numerado (ex.: "6.11.1. Contratada realiza…").
-            <CP key={g.n} solto>
-              {g.sigla ? <><b>{g.n}. {g.sigla}</b>{g.texto ? <> – {g.texto}</> : null}</> : <><b>{g.n}.</b> {g.texto}</>}
-            </CP>
-          ))}
-        </Folha>
-      ))}
+      {/* ---- Itens 5 (Normatização) e 6 (Glossário): folhas em fluxo ---- */}
+      <FolhasEmFluxo p={p} blocos={blocosFluxo} />
 
       {/* ---- Folha 4: item 7 (Definição da Técnica) — só nos módulos que a têm ---- */}
       {comDefinicao && (

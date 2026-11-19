@@ -226,9 +226,6 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertIn("ΔT > 100,0°C", gr1["texto"])
         # Título de grupo não tem texto — e a carta .docx não imprime travessão nele.
         self.assertEqual(textos["glossario"][0], {"n": "6.1", "sigla": "Temperaturas", "texto": ""})
-        # 31 termos (com o fluxo de trabalho, 6.11) não cabem numa folha A4 da carta em PDF:
-        # seguem em outras a partir do 6.3 e do 6.8.
-        self.assertEqual(textos["quebras_glossario"], ["6.3", "6.8"])
         xml = self.carta_xml(rel)
         self.assertIn("Máxima Temperatura Admissível", xml)
         self.assertNotIn("Lado Oposto ao Acoplamento", xml)
@@ -239,7 +236,6 @@ class RelatorioTecnicoModularTest(TestCase):
         self.assertEqual([g["sigla"] for g in textos["glossario"]][-2:], ["LA", "LOA"])
         self.assertIn("Seção D – Ordens de Serviços Preditivos [corretiva orientada pela preditiva]", textos["conteudo"])
         self.assertEqual(len(textos["consideracoes"]), 3)
-        self.assertEqual(textos["quebras_glossario"], [])
 
     def test_folha_traz_as_temperaturas_corrigidas_mesmo_vazias(self):
         folha = self.dossie(self.relatorio(ModuloTecnico.TERMOGRAFIA))["secao_d"][0]

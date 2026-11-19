@@ -81,8 +81,6 @@ TERMOGRAFIA = ModuloInspecaoRota(
     medias=(MEDIA_TEMPERATURA,),
     carta_glossario=GLOSSARIO_TERMOGRAFIA,
     carta_consideracoes=CONSIDERACOES_TERMOGRAFIA,
-    # 31 termos não cabem numa A4 (cada folha da carta é fixa): três folhas, medidas.
-    carta_quebras_glossario=("6.3", "6.8"),
     carta_definicao_tecnica=False,
     carta_instrumentacao_numerada=True,
     carta_data_osps=True,

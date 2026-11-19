@@ -109,8 +109,6 @@ class TermografiaEletricaModeloTest(TestCase):
         texto = " ".join(g["texto"] for g in carta["glossario"])
         self.assertIn(f"disponibiliza as OSP´s no {PLATAFORMA} até o 6º dia útil", texto)
         self.assertNotIn("MasterSys", texto)
-        # Três folhas de glossário: cada folha da carta em PDF é uma A4 fixa.
-        self.assertEqual(carta["quebras_glossario"], ["6.3", "6.8"])
 
     def test_vibracao_mantem_a_carta_do_modelo_word(self):
         carta = self.dossie(self.relatorio(ModuloTecnico.VIBRACAO))["carta"]

@@ -77,7 +77,7 @@ Contrato de um módulo no backend:
 - `chave` — igual a `ModuloTecnico`;
 - `montar(ctx) -> dict` — a parte técnica do payload (na inspeção por rota: `secao_b`
   e `secao_d`);
-- `textos_carta(tecnico)` — seções, glossário, quebras de folha do glossário,
+- `textos_carta(tecnico)` — seções, glossário,
   considerações e `paragrafos` (item 7, quando o texto sai do backend: o módulo põe um
   `resumo` no que `montar` devolve); vai no payload como `carta` e é a mesma fonte da
   carta .docx (antes esses textos estavam duplicados em TypeScript e Python);
@@ -88,8 +88,8 @@ Contrato de um módulo no backend:
 
 Vibração e Termografia são a mesma família (`ModuloInspecaoRota`) e diferem em
 `medias` (grandezas do KPI "Média dos Valores de Diagnóstico"),
-`tabelas_normativas` e, na termografia, glossário, considerações e
-`carta_quebras_glossario`.
+`tabelas_normativas` e, na termografia, glossário, considerações e a estrutura
+da carta do RT.TE.
 
 ## 4. Frontend — `frontend/src/features/relatorio-inspecao/`
 
@@ -121,8 +121,10 @@ família inspeção por rota, cada tecnologia declara só três coisas
 direita e a tabela normativa da carta.
 
 Os textos da carta vêm prontos do backend em `d.carta`. Cada folha da carta é uma A4
-fixa: um glossário longo continua em outra folha a partir dos termos listados em
-`quebras_glossario` (termografia: 6.3).
+fixa. Os itens 5 (Normatização) e 6 (Glossário) correm como no Word: o navegador
+mede a altura de cada bloco e só passa de folha quando a folha enche
+(`FolhasEmFluxo` em `shell/carta.tsx`); a impressão com paged.js espera a medida
+(`data-paginando`) e depois numera as páginas (`shell/paginacao.ts`).
 
 Os módulos devolvem fragmentos: toda página precisa ser filha direta de `.print-area`,
 porque a quebra de página da "Impressão simples" depende disso.

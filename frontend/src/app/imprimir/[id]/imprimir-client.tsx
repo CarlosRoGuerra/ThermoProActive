@@ -6,21 +6,22 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { mensagemErroDossie } from "@/features/relatorio-inspecao/modulos";
 import { FichasDoRelatorio, RelatorioCorpo } from "@/features/relatorio-inspecao/shell/documento";
+import { CSS_FONTE_PAGINACAO, esperarLayout, numerarPaginas } from "@/features/relatorio-inspecao/shell/paginacao";
 import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
 /* Regras que o paged.js PRECISA processar (transforma @page/running/quebras em
    elementos reais — o navegador sozinho ignora essas regras). Vão pelo polisher. */
 const PAGED_RULES = `
   /* Margem 0: cada seção é uma folha A4 física (210×297mm) com margens internas
-     próprias e o timbrado EM FLUXO. Sem cabeçalho/rodapé corrente do @page. */
+     próprias e o timbrado EM FLUXO. Sem cabeçalho/rodapé corrente do @page: o nº
+     da página entra depois da paginação (numerarPaginas). */
   @page { size: A4; margin: 0; }
   .pagina { break-before: page; }
   .evitar-quebra { break-inside: avoid; }
 `;
 
 /* Aparência de tela/impressão (CSS comum — não precisa do paged.js). */
-const CHROME_CSS = `
-  .paged-source { display: none; }
+const CHROME_CSS = `${CSS_FONTE_PAGINACAO}
   @media screen {
     body { background: #e2e8f0; }
     .pagedjs_pages { padding: 1.5rem 0; }
@@ -68,22 +69,14 @@ export default function ImprimirClient({ relatorioId, recorte = "" }: { relatori
       const fonte = fonteRef.current!;
       const alvo = alvoRef.current!;
       setStatus("Paginando…");
-      // paged.js mede a altura real — espere as imagens carregarem antes.
-      const imgs = Array.from(fonte.querySelectorAll("img"));
-      await Promise.all(
-        imgs.map((im) =>
-          im.complete
-            ? Promise.resolve()
-            : new Promise((res) => {
-                im.onload = im.onerror = () => res(null);
-              })
-        )
-      );
-      if (cancelado) return;
       try {
+        // paged.js mede a altura real — espere a carta paginar, as imagens e as fontes.
+        await esperarLayout(fonte, () => cancelado);
+        if (cancelado) return;
         const { Previewer } = await import("pagedjs");
         alvo.innerHTML = "";
         await new Previewer().preview(fonte.innerHTML, [{ "paged.css": PAGED_RULES }], alvo);
+        numerarPaginas(alvo);
         if (!cancelado) setStatus("");
       } catch {
         // Fallback: revela o conteúdo sem paginação, para ainda ser possível imprimir.

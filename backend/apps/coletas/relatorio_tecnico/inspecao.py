@@ -138,9 +138,6 @@ class ModuloInspecaoRota:
     carta_conteudo: tuple = field(default=CARTA_CONTEUDO)
     carta_glossario: tuple = field(default=CARTA_GLOSSARIO)
     carta_consideracoes: tuple = field(default=CARTA_CONSIDERACOES)
-    # Termos do glossário que abrem uma folha nova na carta em PDF (cada folha é uma
-    # A4 fixa); o .docx ignora — o Word pagina sozinho.
-    carta_quebras_glossario: tuple = ()
     # Estrutura da carta. O padrão é o do modelo Word da vibração (VB_Carta_Foroni):
     # item 7 "Definição da Técnica", item 8 "Considerações". A termografia elétrica
     # segue o RT.TE do cliente: sem a Definição da Técnica (as Considerações são o
@@ -166,7 +163,6 @@ class ModuloInspecaoRota:
         textos = {
             "conteudo": list(self.carta_conteudo),
             "glossario": [{"n": n, "sigla": sigla, "texto": texto} for n, sigla, texto in self.carta_glossario],
-            "quebras_glossario": list(self.carta_quebras_glossario),
             "consideracoes": list(self.carta_consideracoes),
             "paragrafos": [],
             "definicao_tecnica": self.carta_definicao_tecnica,

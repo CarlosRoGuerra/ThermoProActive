@@ -27,16 +27,12 @@ MODULO_ALINHAMENTO_EIXOS = ModuloInspecaoRota(
     chave="ALINHAMENTO_EIXOS",
     carta_glossario=GLOSSARIO_ALINHAMENTO,
     carta_consideracoes=CONSIDERACOES_ALINHAMENTO,
-    # 12 termos não cabem numa A4 (medido no PDF): os do alinhamento (6.8–6.12) abrem a segunda folha.
-    carta_quebras_glossario=("6.8",),
 )
 
 MODULO_ALINHAMENTO_POLIAS = ModuloInspecaoRota(
     chave="ALINHAMENTO_POLIAS",
     carta_glossario=GLOSSARIO_ALINHAMENTO,
     carta_consideracoes=CONSIDERACOES_ALINHAMENTO,
-    # 12 termos não cabem numa A4 (medido no PDF): os do alinhamento (6.8–6.12) abrem a segunda folha.
-    carta_quebras_glossario=("6.8",),
 )
 
 SUBTIPO_POR_CHAVE = {"ALINHAMENTO_EIXOS": "ALINHAMENTO_EIXOS", "ALINHAMENTO_POLIAS": "ALINHAMENTO_POLIAS"}

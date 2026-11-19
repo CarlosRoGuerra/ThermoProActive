@@ -523,7 +523,6 @@ class ModuloFluidoLubrificante(ModuloEnsaiosLaboratoriais):
     carta_conteudo = CONTEUDO_FLUIDO
     carta_glossario = GLOSSARIO_FLUIDO
     carta_consideracoes = CONSIDERACOES_FLUIDO
-    carta_quebras_glossario = ("6.5", "6.9", "6.12")
 
     def montar(self, ctx) -> dict:
         ensaios = list(Ensaio.objects.ativos().filter(modulo=self.chave).prefetch_related("parametros"))

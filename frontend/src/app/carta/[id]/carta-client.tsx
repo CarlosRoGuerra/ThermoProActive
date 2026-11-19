@@ -6,6 +6,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { api } from "@/lib/api";
 import { mensagemErroDossie } from "@/features/relatorio-inspecao/modulos";
 import { CartaDoRelatorio } from "@/features/relatorio-inspecao/shell/documento";
+import { CSS_FONTE_PAGINACAO, esperarLayout, numerarPaginas } from "@/features/relatorio-inspecao/shell/paginacao";
 import type { DossieShell } from "@/features/relatorio-inspecao/tipos";
 
 /* Regras que o paged.js processa: cada folha da carta é uma A4 física (margens
@@ -15,8 +16,7 @@ const PAGED_RULES = `
   .pagina { break-before: page; }
 `;
 
-const CHROME_CSS = `
-  .paged-source { display: none; }
+const CHROME_CSS = `${CSS_FONTE_PAGINACAO}
   @media screen {
     body { background: #e2e8f0; }
     .pagedjs_pages { padding: 1.5rem 0; }
@@ -61,17 +61,14 @@ export default function CartaClient({ relatorioId }: { relatorioId: number }) {
       const fonte = fonteRef.current!;
       const alvo = alvoRef.current!;
       setStatus("Paginando…");
-      const imgs = Array.from(fonte.querySelectorAll("img"));
-      await Promise.all(
-        imgs.map((im) =>
-          im.complete ? Promise.resolve() : new Promise((res) => { im.onload = im.onerror = () => res(null); })
-        )
-      );
-      if (cancelado) return;
       try {
+        // paged.js mede a altura real — espere a carta paginar, as imagens e as fontes.
+        await esperarLayout(fonte, () => cancelado);
+        if (cancelado) return;
         const { Previewer } = await import("pagedjs");
         alvo.innerHTML = "";
         await new Previewer().preview(fonte.innerHTML, [{ "paged.css": PAGED_RULES }], alvo);
+        numerarPaginas(alvo);
         if (!cancelado) setStatus("");
       } catch {
         if (!cancelado) {

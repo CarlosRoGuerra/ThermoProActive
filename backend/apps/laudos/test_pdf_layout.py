@@ -19,7 +19,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from PIL import Image, ImageDraw, ImageStat
 
-from apps.cadastros.models import Equipamento
+from apps.cadastros.models import Empresa, Equipamento
 from apps.coletas.models import Achado, AchadoImagem, Inspecao, ItemInspecao, MedicaoTermografia
 from apps.osp.models import OrdemServico
 
@@ -84,7 +84,17 @@ class PDFLayoutRealTest(TestCase):
                          "MARCADOR-FIM-DOCUMENTAL", "Evidência fotográfica QA"):
             self.assertIn("".join(marcador.split()), compacto, f"Conteúdo ausente no PDF {nome}: {marcador}")
         self.assertGreaterEqual(len(leitor.pages), minimo_paginas)
+        self.total_paginas = len(leitor.pages)
         self.assertGreater(sum(len(p.images) for p in leitor.pages), 0, "Nenhuma imagem raster incorporada ao PDF.")
+        # Folha que estoura os 297 mm é partida pelo paged.js e a sobra cai numa página sem
+        # timbrado: toda página numerada precisa trazer o cabeçalho do prestador.
+        prestador = (((snapshot.get("relatorio") or {}).get("cabecalho") or {}).get("prestador") or {}).get("nome")
+        if prestador:
+            for indice, pagina in enumerate(leitor.pages):
+                corrido = "".join((pagina.extract_text() or "").split())
+                if "Página" in corrido:
+                    self.assertIn("".join(prestador.split()), corrido,
+                                  f"Página {indice + 1} de {nome} sem timbrado: o conteúdo estourou a folha anterior.")
         pasta = Path(os.environ.get("LAUDOS_TEST_ARTIFACT_DIR", Path(settings.BASE_DIR) / "test-artifacts" / "laudos"))
         pasta.mkdir(parents=True, exist_ok=True)
         (pasta / f"{nome}.pdf").write_bytes(conteudo)
@@ -135,6 +145,8 @@ class PDFLayoutRealTest(TestCase):
         osp.pred_mao_obra_h, osp.pred_mao_obra_valor = Decimal("4"), Decimal("520")
         osp.emerg_mao_obra_h, osp.emerg_mao_obra_valor = Decimal("20"), Decimal("2900")
         osp.save()
+        # Com prestador cadastrado as folhas levam o timbrado (conferido em validar_pdf_e_gravar).
+        Empresa.objects.create(nome="Prestadora Timbrado QA", cnpj="22.333.444/0001-55", inscricao_estadual="Isenta")
         for indice in range(1, 65):
             equipamento = Equipamento.objects.create(setor=self.equipamento.setor,
                 tag=f"TAG-ROTA-QA-{indice:03d}", nome=f"Máquina de inspeção QA {indice}")
@@ -156,3 +168,11 @@ class PDFLayoutRealTest(TestCase):
         self.assertIn("Imagem da medição QA", texto)
         self.assertIn("2.900,00", texto)  # custo emergencial da OSP
         self.assertIn("2.380,00", texto)  # retorno = emergencial − preditiva
+        # Nº de página no pé das folhas: a capa conta, mas não mostra; a última mostra o total.
+        compacto, total = "".join(texto.split()), self.total_paginas
+        self.assertIn(f"Página2de{total}", compacto, "Folhas sem o número de página.")
+        self.assertIn(f"Página{total}de{total}", compacto)
+        self.assertNotIn("Página1de", compacto)
+        # Itens 5 e 6 da carta saem das folhas em fluxo (paginadas pela altura medida).
+        self.assertIn("5.Normatização", compacto)
+        self.assertIn("6.GlossárioTécnico", compacto)

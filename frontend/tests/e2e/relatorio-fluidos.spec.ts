@@ -50,7 +50,7 @@ const carta = {
     { n: "6.1.2", sigla: "EF", texto: "Espectrofotometria." },
     { n: "6.1.3", sigla: "CP", texto: "Contagem de Partículas." },
   ],
-  quebras_glossario: [], consideracoes: ["Os resultados representam a condição do fluido na data da coleta."],
+  consideracoes: ["Os resultados representam a condição do fluido na data da coleta."],
   paragrafos: ["Neste ciclo foi analisada 1 amostra de fluido lubrificante/hidráulico de 1 equipamento."],
 };
 
@@ -237,7 +237,7 @@ test.describe("sem módulo padrão de vibração @relatorio", () => {
   });
 
   test("payload de módulo desconhecido não cai no layout de outra técnica", async ({ page }) => {
-    await mockApi(page, { status: 200, json: { ...dossie, modulo: "ALINHAMENTO_EIXOS" } });
+    await mockApi(page, { status: 200, json: { ...dossie, modulo: "MODULO_INEXISTENTE" } });
     await page.goto(`/relatorios-inspecao/${RELATORIO_ID}`);
     await expect(page.getByText("não está disponível nesta versão da tela")).toBeVisible();
     await expect(page.getByText("Faixas de Velocidade")).toHaveCount(0);

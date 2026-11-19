@@ -219,7 +219,7 @@ class ModuloEnsaioSubestacao(ModuloEnsaiosLaboratoriais):
     chave = ""
     equipamento = ""  # rótulo no singular, para o resumo ("foi ensaiado 1 transformador de corrente")
     equipamento_plural = ""
-    carta_conteudo = carta_glossario = carta_consideracoes = carta_quebras_glossario = ()
+    carta_conteudo = carta_glossario = carta_consideracoes = ()
     tabelas_normativas = ()
 
     def textos_carta(self, tecnico=None, ctx=None) -> dict:

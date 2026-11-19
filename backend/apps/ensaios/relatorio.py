@@ -369,14 +369,13 @@ class ModuloEnsaiosLaboratoriais:
 
     chave = ""
     tabelas_normativas = ()
-    carta_conteudo = carta_glossario = carta_consideracoes = carta_quebras_glossario = ()
+    carta_conteudo = carta_glossario = carta_consideracoes = ()
 
     # --- Carta ---
     def textos_carta(self, tecnico=None, ctx=None) -> dict:
         return {
             "conteudo": list(self.carta_conteudo),
             "glossario": [{"n": n, "sigla": s, "texto": t} for n, s, t in self.carta_glossario],
-            "quebras_glossario": list(self.carta_quebras_glossario),
             "consideracoes": list(self.carta_consideracoes),
             "paragrafos": [tecnico["resumo"]] if tecnico and tecnico.get("resumo") else [],
         }
@@ -546,7 +545,6 @@ class ModuloOleoIsolante(ModuloTransformador):
     carta_conteudo = CONTEUDO_OLEO
     carta_glossario = GLOSSARIO_OLEO
     carta_consideracoes = CONSIDERACOES_OLEO
-    carta_quebras_glossario = ("6.3",)
 
     def _registro(self, c, request) -> dict:
         if c is None:
@@ -581,7 +579,6 @@ class ModuloEnsaioEletrico(ModuloTransformador):
     carta_conteudo = CONTEUDO_ELETRICO
     carta_glossario = GLOSSARIO_ELETRICO
     carta_consideracoes = CONSIDERACOES_ELETRICO
-    carta_quebras_glossario = ("6.2",)
     sujeito = ("foi ensaiado 1 transformador", "foram ensaiados {n} transformadores")
 
     def _registro(self, r, request) -> dict:

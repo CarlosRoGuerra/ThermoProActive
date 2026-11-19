@@ -45,10 +45,9 @@ export type SecaoC = { total: number; equip_monitorados: number; grupos: GrupoC[
 export type TermoGlossario = { n: string; sigla: string; texto: string };
 /** Textos técnicos da carta que o módulo da tecnologia fornece pelo backend —
  *  a mesma fonte da carta .docx (`textos_carta()` em relatorio_tecnico).
- *  `quebras_glossario`: termos (pelo número, ex.: "6.3") que abrem uma folha nova.
  *  `paragrafos`: item 7 — o que o módulo apurou, quando o texto sai do backend. */
 export type TextosCarta = {
-  conteudo: string[]; glossario: TermoGlossario[]; quebras_glossario: string[]; consideracoes: string[];
+  conteudo: string[]; glossario: TermoGlossario[]; consideracoes: string[];
   paragrafos: string[];
   /** Estrutura da carta. Ausentes (laudos já emitidos, outros módulos) = modelo padrão:
    *  item 7 "Definição da Técnica", instrumentação em lista e sem a data das OSPs.

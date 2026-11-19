@@ -349,7 +349,6 @@ class RelatorioTransformadorTest(CenarioTransformador, TestCase):
     def test_carta_do_oleo_tem_textos_e_resumo_do_modulo(self):
         rel, _ = self.relatorio_oleo()
         carta = self.dossie(rel)["carta"]
-        self.assertEqual(carta["quebras_glossario"], ["6.3"])
         self.assertIn("Seção D – Fichas da Análise do Óleo Isolante [coleta e resultados dos ensaios]",
                       carta["conteudo"])
         self.assertIn("TGC", [g["sigla"] for g in carta["glossario"]])
@@ -416,7 +415,6 @@ class RelatorioTransformadorTest(CenarioTransformador, TestCase):
     def test_carta_dos_ensaios_eletricos(self):
         rel, _ = self.relatorio_eletrico()
         carta = self.dossie(rel)["carta"]
-        self.assertEqual(carta["quebras_glossario"], ["6.2"])
         self.assertIn("foi ensaiado 1 transformador, com os ensaios R×T, R×I e R×O.", carta["paragrafos"][0])
         self.assertIn("R×O sem critério de aceitação definido", carta["paragrafos"][0])
         xml = self.carta_xml(rel)

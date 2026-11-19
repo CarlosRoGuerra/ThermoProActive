@@ -102,7 +102,7 @@ const folhaBalanceamento = {
 /* Payload no formato atual do dossiê: módulo explícito (não há módulo "padrão")
    e os textos da carta vindos do backend. */
 const carta = {
-  conteudo: ["Seção A – Carta ao Cliente"], glossario: [], quebras_glossario: [], consideracoes: [], paragrafos: [],
+  conteudo: ["Seção A – Carta ao Cliente"], glossario: [], consideracoes: [], paragrafos: [],
   tabela_severidade: [], notas_severidade: [],
 };
 const dossie = {
