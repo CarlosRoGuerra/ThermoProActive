@@ -106,19 +106,23 @@ O formulário da análise mostra uma prévia com as mesmas regras (`correcaoCarg
 "T. referência corrigida" deixaram de ser digitados (migração coletas/0019, que também recalcula
 as análises já gravadas; no banco local, só 3 do cliente fictício mudaram).
 
-Decidido aqui, porque o documento não diz (a confirmar):
+O documento não diz o que segue. As regras de I1, carga, ΔT corrigido e carga mínima foram
+confirmadas pelo Fabrício em 18/11/2026:
 
 - **% de carga** = I1 ÷ In quando a nominal e a de trabalho foram medidas (o digitado deixa de
   valer); sem correntes, vale o % digitado. O fator é (90 ÷ carga%)², o mesmo que (I2 ÷ I1)².
-- **Qual corrente é a I1** com várias fases medidas: a da fase escolhida na análise; com uma
+- **Qual corrente é a I1** com várias fases medidas: a da fase da anomalia (confirmado); com uma
   fase só, ela; "todas as fases" = a maior. Várias fases sem escolha → não corrige e pede a fase.
-- **Carga de 90 % ou mais:** não corrige (6.1.5: aplica-se com corrente abaixo da nominal;
-  corrigir baixaria a temperatura medida).
-- **T. Delta Corrigida** = (TM − TR) × fator: o ΔT da OSP (TM − TR, 6.1.3) levado aos 90 %,
-  igual à diferença entre a medida e a referência corrigidas. Não depende do ambiente.
+- **Corrige qualquer carga, exceto 100 %** (confirmado; a carga é comparada com uma casa, como sai
+  na OSP). Acima de 90 % — inclusive acima da nominal — a projeção para 90 % baixa a temperatura;
+  em 90 % o fator é 1. Até 18/11 o sistema não corrigia carga de 90 % ou mais.
+- **T. Delta Corrigida** = (TM − TR) × fator (confirmado): o ΔT da OSP (TM − TR, 6.1.3) levado
+  aos 90 %, igual à diferença entre a medida e a referência corrigidas. Não depende do ambiente.
 - **Sem temperatura ambiente:** sai o ΔT corrigido, não a T. medida corrigida (a tela avisa).
-- **Carga muito baixa:** a fórmula extrapola sem limite (10 % de carga multiplica a elevação
-  por 81). O sistema só recusa o que não cabe no campo (> 99.999,9 °C); não inventa carga mínima.
+- **Sem carga mínima** (confirmado): a fórmula extrapola sem limite (10 % de carga multiplica a
+  elevação por 81). O sistema só recusa carga zero e o que não cabe no campo (> 99.999,9 °C).
+- O texto do 6.1.5 (do RT.TE) diz que a C.T.M. se aplica com corrente abaixo da nominal; com a
+  regra confirmada ela também sai acima da nominal. O texto do glossário não foi mudado.
 - O Grau de Risco continua escolhido pelo analista; o ΔT corrigido não muda a classificação.
 - A OSP do RT.TE não mostra a temperatura ambiente; a nossa também não.
 
@@ -155,9 +159,9 @@ contratante (LGPD, Cláusula 13).
 
 ## 3. Perguntas para o Fabrício
 
-1. Correção pela carga (§1.7): confirma (a) a I1 pela fase da anomalia, (b) não corrigir com
-   carga de 90 % ou mais, (c) T. Delta Corrigida = (TM − TR) × (I2 ÷ I1)², (d) 90 % como alvo
-   para todos os equipamentos e (e) se há uma carga mínima abaixo da qual não se corrige.
+1. Correção pela carga (§1.7): (a), (c) e (e) respondidos em 18/11/2026 — I1 da fase da
+   anomalia, ΔT corrigido = (TM − TR) × fator, sem carga mínima; (b) virou "corrige qualquer
+   carga, exceto 100 %". Falta só (d): 90 % como alvo para todos os equipamentos?
 2. O 6.11 pode citar "Pred Ativos" no lugar do "e-MasterSys®"?
 3. A data "Upload das OSP´s" pode ser a de geração das OSPs no sistema?
 4. NM × MNR e o nome do MP: qual sigla e qual texto valem?

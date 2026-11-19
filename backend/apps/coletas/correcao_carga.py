@@ -15,12 +15,13 @@ Exemplo do documento: In 100 A, I1 70 A, TM 100 °C, TA 30 °C → ΔT2 = 115,71
 Como (I2/I1)² = (90 / carga%)², o fator depende só da carga: ela vem das correntes
 (I1 ÷ In) quando a nominal e a de trabalho foram medidas, ou do % digitado pelo analista.
 
-Pontos que o documento não define e que estão decididos aqui (a confirmar com o cliente,
-docs/27 §1.2):
-  * I1 com correntes em várias fases: a da fase escolhida na análise; uma fase só medida
-    = ela; "todas as fases" = a maior. Várias fases sem escolha → não corrige (pede a fase).
-  * Carga de 90 % ou mais: não corrige (a correção é para corrente abaixo da nominal, 6.1.5;
-    aplicá-la abaixaria a temperatura medida).
+Pontos que o documento não define, confirmados pelo Fabrício em 18/11/2026 (docs/27 §1.7):
+  * I1 com correntes em várias fases: a da fase da anomalia. Uma fase só medida = ela;
+    "todas as fases" = a maior. Várias fases sem escolha → não corrige (pede a fase).
+  * Corrige qualquer carga, exceto 100 %. Abaixo de 90 % a temperatura corrigida sobe; acima
+    de 90 % (inclusive acima da nominal) a projeção para 90 % a faz descer; em 90 % o fator é 1.
+  * Não há carga mínima. Só não sai valor com carga zero (a fórmula divide pela corrente) ou
+    quando o resultado não cabe no campo.
   * T. Delta Corrigida = (TM − TR) × fator — o ΔT da OSP (6.1.3) na carga de 90 %, que é a
     diferença entre a medida e a referência corrigidas pela mesma fórmula. Não depende do TA.
 """
@@ -29,6 +30,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 #: Carga de destino da correção, em % da corrente nominal (I2 = 0,90 × In).
 CARGA_ALVO = Decimal("90")
+#: Carga em que a temperatura medida não é corrigida (Fabrício, 18/11/2026).
+CARGA_SEM_CORRECAO = Decimal("100")
 #: Maior valor que os campos de temperatura (6 dígitos, 1 casa) guardam.
 LIMITE_TEMPERATURA = Decimal("99999.9")
 
@@ -108,8 +111,9 @@ def calcular(*, temperatura_medida, temperatura_referencia, temperatura_ambiente
         return replace(vazio, pendencia=" ".join(pendencias))
     if ratio <= 0:
         return replace(vazio, pendencia="Com carga zero não há como corrigir a temperatura.")
-    if ratio * 100 >= CARGA_ALVO:
-        return replace(vazio, pendencia=f"A carga já atinge {CARGA_ALVO.normalize()} % da nominal: a correção não se aplica.")
+    # Comparada com uma casa, como a carga sai na OSP.
+    if _arred(ratio * 100) == CARGA_SEM_CORRECAO:
+        return replace(vazio, pendencia="Com a carga em 100 % da nominal a temperatura não é corrigida.")
 
     fator = (CARGA_ALVO / 100 / ratio) ** 2
     ta, tm, tr = temperatura_ambiente, temperatura_medida, temperatura_referencia

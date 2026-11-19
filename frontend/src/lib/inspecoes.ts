@@ -122,6 +122,8 @@ export function payloadDeForm(form: AchadoForm): Record<string, unknown> {
      ΔT1 = TM − TA;  ΔT2 = ΔT1 × (I2 / I1)²;  I2 = 0,90 × In;  T2 = TA + ΔT2
    --------------------------------------------------------------------------- */
 const CARGA_ALVO = 90;
+/** Carga em que a temperatura não é corrigida (Fabrício, 18/11/2026: corrige qualquer outra). */
+const CARGA_SEM_CORRECAO = 100;
 const LIMITE_TEMPERATURA = 99999.9;
 
 export type PreviaCorrecao = {
@@ -181,7 +183,7 @@ export function correcaoCargaPreview(form: AchadoForm): PreviaCorrecao {
   if (tm == null) return base;
   if (razao == null) return { ...base, pendencia: pend.join(" ") || "Informe a corrente nominal e a de trabalho, ou o % de carga." };
   if (razao <= 0) return { ...base, pendencia: "Com carga zero não há como corrigir a temperatura." };
-  if (razao * 100 >= CARGA_ALVO) return { ...base, pendencia: `A carga já atinge ${CARGA_ALVO} % da nominal: a correção não se aplica.` };
+  if (umaCasa(razao * 100) === CARGA_SEM_CORRECAO) return { ...base, pendencia: "Com a carga em 100 % da nominal a temperatura não é corrigida." };
 
   const fator = (CARGA_ALVO / 100 / razao) ** 2;
   const corrigida = (v: number) => {

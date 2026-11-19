@@ -69,12 +69,26 @@ class FormulaTest(SimpleTestCase):
         self.assertIsNone(c.temperatura_medida_corrigida)
         self.assertIn("fase T não foi medida", c.pendencia)
 
-    def test_nao_corrige_com_carga_de_90_por_cento_ou_mais(self):
-        for corrente in ("90.00", "100.00", "105.00"):
-            c = correcao(correntes={"R": D(corrente), "S": None, "T": None})
+    def test_corrige_qualquer_carga_exceto_100_por_cento(self):
+        # Fabrício, 18/11/2026: "corrige qualquer valor, exceto 100 %".
+        def t2(corrente, nominal="100.00"):
+            return correcao(correntes={"R": D(corrente), "S": None, "T": None}, corrente_nominal=D(nominal))
+
+        for corrente in ("100.00", "99.96"):  # 99,96 % sai como 100,0 % na OSP
+            c = t2(corrente)
+            self.assertEqual(c.carga_percentual, D("100.0"))
             self.assertIsNone(c.temperatura_medida_corrigida, corrente)
-            self.assertIn("não se aplica", c.pendencia)
-        self.assertEqual(correcao(correntes={"R": D("89.90"), "S": None, "T": None}).temperatura_medida_corrigida, D("100.2"))
+            self.assertIn("100 %", c.pendencia)
+        self.assertEqual(t2("89.90").temperatura_medida_corrigida, D("100.2"))  # abaixo de 90 %: sobe
+        self.assertEqual(t2("90.00").temperatura_medida_corrigida, D("100.0"))  # fator 1
+        # Acima de 90 % a projeção para 90 % baixa a temperatura: 30 + 70 × (90/95)² = 92,8.
+        self.assertEqual(t2("95.00").temperatura_medida_corrigida, D("92.8"))
+        # Acima da nominal também corrige: 30 + 70 × (90/105)² = 81,4.
+        c = t2("105.00")
+        self.assertEqual((c.carga_percentual, c.temperatura_medida_corrigida, c.pendencia), (D("105.0"), D("81.4"), ""))
+        # Carga digitada vale a mesma regra.
+        digitada = correcao(corrente_nominal=None, correntes={"R": None, "S": None, "T": None}, carga_digitada=D("100.0"))
+        self.assertIsNone(digitada.temperatura_medida_corrigida)
 
     def test_sem_carga_ou_com_carga_zero_nao_corrige(self):
         nada = correcao(corrente_nominal=None, correntes={"R": None, "S": None, "T": None})
