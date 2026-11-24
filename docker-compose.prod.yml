@@ -1,7 +1,11 @@
 # =============================================================================
 # ThermoProActive — stack de PRODUÇÃO (VPS Linux)
 # db (PostgreSQL) + backend (Django/gunicorn) + agendador + frontend (Next.js)
-# + nginx (TLS) + certbot + backup (diário, criptografado)
+# + Caddy (HTTPS automático, Let's Encrypt) + nginx (rotas, atrás do Caddy)
+# + backup (diário, criptografado)
+#
+# Antes de subir: DOMAIN apontando para o IP desta VPS (o Caddy emite o certificado
+# sozinho na primeira subida) e as portas 80/443 abertas.
 #
 # Subir:   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 # Logs:    docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f
@@ -115,6 +119,8 @@ services:
     expose:
       - "3000"                    # visível só para o nginx
 
+  # Rotas, mídia protegida (X-Accel), limite de login e cabeçalhos. Atrás do Caddy:
+  # não publica porta (só o Caddy o alcança pela rede interna).
   nginx:
     image: nginx:1.27-alpine
     container_name: thermoproactive_nginx
@@ -126,34 +132,45 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       NGINX_ENVSUBST_FILTER: DOMAIN   # substitui só ${DOMAIN}, preserva $host etc.
-    ports:
-      - "80:80"
-      - "443:443"
+    expose:
+      - "80"
     volumes:
       - ./deploy/nginx:/etc/nginx/templates:ro   # app.conf.template -> conf.d/app.conf
-      - certbot-conf:/etc/letsencrypt:ro         # certificados
-      - certbot-www:/var/www/certbot:ro          # desafio ACME (http-01)
-      - media:/var/www/media:ro                  # serve /media/ direto pelo nginx
+      - media:/var/www/media:ro                  # entrega a mídia liberada pelo Django
     healthcheck:
       test: ["CMD-SHELL", "test -s /var/run/nginx.pid && kill -0 $$(cat /var/run/nginx.pid)"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  certbot:
-    # Tag fixa (antes ':latest'): um deploy não muda de versão sem ninguém ver.
-    image: certbot/certbot:v5.5.0
-    container_name: thermoproactive_certbot
+  # HTTPS: emite e renova o certificado do Let's Encrypt sozinho, redireciona HTTP,
+  # www e o acesso pelo IP para https://DOMAIN e repassa tudo ao nginx.
+  # Configuração: deploy/caddy/Caddyfile.
+  caddy:
+    # Tag fixa: um deploy não muda de versão sem ninguém ver.
+    image: caddy:2.10-alpine
+    container_name: thermoproactive_caddy
     restart: unless-stopped
     logging: *default-logging
+    depends_on:
+      - nginx
+    environment:
+      DOMAIN: ${DOMAIN}
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL}   # conta no Let's Encrypt (o nome vem da stack antiga)
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"                 # HTTP/3
     volumes:
-      - certbot-conf:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
-    # Renova o certificado a cada 12h se estiver perto de expirar.
-    entrypoint: >
-      sh -c "trap exit TERM;
-             while :; do certbot renew --webroot -w /var/www/certbot --quiet;
-             sleep 12h & wait $${!}; done"
+      # A pasta inteira (não o arquivo): o git pull chega ao container sem recriá-lo.
+      - ./deploy/caddy:/etc/caddy:ro
+      - caddy-data:/data              # certificados e conta ACME — não apague
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2019/config/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # Backup diário criptografado (banco + mídia). Roda agendar.sh -> backup.sh às
   # BACKUP_AT; guarda em BACKUP_HOST_DIR (no HOST, fora dos volumes Docker, de
@@ -216,5 +233,5 @@ services:
 volumes:
   pgdata:
   media:
-  certbot-conf:
-  certbot-www:
+  caddy-data:
+  caddy-config:

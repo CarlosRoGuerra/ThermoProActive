@@ -4,10 +4,10 @@ Escopo: ambiente de produção/homologação em **VPS Linux com Docker Compose**
 (PostgreSQL 16, Django/gunicorn, Next.js, nginx). Tudo aqui usa só ferramentas
 open-source e funciona em qualquer provedor (Cláusula 12.4 — sem lock-in).
 
-Arquivos relacionados: `docker-compose.prod.yml` (domínio + TLS), `docker-compose.http.yml`
+Arquivos relacionados: `docker-compose.prod.yml` (domínio + HTTPS automático pelo Caddy), `docker-compose.http.yml`
 (teste por IP, sem TLS — é o que a VPS usa hoje), `docker-compose.yml` (**só desenvolvimento**),
 `.env.prod.example`, `deploy/backup/*`, `deploy/verificar-producao.sh`,
-`deploy/testar-restauracao.sh`, `deploy/init-letsencrypt.sh`.
+`deploy/testar-restauracao.sh`, `deploy/caddy/Caddyfile`, `deploy/nginx/`.
 
 > Convenção dos comandos: `DC` abaixo é o compose em uso.
 > `DC="docker compose --env-file .env.prod -f docker-compose.http.yml"` (hoje) ou
@@ -20,7 +20,8 @@ Arquivos relacionados: `docker-compose.prod.yml` (domínio + TLS), `docker-compo
 Pré-requisitos: VPS Linux (2 vCPU / 4 GB RAM / 40 GB de disco é o mínimo razoável — o
 backend carrega o Chromium para gerar PDFs), Docker Engine + plugin Compose, `git`,
 portas 22/80/443 liberadas **e mais nenhuma** (firewall do provedor ou `ufw`; lembre que o
-Docker publica portas direto no iptables, ignorando o `ufw` — por isso só o nginx publica).
+Docker publica portas direto no iptables, ignorando o `ufw` — por isso só o proxy da frente
+publica: o Caddy na stack prod, o nginx na stack http).
 
 ```bash
 git clone <repositório> /root/ThermoProActive && cd /root/ThermoProActive
@@ -34,14 +35,39 @@ Pontos que derrubam o boot (de propósito, para falhar cedo):
 * `ALLOWED_HOSTS` vazio ou com `*` → idem.
 * `POSTGRES_PASSWORD` e a senha dentro de `DATABASE_URL` precisam ser a mesma.
 
-**Com domínio (TLS):** aponte o DNS (registros `A` de `dominio` e `www`) para o IP da VPS e rode
+**Com domínio (HTTPS):** aponte o DNS para o IP da VPS e suba a stack
 ```bash
-bash deploy/init-letsencrypt.sh                       # emite o certificado (Let's Encrypt)
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
+O Caddy (`deploy/caddy/Caddyfile`) emite o certificado do Let's Encrypt na primeira subida e o
+renova sozinho — não há passo manual. Ele fica na frente do nginx (`deploy/nginx/app.conf.template`),
+que continua com as rotas, a mídia protegida, o limite de login e os cabeçalhos.
+O DNS pode ser o domínio principal (registro `A` de `dominio`; `www` como `A` ou `CNAME` para ele)
+ou um **subdomínio** (um registro `A`, ex.: `sistema` → IP da VPS); num subdomínio sem `www`, apague
+o bloco `www.{$DOMAIN}` do Caddyfile. Apontar o domínio principal para a VPS tira do ar o site que
+estiver nele; o e-mail (registros `MX`/`TXT`) não muda.
 **Teste por IP (sem TLS):** em `.env.prod` use `NEXT_PUBLIC_API_URL=http://SEU.IP/api`,
 `ALLOWED_HOSTS=SEU.IP,backend`, `COOKIES_SECURE=False`, e suba com `docker-compose.http.yml`.
 Risco registrado: sem TLS a sessão e as senhas trafegam em claro; só para homologação.
+
+**Migrar de HTTP (por IP) para HTTPS (com domínio)** — mesma VPS, mesmo banco e mesma mídia
+(os dois compose usam os mesmos volumes e o mesmo nome de projeto):
+1. DNS: aponte o registro `A` para a VPS e confira nela que `getent ahostsv4 DOMINIO` devolve o
+   IP dela. Sem isso o Caddy não obtém o certificado.
+2. Backup de pré-deploy (seção 2).
+3. `.env.prod`: `DOMAIN`, `CERTBOT_EMAIL` (conta no Let's Encrypt, usada pelo Caddy);
+   `ALLOWED_HOSTS=DOMINIO,www.DOMINIO,backend`; `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS` e
+   `FRONTEND_URL` com `https://DOMINIO`; `NEXT_PUBLIC_API_URL=https://DOMINIO/api`;
+   **apague `COOKIES_SECURE=False`**.
+4. `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build --remove-orphans`
+   — recria o nginx sem porta própria e sobe o Caddy nas portas 80/443, que emite o certificado.
+   O front **precisa** ser reconstruído: `NEXT_PUBLIC_API_URL` é embutida no build.
+   Acompanhe com `$DC logs -f caddy` até aparecer `certificate obtained successfully`.
+5. Daqui em diante `DC` usa `docker-compose.prod.yml`. Quem acessar pelo IP ou pelo `www` é levado
+   a `https://DOMINIO`. O nginx lê `deploy/nginx/app.conf.template` só ao iniciar: mudou o arquivo,
+   recrie o container (`$DC up -d --force-recreate nginx`). O Caddyfile recarrega com
+   `$DC exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+6. `bash deploy/verificar-producao.sh` (confere o certificado) e um login de ponta a ponta.
 
 O backend, ao subir, **migra o banco, coleta estáticos e inicia o gunicorn** (o comando está no
 compose). Ele **não** cria usuário nenhum: crie o primeiro administrador com
@@ -220,7 +246,8 @@ aponta para uma cópia baixada do destino externo.) Consulte o banco com
 3. Baixe os backups do destino externo para `/var/backups/thermoproactive/daily/` (`rclone copy`).
 4. Suba só o banco: `$DC up -d db`. Restaure (banco novo é vazio, não precisa de `--clean`; o guard de
    produção ainda pede a frase). Suba o resto: `$DC up -d --build`.
-5. Emita novo certificado (`init-letsencrypt.sh`) ou use o modo HTTP. Rode `verificar-producao.sh`.
+5. Com o DNS apontando para a nova VPS, o Caddy emite o certificado ao subir (ou use o modo HTTP).
+   Rode `verificar-producao.sh`.
 **RTO** (tempo para voltar) estimado em 1–2 h com tudo à mão; **não medido numa VPS real** (ver Pendências).
 
 ---
@@ -282,7 +309,7 @@ Ele **não** reinicia container `unhealthy` por si só; o aviso vem do monitoram
 | **Dados apagados/alterados por engano** | quando aconteceu? | 4.B: restaure o backup anterior ao incidente num banco ao lado e recupere só os registros; ou 4.C se for geral. |
 | **VPS perdida / sem acesso** | provedor | 4.D. |
 | **Disco cheio** | `df -h`; `docker system df`; `du -sh /var/lib/docker/containers/*` | `docker image prune -f; docker builder prune -f` (seguro); logs de container já são rotacionados; apague backups locais muito antigos fora da retenção; `journalctl --vacuum-size=200M`. **Não** rode `docker system prune --volumes` (apaga volumes sem container, inclusive dados). Com disco 100% o PostgreSQL pára: libere espaço e `$DC restart db backend`. |
-| **Certificado expirado / HTTPS quebrado** (stack prod) | `$DC logs certbot`; `echo \| openssl s_client -connect DOMINIO:443 2>/dev/null \| openssl x509 -noout -dates` | Cheque DNS e porta 80 abertos (o desafio é http-01). Renove à mão: `$DC run --rm certbot renew --webroot -w /var/www/certbot` e `$DC exec nginx nginx -s reload`. Se o `live/` sumiu, rode `deploy/init-letsencrypt.sh` de novo. |
+| **Certificado expirado / HTTPS quebrado** (stack prod) | `$DC logs caddy`; `echo \| openssl s_client -connect DOMINIO:443 2>/dev/null \| openssl x509 -noout -dates` | Cheque se o DNS aponta para a VPS e se as portas 80 e 443 estão abertas (o Let's Encrypt valida por elas). O Caddy tenta de novo sozinho; depois de corrigir, `$DC restart caddy` força nova tentativa. **Não** apague o volume `caddy-data` (certificados e conta): cada emissão nova conta no limite de taxa do Let's Encrypt. |
 | **Backup `unhealthy`** | `tail -50 /var/backups/thermoproactive/state/backup.log`; `cat state/last_failure` | Código 2: frase-secreta ausente/curta (ou pasta criada no lugar do arquivo — apague a pasta e crie o arquivo). 3: senha/rede do banco. 6: credenciais do destino externo. Corrija e rode `$DC exec backup /backup/backup.sh`. |
 | **Usuários não conseguem entrar após deploy** | `$DC logs backend \| grep -i csrf` | `CSRF_TRUSTED_ORIGINS`/`ALLOWED_HOSTS`/`COOKIES_SECURE` incompatíveis com HTTP/HTTPS em uso; se a `SECRET_KEY` mudou, sessões antigas caem (novo login) e **MFA precisa ser recadastrado**. |
 | **E-mails/convites não chegam** | `$DC exec backend python manage.py verificar_canais` | Sem `EMAIL_BACKEND` SMTP o e-mail só vai para o log. Credenciais SMTP são da contratante. |
@@ -293,7 +320,7 @@ Ele **não** reinicia container `unhealthy` por si só; o aviso vem do monitoram
 
 **Dependências de terceiros verificadas** (nenhuma é proprietária nem obrigatória):
 * Imagens base públicas: `postgres:16-alpine`, `nginx:1.27-alpine`, `python:3.13-slim-bookworm`,
-  `node:22*`, `certbot/certbot` (tag fixa). Não há registry privado nem imagem pré-construída: tudo é
+  `node:22*`, `caddy:2.10-alpine` (tag fixa). Não há registry privado nem imagem pré-construída: tudo é
   construído a partir do repositório (`docker compose build`).
 * Pacotes: PyPI, npm, apt (Debian), Playwright/Chromium — todos públicos; o *build* precisa de internet.
 * **Google Fonts no build** (`next/font/google` em `frontend/src/app/layout.tsx`): o Next baixa Inter e
@@ -322,8 +349,8 @@ Ele **não** reinicia container `unhealthy` por si só; o aviso vem do monitoram
    (da contratante), nova frase-secreta de backup, chaves SSH. Revogue as antigas no ambiente anterior.
 5. **DNS:** reduzir o TTL do registro `A` para 300 s com antecedência; apontar `dominio` e `www` para o
    novo IP depois de validar o novo ambiente por IP; manter o ambiente antigo até a propagação.
-6. **TLS:** no destino, `deploy/init-letsencrypt.sh` emite certificado novo (não copie chaves privadas
-   entre servidores). Atualize `DOMAIN`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS`,
+6. **TLS:** no destino, o Caddy emite certificado novo quando o DNS apontar para ele (não copie o
+   volume `caddy-data` nem chaves privadas entre servidores). Atualize `DOMAIN`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS`,
    `FRONTEND_URL` e **`NEXT_PUBLIC_API_URL`** — esta última é embutida no bundle: exige `$DC build frontend`.
 7. **Validação:** `verificar-producao.sh`, login de um usuário de cada perfil, abrir um laudo com imagem
    (prova que mídia + PDF funcionam), um backup manual e o simulado de restauração (4.A).

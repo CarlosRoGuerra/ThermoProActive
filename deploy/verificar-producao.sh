@@ -66,7 +66,9 @@ EOF
     else ok "$msg"; fi
     [ "$lg" = "json-file:x" ] && warn "$c: rotação de log NÃO configurada (disco pode encher)"
 done
-for need in thermoproactive_db thermoproactive_backend thermoproactive_frontend thermoproactive_nginx thermoproactive_agendador thermoproactive_backup; do
+PRECISA="thermoproactive_db thermoproactive_backend thermoproactive_frontend thermoproactive_nginx thermoproactive_agendador thermoproactive_backup"
+[ "$MODE" = prod ] && PRECISA="$PRECISA thermoproactive_caddy"   # HTTPS da stack prod
+for need in $PRECISA; do
     docker inspect "$need" >/dev/null 2>&1 || {
         if [ "$need" = thermoproactive_backup ]; then alert "serviço de BACKUP não existe (compose antigo?). Sem backup automático."; else alert "container ausente: $need"; fi
     }
@@ -201,7 +203,7 @@ else warn "'ss' indisponível — não verifiquei portas"; fi
 pubs=$(docker ps --format '{{.Names}} {{.Ports}}' --filter 'name=^thermoproactive_' | grep -E '0\.0\.0\.0|\[::\]' || true)
 [ -n "$pubs" ] && printf '%s\n' "$pubs" | sed 's/^/           publicado: /'
 if command -v ufw >/dev/null 2>&1; then info "ufw: $(ufw status 2>/dev/null | head -n 1)"; else warn "ufw não encontrado — confirme que há firewall (no provedor ou no host)"; fi
-info "lembrete: o Docker publica portas direto no iptables, ignorando o ufw; por isso só nginx publica portas (80/443)."
+info "lembrete: o Docker publica portas direto no iptables, ignorando o ufw; por isso só o proxy da frente publica portas (Caddy na stack prod, nginx na http)."
 
 # ------------------------------------------------------------------- certificado TLS
 if [ "$MODE" = prod ]; then

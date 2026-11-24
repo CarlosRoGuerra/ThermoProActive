@@ -1,0 +1,44 @@
+# =============================================================================
+# Caddy — HTTPS automático (Let's Encrypt) na frente do nginx. Só com
+# docker-compose.prod.yml.
+#
+#   navegador → Caddy :443 (TLS) → nginx :80 (rotas, mídia protegida, limite de
+#   login, cabeçalhos — deploy/nginx/app.conf.template) → backend / frontend
+#
+# O certificado é emitido e renovado sozinho, desde que DOMAIN aponte para o IP
+# desta VPS e as portas 80 e 443 estejam abertas. Fica no volume caddy-data:
+# não apague esse volume (cada emissão nova conta no limite do Let's Encrypt).
+#
+# Variáveis (do .env.prod, repassadas pelo compose): DOMAIN e CERTBOT_EMAIL.
+# DOMAIN é o domínio principal (ex.: thermoproactive.com.br); o www redireciona
+# para ele. Num subdomínio sem www no DNS, apague o bloco www.{$DOMAIN}, senão o
+# Caddy fica tentando emitir um certificado que não sai.
+#
+# Mudou este arquivo (a pasta deploy/caddy é montada inteira, então o git pull
+# chega ao container): `$DC exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+# =============================================================================
+{
+	# Conta no Let's Encrypt: recebe os avisos sobre os certificados.
+	email {$CERTBOT_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	header -Server
+
+	# Sem trusted_proxies, o Caddy descarta o X-Forwarded-For que o cliente mandar e
+	# grava o IP real da conexão: o nginx confia nele (limite de login por IP) e o
+	# repassa ao Django (NUM_PROXIES=1).
+	reverse_proxy nginx:80
+}
+
+# Endereço com www redireciona para o principal.
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+# Qualquer outro acesso por HTTP — inclusive pelo IP da VPS, endereço usado antes
+# do domínio — vai para o domínio em HTTPS.
+http:// {
+	redir https://{$DOMAIN}{uri} permanent
+}

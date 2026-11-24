@@ -146,8 +146,8 @@ restauração, runbook de falhas e transferência para outro provedor:
 
 ```bash
 cp .env.prod.example .env.prod && nano .env.prod          # segredos reais; NUNCA versionar
-# com domínio + TLS:
-bash deploy/init-letsencrypt.sh && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# com domínio + HTTPS (DNS apontando para a VPS; o Caddy emite o certificado sozinho):
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 # teste por IP, sem TLS (COOKIES_SECURE=False; só homologação):
 docker compose --env-file .env.prod -f docker-compose.http.yml up -d --build
 bash deploy/verificar-producao.sh      # check-up somente leitura (containers, DEBUG, backup, portas...)
